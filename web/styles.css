@@ -535,6 +535,46 @@ a.img-frame:hover, a.img-frame.hover, a.img-frame.focused { border-width: 3px; b
 .image-area .region-crop { margin-top: 2px; }
 .imgstack-wrap { display: inline-block; max-width: 100%; }
 
+/* rendered Markdown */
+.md-anno { padding: 6px 10px 14px 22px; font: 14px/1.6 var(--sans); color: var(--fg); white-space: normal; }
+.md-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 10px; }
+.md-caption { font: 12px var(--mono); color: var(--fg-soft); }
+.md { max-width: 900px; overflow-wrap: anywhere; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md h1, .md h2, .md h3, .md h4, .md h5, .md h6 { margin: 20px 0 10px; line-height: 1.25; font-weight: 600; }
+.md h1 { font-size: 1.75em; padding-bottom: 0.25em; border-bottom: 1px solid var(--border); }
+.md h2 { font-size: 1.4em; padding-bottom: 0.25em; border-bottom: 1px solid var(--border); }
+.md h3 { font-size: 1.2em; }
+.md h4 { font-size: 1em; }
+.md h5, .md h6 { font-size: 0.9em; color: var(--fg-soft); }
+.md p, .md ul, .md ol, .md blockquote, .md table, .md .md-code, .md hr { margin: 0 0 12px; }
+.md ul, .md ol { padding-left: 2em; }
+.md li + li, .md li > ul, .md li > ol { margin-top: 3px; }
+.md li > ul, .md li > ol { margin-bottom: 0; }
+.md blockquote { padding: 0 12px; color: var(--fg-soft); border-left: 3px solid var(--border); }
+.md code { font-size: 0.88em; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; }
+.md pre { margin: 0; padding: 10px 12px; overflow: auto; background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--radius); line-height: 1.45; }
+.md pre code { font-size: 12px; background: none; border: 0; padding: 0; }
+.md hr { border: 0; border-top: 2px solid var(--border); }
+.md table { border-collapse: collapse; display: block; max-width: 100%; overflow: auto; }
+.md th, .md td { border: 1px solid var(--border); padding: 4px 10px; }
+.md th { background: var(--bg-soft); font-weight: 600; }
+.md img { max-width: 100%; max-height: 70vh; vertical-align: middle; }
+.md a { color: var(--accent); }
+.md a.md-file { cursor: pointer; }
+.md a.md-file:hover { text-decoration: underline; }
+.md a.md-outside { text-decoration: underline dotted; cursor: help; }
+.md .md-image-off { display: inline-block; max-width: 100%; padding: 1px 8px; font-size: 12px; color: var(--fg-soft); border: 1px dashed var(--border); border-radius: 4px; overflow-wrap: anywhere; }
+.md .md-image-off code { border: 0; background: none; padding: 0; }
+.md .md-changed { --md-mark: color-mix(in srgb, var(--ok) 11%, transparent); background: var(--md-mark); box-shadow: -8px 0 0 var(--md-mark); border-radius: 0 3px 3px 0; }
+.md .md-changed:not(tr, thead, tbody) { position: relative; }
+.md .md-changed:not(tr, thead, tbody)::before { content: ""; position: absolute; top: 0; bottom: 0; left: -11px; width: 3px; border-radius: 2px; background: var(--ok); }
+.md li.md-changed { box-shadow: calc(-2em - 8px) 0 0 var(--md-mark); }
+.md li.md-changed::before { left: calc(-2em - 11px); }
+.md :is(tr, thead, tbody).md-changed { box-shadow: none; }
+.md .md-removed { margin: 0 0 12px -11px; padding: 0 8px; font: 12px var(--mono); color: var(--bad); border-left: 3px solid var(--bad); background: color-mix(in srgb, var(--bad) 8%, transparent); cursor: pointer; }
+
 /* git state: header line, file marks, the panel */
 header.top .gitchip { flex: none; display: inline-flex; gap: 5px; align-items: center; font: 12px var(--mono); background: transparent; border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; color: var(--fg-soft); white-space: nowrap; cursor: pointer; }
 header.top .gitchip:hover, header.top .gitchip.on { background: var(--bg-hover); color: var(--fg); }

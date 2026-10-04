@@ -80,11 +80,16 @@ export interface ImagePending {
 }
 export const imagePending = signal<ImagePending | null>(null);
 
-/** SVG files the reader switched between the picture and the code; without an entry, a picture unless lines of it have threads. */
-export const svgView = signal<Map<string, "picture" | "code">>(new Map());
+export type FileView = "picture" | "rendered" | "code";
 
-export function setSvgView(path: string, view: "picture" | "code"): void {
-  svgView.value = new Map(svgView.value).set(path, view);
+/**
+ * Files the reader switched between their code and a picture (SVG) or the rendered text (Markdown). Without an entry
+ * an SVG is a picture unless lines of it have threads, and Markdown is code.
+ */
+export const fileView = signal<Map<string, FileView>>(new Map());
+
+export function setFileView(path: string, view: FileView): void {
+  fileView.value = new Map(fileView.value).set(path, view);
 }
 
 export const searchInput = signal("");
@@ -176,6 +181,8 @@ export function toggleFile(fd: FileDiffMetadata): void {
 export interface CompareHandle {
   scrollToFile(path: string): void;
   scrollToLine(path: string, side: Side, line: number): void;
+  /** The line in the diff with the cursor on it, or the file's preview at that line when the diff does not show it. */
+  openLine(path: string, side: Side, line: number): void;
   revealCursor(c: Cursor, align?: "nearest" | "center"): void;
   startComment(range: LineRange): void;
   pageRows(): number;

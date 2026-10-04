@@ -9,6 +9,7 @@ import { mount, workerPool } from "../components/Code.tsx";
 import { Composer } from "../components/Composer.tsx";
 import { FileGitMarks } from "../components/GitState.tsx";
 import { ImageDiff } from "../components/ImageView.tsx";
+import { MarkdownView } from "../components/MarkdownView.tsx";
 import { ThreadMini } from "../components/ThreadMini.tsx";
 import { CommitPicker } from "../components/CommitPicker.tsx";
 import { commitPicker, commits, isSha, loadCommits } from "../commits.ts";
@@ -21,8 +22,8 @@ import {
   groupsOpen,
   imagePending,
   isCollapsed,
-  setSvgView,
-  svgView,
+  setFileView,
+  fileView,
   isViewed,
   marksByPath,
   marksFor,
@@ -41,6 +42,7 @@ import {
   sideTab,
 } from "../compare.ts";
 import { MARK_CSS, paintMarks } from "../lib/marks.ts";
+import { isMarkdown } from "../lib/markdown.ts";
 import { rowPosition, type Cursor, type LineRange } from "../lib/cursor.ts";
 import { compareOrder } from "../lib/nav.ts";
 import { PeekView } from "./Peek.tsx";
@@ -80,8 +82,12 @@ function FileMeta({ path }: { path: string }) {
       {row?.keptBecause ? <span class="kept" title="a test file that is shown on purpose: tests are hidden only when they only add code">⚠ {row.keptBecause}</span> : null}
       <FileGitMarks path={path} />
       {isSvg(path) ? (
-        <button class="btn ghost small svg-toggle" title="an SVG: show it as a picture or as code" onClick={() => setSvgView(path, pictureFiles.value.has(path) ? "code" : "picture")}>
-          {pictureFiles.value.has(path) ? "‹/› code" : "▣ picture"}
+        <button class="btn ghost small svg-toggle" title="an SVG: show it as a picture or as code" onClick={() => setFileView(path, drawnFiles.value.has(path) ? "code" : "picture")}>
+          {drawnFiles.value.has(path) ? "‹/› code" : "▣ picture"}
+        </button>
+      ) : isMarkdown(path) && fd.type !== "deleted" ? (
+        <button class="btn ghost small md-toggle" title="Markdown: show it rendered or as code" onClick={() => setFileView(path, drawnFiles.value.has(path) ? "code" : "rendered")}>
+          {drawnFiles.value.has(path) ? "‹/› code" : "¶ rendered"}
         </button>
       ) : null}
       <label class="viewed" title="mark as viewed: the file collapses until its content changes">
@@ -157,16 +163,21 @@ interface Pending {
   range: SelectedLineRange;
 }
 
-type Anno = { kind: "thread"; placement: ComparePlacement } | { kind: "new" } | { kind: "image"; path: string };
+type Viewer = "image" | "markdown";
+type Anno = { kind: "thread"; placement: ComparePlacement } | { kind: "new" } | { kind: Viewer; path: string };
 type SelectionContext = { item: { id: string; fileDiff?: FileDiffMetadata } };
 
-/** Shown as pictures: an image git calls binary, or an SVG unless the reader picked its code or lines of it have threads. */
-function asPicture(fd: FileDiffMetadata, placed: ComparePlacement[] | undefined): boolean {
-  if (fd.hunks.length === 0 && isPixelImage(fd.name)) return true;
-  if (!isSvg(fd.name)) return false;
-  const view = svgView.value.get(fd.name);
-  if (view) return view === "picture";
-  return !(placed ?? []).some((p) => !threads.peek().find((t) => t.id === p.threadId)?.region);
+/**
+ * What a file is drawn as instead of its lines: a picture for an image git calls binary, or for an SVG unless the
+ * reader picked its code or lines of it have threads; rendered Markdown when the reader picked it.
+ */
+function viewerOf(fd: FileDiffMetadata, placed: ComparePlacement[] | undefined): Viewer | null {
+  if (fd.hunks.length === 0 && isPixelImage(fd.name)) return "image";
+  if (isMarkdown(fd.name)) return fd.type !== "deleted" && fileView.value.get(fd.name) === "rendered" ? "markdown" : null;
+  if (!isSvg(fd.name)) return null;
+  const view = fileView.value.get(fd.name);
+  if (view) return view === "picture" ? "image" : null;
+  return (placed ?? []).some((p) => !threads.peek().find((t) => t.id === p.threadId)?.region) ? null : "image";
 }
 
 /** True when a file kept from `before` to `after` sits at another index. */
@@ -175,8 +186,8 @@ function moved(before: string[], after: string[]): boolean {
   return before.some((id, i) => at.has(id) && at.get(id) !== i);
 }
 
-/** Files of the diff shown as pictures right now. */
-const pictureFiles = signal<ReadonlySet<string>>(new Set());
+/** Files of the diff drawn as a picture or as rendered Markdown right now, not as lines. */
+const drawnFiles = signal<ReadonlySet<string>>(new Set());
 
 const lo = (r: SelectedLineRange) => Math.min(r.start, r.end);
 const hi = (r: SelectedLineRange) => Math.max(r.start, r.end);
@@ -342,10 +353,10 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     else view.current?.scrollTo(target);
   };
 
-  // Images measure their height only when drawn, and the ones drawn around a jump move it: jump again
-  // once they are measured, unless the reader scrolls, clicks or types meanwhile.
+  // Images and rendered Markdown measure their height only when drawn, and the ones drawn around a jump move it:
+  // jump again once they are measured, unless the reader scrolls, clicks or types meanwhile.
   const settleOn = (path: string) => {
-    if (!isPixelImage(path)) return;
+    if (!isPixelImage(path) && !drawnFiles.peek().has(path)) return;
     let moved = false;
     const stop = () => (moved = true);
     const events = ["wheel", "pointerdown", "keydown"] as const;
@@ -366,10 +377,10 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     return true;
   };
 
-  // Lines of an SVG shown as a picture: show its code first.
+  // Lines of an SVG shown as a picture or of rendered Markdown: show its code first.
   const codeOf = (path: string): boolean => {
-    if (!isSvg(path) || !pictureFiles.peek().has(path)) return false;
-    setSvgView(path, "code");
+    if (!(isSvg(path) || isMarkdown(path)) || !drawnFiles.peek().has(path)) return false;
+    setFileView(path, "code");
     return true;
   };
 
@@ -453,6 +464,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
         latest.current.scrollToFile(path);
       },
       scrollToLine: (path: string, side: Side, line: number) => latest.current.scrollToLine(path, side, line),
+      openLine: (path: string, side: Side, line: number) => latest.current.openTarget(path, line, side),
       revealCursor: (c: Cursor, align?: "nearest" | "center") => latest.current.revealCursor(c, align),
       startComment: (range: LineRange) => latest.current.startComment(range),
       pageRows: () => latest.current.pageRows(),
@@ -499,11 +511,12 @@ export function CompareView({ from, to }: { from: string; to: string }) {
       renderCodeViewFooter: () => footer,
       onPostRender: (node: HTMLElement, _inst: unknown, phase: string, ctx: SelectionContext) => {
         if (phase === "unmount") return;
-        node.toggleAttribute("data-stet-image", !ctx.item.fileDiff);
+        node.toggleAttribute("data-stet-viewer", !ctx.item.fileDiff);
         paintMarks(node, marksFor(ctx.item.id));
       },
       renderAnnotation: (a: DiffLineAnnotation<Anno>) => {
         if (a.metadata.kind === "image") return mount(<ImageDiff file={a.metadata.path} />, "anno image-anno");
+        if (a.metadata.kind === "markdown") return mount(<MarkdownView file={a.metadata.path} />, "anno md-anno");
         if (a.metadata.kind === "thread") return mount(<ThreadMini id={a.metadata.placement.threadId} state={a.metadata.placement.state} />, "anno");
         const cur = latest.current;
         const p = cur.pending;
@@ -593,17 +606,18 @@ export function CompareView({ from, to }: { from: string; to: string }) {
       v.scrolled = false;
     }
     const pendingSig = pending ? `${pending.path}:${pending.range.side}:${pending.range.start}-${pending.range.end}` : "";
-    const pictures = new Set<string>();
+    const drawn = new Set<string>();
     const items: CodeViewItem<Anno>[] = visible.map((fd): CodeViewItem<Anno> => {
-      if (asPicture(fd, byPath.get(fd.name))) {
-        pictures.add(fd.name);
+      const viewer = viewerOf(fd, byPath.get(fd.name));
+      if (viewer) {
+        drawn.add(fd.name);
         const collapsed = isCollapsed(fd);
         let entry = v.byItem.get(fd.name);
         if (!entry || entry.sig !== String(collapsed)) {
           entry = { sig: String(collapsed), version: ++v.gen };
           v.byItem.set(fd.name, entry);
         }
-        return { id: fd.name, type: "file", file: { name: fd.name, contents: "" }, annotations: [{ lineNumber: 1, metadata: { kind: "image", path: fd.name } }], version: entry.version, collapsed };
+        return { id: fd.name, type: "file", file: { name: fd.name, contents: "" }, annotations: [{ lineNumber: 1, metadata: { kind: viewer, path: fd.name } }], version: entry.version, collapsed };
       }
       const annotations = annotationsFor(byPath.get(fd.name), pending, fd.name);
       const collapsed = isCollapsed(fd);
@@ -622,7 +636,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     if (moved(v.ids, ids)) cv.setItems([]);
     v.ids = ids;
     cv.setItems(items);
-    if ([...pictures].join("\n") !== [...pictureFiles.peek()].join("\n")) pictureFiles.value = pictures;
+    if ([...drawn].join("\n") !== [...drawnFiles.peek()].join("\n")) drawnFiles.value = drawn;
     const queued = pendingScroll.current;
     if (queued) {
       pendingScroll.current = null;
@@ -646,7 +660,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
         requestAnimationFrame(() => latest.current.scrollToThread(id));
       }
     }
-  }, [files, visible, byPath, pending, fileOpen.value, viewed.value, diffStyle.value, wrap.value, svgView.value]);
+  }, [files, visible, byPath, pending, fileOpen.value, viewed.value, diffStyle.value, wrap.value, fileView.value]);
 
   useEffect(() => {
     if ((isSha(from) || isSha(to)) && !commits.peek()) void loadCommits();

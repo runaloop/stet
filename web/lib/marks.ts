@@ -16,8 +16,8 @@ const HIT_CURRENT = "stet-hit-current";
 export const MARK_CSS = `
 /* pierre's 1fr grows a column to its widest annotation, and a wrapped line lets the other column shrink to 1ch */
 [data-diff][data-overflow="wrap"], [data-file][data-overflow="wrap"] { --diffs-code-grid: var(--diffs-grid-number-column-width) minmax(0, 1fr); }
-/* an image of the diff is a file item whose one empty line only carries the image viewer */
-:host([data-stet-image]) [data-line], :host([data-stet-image]) [data-column-number] { visibility: hidden; }
+/* an image or rendered Markdown of the diff is a file item whose one empty line only carries the viewer */
+:host([data-stet-viewer]) [data-line], :host([data-stet-viewer]) [data-column-number] { visibility: hidden; }
 [data-content] > [${ATTR}~="thread"] { box-shadow: inset 0 0 0 100vmax light-dark(rgb(255 190 0 / 0.13), rgb(255 190 0 / 0.09)); }
 [data-gutter] > [${ATTR}~="thread"] { box-shadow: inset 3px 0 0 light-dark(#e0a800, #b8900a), inset 0 0 0 100vmax light-dark(rgb(255 190 0 / 0.13), rgb(255 190 0 / 0.09)); }
 [data-content] > [${ATTR}~="focus"] { box-shadow: inset 0 0 0 100vmax light-dark(rgb(255 170 0 / 0.26), rgb(255 170 0 / 0.2)); }

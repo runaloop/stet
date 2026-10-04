@@ -797,7 +797,7 @@ try {
     await b.eval(`location.hash = "#/compare/${imgV - 1}..${imgV}"; true`);
     await waitFor(`[...document.querySelectorAll(".imgdiff img")].length >= 5 && [...document.querySelectorAll(".imgdiff img")].every(i => i.complete && i.naturalWidth > 0)`, 10000);
     await sleep(500);
-    const imgShown = await b.eval(`({ files: [...document.querySelectorAll(".imgdiff")].map(d => d.dataset.file), caption: document.querySelector('.imgdiff[data-file="res/card.png"] .imgdiff-caption')?.textContent, icon: (() => { const i = document.querySelector('.imgdiff[data-file="res/icon.png"] img'); return i ? [i.naturalWidth, Math.round(i.getBoundingClientRect().width)] : null; })(), emptyRow: [...document.querySelectorAll(".codeview-host diffs-container[data-stet-image]")].length })`);
+    const imgShown = await b.eval(`({ files: [...document.querySelectorAll(".imgdiff")].map(d => d.dataset.file), caption: document.querySelector('.imgdiff[data-file="res/card.png"] .imgdiff-caption')?.textContent, icon: (() => { const i = document.querySelector('.imgdiff[data-file="res/icon.png"] img'); return i ? [i.naturalWidth, Math.round(i.getBoundingClientRect().width)] : null; })(), emptyRow: [...document.querySelectorAll(".codeview-host diffs-container[data-stet-viewer]")].length })`);
     check(
       "an image in the diff shows as pictures with its size and bytes; an icon is enlarged; old and new side by side",
       imgShown.files.join(",") === "res/card.png,res/icon.png,res/logo.svg" && (imgShown.caption?.startsWith("PNG · 240×160 ·") ?? false) && imgShown.icon?.[0] === 24 && imgShown.icon[1] >= 96 && imgShown.emptyRow === 3,
@@ -843,6 +843,38 @@ try {
       (page.head?.includes("area") ?? false) && page.crop && (page.tree?.startsWith("area ") ?? false) && page.csp === 0,
       page,
     );
+
+    writeFileSync(join(repo, "docs/guide.md"), ["# Guide", "", "Intro.", "", "Old paragraph that goes away.", "", "## Usage", "", "Run it.", ""].join("\n"));
+    run(repo, ["git", "add", "-A"]);
+    run(repo, ["bun", CLI, "version", "create", "--label", "guide", "--json"]);
+    writeFileSync(
+      join(repo, "docs/guide.md"),
+      ["# Guide", "", "Intro.", "", "## Usage", "", "Run it, then open the card:", "", "![the card](../res/card.png)", "", "![remote](https://example.com/remote.png)", "", "```ts", 'const card: string = "red";', "```", ""].join("\n"),
+    );
+    run(repo, ["git", "add", "-A"]);
+    run(repo, ["bun", CLI, "version", "create", "--label", "guide with a picture", "--json"]);
+    const mdV = JSON.parse(run(repo, ["bun", CLI, "status", "--json"])).versions as number;
+    await b.eval(`location.hash = "#/compare/${mdV - 1}..${mdV}"; true`);
+    await waitFor(`document.querySelector(".md-toggle")`, 10000);
+    await sleep(800);
+    const mdToggle = await b.eval(`document.querySelector(".md-toggle").textContent`);
+    await b.eval(`document.querySelector(".md-toggle").click(); true`);
+    const picture = await waitFor(`(() => { const i = document.querySelector(".md-view img"); return i?.complete && i.naturalWidth > 0 ? { w: i.naturalWidth, src: i.getAttribute("src") } : null; })()`, 10000);
+    const lit = await waitFor(`!!document.querySelector(".md-view pre.shiki")`, 8000);
+    const rendered = await b.eval(`({ changed: [...document.querySelectorAll(".md-view .md-changed")].map(e => e.tagName.toLowerCase() + ":" + e.dataset.start), removed: document.querySelector(".md-view .md-removed")?.textContent, removedAt: document.querySelector(".md-view .md-removed")?.nextElementSibling?.textContent, remote: document.querySelector(".md-view .md-image-off")?.textContent, outside: document.querySelectorAll('.md-view img[src^="http"]').length, csp: window.__csp })`);
+    await b.screenshot(join(OUT, "shots", "ui-check-markdown.png"));
+    check(
+      "a Markdown file switches to rendered: its picture loads from the repository, a remote one stays a link, code is highlighted, changed blocks are marked, removed lines are counted where they were",
+      mdToggle.includes("rendered") && picture?.w === 240 && picture.src.startsWith("/api/raw?") && picture.src.includes("path=res%2Fcard.png") && lit === true &&
+        JSON.stringify(rendered.changed) === JSON.stringify(["p:7", "p:9", "p:11", "div:13"]) && rendered.removed === "− 2 lines removed here" && rendered.removedAt === "Usage" &&
+        (rendered.remote?.includes("https://example.com/remote.png") ?? false) && rendered.outside === 0 && rendered.csp.length === 0,
+      { mdToggle, picture, lit, rendered },
+    );
+    await b.eval(`document.querySelector('.md-view p[data-start="7"]')?.scrollIntoView({ block: "center" }); true`);
+    await sleep(400);
+    await click('.md-view p[data-start="7"]');
+    const jumped = await waitFor(`(() => { const c = [...document.querySelectorAll(".codeview-host diffs-container")].find(c => c.shadowRoot.textContent.includes("Run it, then open the card")); const rows = c ? [...c.shadowRoot.querySelectorAll('[data-content] > [data-stet-mark~="cursor"]')].map(r => r.getAttribute("data-line-type") + ":" + r.getAttribute("data-line")) : []; return rows.length ? { rows, toggle: document.querySelector(".md-toggle")?.textContent } : null; })()`, 8000);
+    check("a click on a rendered block shows the code with the cursor on its line, to comment there", !!jumped && jumped.rows.includes("change-addition:7") && jumped.toggle.includes("rendered"), jumped);
 
     await b.eval(`location.hash = "#/compare/${imgV - 1}..${imgV}"; true`);
     await waitFor(`[...document.querySelectorAll(".imgdiff img")].length >= 5`, 10000);

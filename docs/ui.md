@@ -47,6 +47,14 @@ that shows the area at every version (`changed` when the image changed, `outdate
 gets the image with the area framed and the area at full size as PNG files (`stet thread show`)
 ([guide](guide/README.md#images)).
 
+## Markdown
+
+A Markdown file shows as code; the button on its header (**¶ rendered** / **‹/› code**) shows its new side
+rendered. Its pictures load from the repository at the same version; pictures from the web are not loaded
+(their address is shown instead), raw HTML stays text, and code blocks are highlighted. Blocks the diff
+changed are marked, and lines it removed are counted where they were. A click on a block shows its lines in
+the code with the cursor on them, where threads are written; a link to another file opens it in the preview.
+
 ## Keys
 
 Vim-style, modelled on [LazyVim](https://www.lazyvim.org). `?` shows every key with a filter box; `Space s k`
