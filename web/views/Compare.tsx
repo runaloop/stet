@@ -1,5 +1,6 @@
 import { CodeView, parsePatchFiles, type CodeViewItem, type CodeViewScrollTarget, type DiffLineAnnotation, type FileDiffMetadata, type SelectedLineRange } from "@pierre/diffs";
 import { effect } from "@preact/signals";
+import { render, type ComponentChild } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { isPixelImage, isSvg } from "../../src/core/image.ts";
 import type { ComparePlacement } from "../../src/core/types.ts";
@@ -515,6 +516,16 @@ export function CompareView({ from, to }: { from: string; to: string }) {
       return h;
     };
     const footer = mount(<FoldFooter />, "codeview-footer");
+    // pierre drops a file's viewer when the file scrolls away and asks for a new one when it comes back: unmount the
+    // old one, or every pass leaves a live copy behind
+    const viewers = new Map<string, HTMLElement>();
+    const viewer = (path: string, child: ComponentChild, className: string) => {
+      const was = viewers.get(path);
+      if (was) render(null, was);
+      const el = mount(child, className);
+      viewers.set(path, el);
+      return el;
+    };
     const options = {
       diffStyle: diffStyle.value,
       overflow: wrap.value ? ("wrap" as const) : ("scroll" as const),
@@ -543,8 +554,8 @@ export function CompareView({ from, to }: { from: string; to: string }) {
         paintMarks(node, marksFor(ctx.item.id));
       },
       renderAnnotation: (a: DiffLineAnnotation<Anno>) => {
-        if (a.metadata.kind === "image") return mount(<ImageDiff file={a.metadata.path} />, "anno image-anno");
-        if (a.metadata.kind === "markdown") return mount(<MarkdownView file={a.metadata.path} />, "anno md-anno");
+        if (a.metadata.kind === "image") return viewer(a.metadata.path, <ImageDiff file={a.metadata.path} />, "anno image-anno");
+        if (a.metadata.kind === "markdown") return viewer(a.metadata.path, <MarkdownView file={a.metadata.path} />, "anno md-anno");
         if (a.metadata.kind === "thread") return mount(<ThreadMini id={a.metadata.placement.threadId} state={a.metadata.placement.state} />, "anno");
         const p = pendingLines.peek();
         return p ? mount(<PendingBox p={p} />, "anno") : undefined;
@@ -607,6 +618,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
       unsubscribe();
       cancelAnimationFrame(frame);
       cv.cleanUp();
+      for (const el of viewers.values()) render(null, el);
       view.current = null;
     };
   }, [diffStyle.value, wrap.value]);
