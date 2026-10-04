@@ -8,6 +8,7 @@ Where to click, with arrows. The screenshots are taken on small demo repositorie
 - [Which code: from and to](#which-code-from-and-to)
 - [Many versions](#many-versions)
 - [Images](#images)
+- [Markdown](#markdown)
 - [Git state and fresh data](#git-state-and-fresh-data)
 - [Test files that only add code are folded](#test-files-that-only-add-code-are-folded)
 - [Check the agent's claim without leaving the thread](#check-the-agents-claim-without-leaving-the-thread)
@@ -102,6 +103,25 @@ their paths: the image with the area framed and the rest dimmed, and the area wi
 ![What the agent opens: the image with the area framed](images-agent.png)
 
 ![And the area at full size](images-agent-crop.png)
+
+## Markdown
+
+A Markdown file of the diff shows as code; **¶ rendered** on its header shows it rendered (and **‹/› code** goes
+back). In split view the old version and the new one stand side by side, block facing block, so a reader sees
+what changed in the text as it reads, not in the markup. Pictures of the repository load at the version of their
+side; pictures from the web are not loaded, raw HTML stays text.
+
+![The old and the new README side by side, with threads on their blocks](markdown-1.png)
+
+Threads are still on lines, so the agent gets the same thread as from the code. A thread shows on the blocks its
+lines are in; **+** beside a block, or `i` on the block under the cursor, starts one on the block's lines. The
+cursor keys of the code move over the blocks, and **‹/›** beside a block shows its lines in the code.
+
+![A thread on a list item, and the buttons beside a block](markdown-2.png)
+
+In unified view the text is one column: a changed block's old version, marked "was", stands above its new one.
+
+![The same change in unified view](markdown-3.png)
 
 ## Git state and fresh data
 
