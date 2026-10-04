@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { gitTry } from "./git.ts";
+import { gitLine, gitTry } from "./git.ts";
 import { Store, type ReviewRow, type Role } from "./store/db.ts";
 import { listWorktrees } from "./worktrees.ts";
 
@@ -123,7 +123,7 @@ export async function initReview(
   const baseRef =
     opts.base ??
     (opts.staged ? "HEAD" : ((await defaultBaseRef(ctx.repo.cwd, branch)) ?? (await gitTry(["rev-parse", "-q", "--verify", "HEAD^{commit}"], { cwd: ctx.repo.cwd }))));
-  if (opts.base && !(await gitTry(["rev-parse", "-q", "--verify", "--end-of-options", `${opts.base}^{commit}`], { cwd: ctx.repo.cwd }))) {
+  if (opts.base && opts.base !== EMPTY_BASE && !(await gitTry(["rev-parse", "-q", "--verify", "--end-of-options", `${opts.base}^{commit}`], { cwd: ctx.repo.cwd }))) {
     throw usage(`base ref '${opts.base}' does not resolve to a commit`);
   }
   let hint: string | null = null;
@@ -169,4 +169,32 @@ export async function resolveCommit(cwd: string, rev: string): Promise<string | 
 
 export async function mergeBase(cwd: string, a: string, b: string): Promise<string | null> {
   return gitTry(["merge-base", "--end-of-options", a, b], { cwd });
+}
+
+/** The code before the first commit, as a base (`stet init --base empty`) and as a ref: no files at all. */
+export const EMPTY_BASE = "empty";
+const EMPTY_BASE_REF = "refs/stet/empty";
+
+/**
+ * A commit of the empty tree with a fixed author, date and message, so its sha is the same in every repository
+ * of one hash format. Its ref keeps it from `git gc`, and `stet prune` only drops refs under refs/stet/snap.
+ */
+export async function emptyBase(cwd: string): Promise<string> {
+  const kept = await resolveCommit(cwd, EMPTY_BASE_REF);
+  if (kept) return kept;
+  const tree = await gitLine(["hash-object", "-t", "tree", "-w", "--stdin"], { cwd, input: "" });
+  const sha = await gitLine(["hash-object", "-t", "commit", "-w", "--stdin"], {
+    cwd,
+    input: `tree ${tree}\nauthor stet <stet@localhost> 0 +0000\ncommitter stet <stet@localhost> 0 +0000\n\nstet empty base\n`,
+  });
+  await gitTry(["update-ref", EMPTY_BASE_REF, sha], { cwd });
+  return sha;
+}
+
+/** Where the code at `tip` starts: its merge base with the base ref, or the empty base when they share no history. */
+export async function baseBelow(cwd: string, baseRef: string, tip: string): Promise<string | null> {
+  if (baseRef === EMPTY_BASE) return emptyBase(cwd);
+  const sha = await mergeBase(cwd, baseRef, tip);
+  if (sha || !(await resolveCommit(cwd, baseRef))) return sha;
+  return emptyBase(cwd);
 }

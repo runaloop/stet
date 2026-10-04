@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { markReviewed, nowDirty, presets, reviewedCursor, reviewedRef, status, tipRef, versions } from "../state.ts";
 import { ago, revealRange } from "./Bits.tsx";
-import { commitAt, commitOf, commits, commitSubject, isSha } from "../commits.ts";
+import { commitAt, commitOf, commits, commitSubject, isSha, rowOf } from "../commits.ts";
 import { picker } from "../keys.ts";
 import { foldRuns, keptSteps } from "../lib/versions.ts";
 
@@ -63,16 +63,16 @@ export function rangeTitle(from: string, to: string): string {
     return `What changed in ${t}${v?.role === "agent" ? ", the agent's version" : ""} (${f} → ${t})`;
   }
   const list = commits.value?.commits ?? [];
-  const fc = commitAt(from);
+  const fi = rowOf(from);
   const tc = to === "now" ? null : commitAt(to);
-  if (fc && (tc || to === "now")) {
-    const oldest = list.indexOf(fc) - 1;
+  if (fi !== null && (tc || to === "now")) {
+    const oldest = fi - 1;
     const n = tc ? oldest - list.indexOf(tc) + 1 : 0;
     const sha = (i: number) => list[i]!.sha.slice(0, 8);
     if (tc && n === 1) return `Commit ${sha(oldest)}: ${commitSubject(tc, 80)}`;
     if (tc && n > 1) return `${n} commits: ${sha(oldest)} … ${sha(list.indexOf(tc))}`;
     const pending = status.value?.review.source === "index" ? "staged, not committed yet" : "not committed yet";
-    if (!tc && oldest === -1) return `Changes ${pending} (on top of ${fc.sha.slice(0, 8)})`;
+    if (!tc && oldest === -1) return list[fi] ? `Changes ${pending} (on top of ${sha(fi)})` : `Changes ${pending}`;
     if (!tc && oldest >= 0) return `${oldest + 1} commit${oldest ? "s" : ""} and the changes ${pending}: ${sha(oldest)} … now`;
   }
   return `Changes from ${f} to ${t}`;

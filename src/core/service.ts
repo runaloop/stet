@@ -2,7 +2,10 @@ import { formatPatch, structuredPatch } from "diff";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import {
+  baseBelow,
   conflict,
+  EMPTY_BASE,
+  emptyBase,
   forbidden,
   mergeBase,
   notFound,
@@ -125,7 +128,7 @@ export async function createVersion(
   if (latest && !opts.allowEmpty && snapshotTree(ctx, latest.snapshot) === snap.tree) {
     throw conflict(`nothing changed since version ${latest.number}`);
   }
-  const baseSha = review.base_ref ? await mergeBase(ctx.repo.cwd, review.base_ref, snap.sha) : null;
+  const baseSha = review.base_ref ? await baseBelow(ctx.repo.cwd, review.base_ref, snap.sha) : null;
   const row = ctx.store.tx(() => {
     const max = ctx.store.db
       .query<{ n: number | null }, [number]>("SELECT max(number) AS n FROM versions WHERE review_id = ?")
@@ -171,16 +174,18 @@ export async function resolveRef(
     if (!v) throw notFound("any version");
     return { ref, sha: v.snapshot, label: `v${v.number}`, version: v, isNow: false };
   }
+  if (ref === EMPTY_BASE) {
+    return { ref, sha: await emptyBase(ctx.repo.cwd), label: EMPTY_BASE, version: null, isNow: false };
+  }
   if (ref === "base") {
     const tip = opts.baseFor ?? versions[versions.length - 1]?.snapshot ?? (opts.pinnedNow ?? (await takeNow(ctx, review, { keep: false })).sha);
     if (!review.base_ref) {
       const first = versions[0]?.snapshot ?? tip;
-      const parent = getSnapshot(ctx, first)?.parent ?? (await resolveCommit(ctx.repo.cwd, `${first}^1`));
-      if (!parent) throw usage("review has no base ref: run `stet init --base <ref>`");
+      const parent = getSnapshot(ctx, first)?.parent ?? (await resolveCommit(ctx.repo.cwd, `${first}^1`)) ?? (await emptyBase(ctx.repo.cwd));
       return { ref, sha: parent, label: "base", version: null, isNow: false };
     }
     const stored = versions.find((v) => v.snapshot === tip)?.base_sha;
-    const sha = stored ?? (await mergeBase(ctx.repo.cwd, review.base_ref, tip));
+    const sha = stored ?? (await baseBelow(ctx.repo.cwd, review.base_ref, tip));
     if (!sha) throw notFound(`merge base of ${review.base_ref}`);
     return { ref, sha, label: "base", version: null, isNow: false };
   }
@@ -575,6 +580,7 @@ const MAIN_LINES = ["origin/HEAD", "origin/main", "origin/master", "main", "mast
 const MAIN_LINE_SHOWN = 20;
 
 async function forkPoint(ctx: Ctx, review: ReviewRow, tip: string): Promise<{ sha: string; ref: string } | null> {
+  if (review.base_ref === EMPTY_BASE) return null;
   const refs = [...new Set([review.base_ref, ...MAIN_LINES].filter((r): r is string => !!r && r !== "HEAD"))];
   for (const ref of refs) {
     const sha = await mergeBase(ctx.repo.cwd, ref, tip);

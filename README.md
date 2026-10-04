@@ -83,11 +83,11 @@ All commands print JSON when piped or with `--json`. Run `stet --help` for the f
 
 | Command | What it does |
 |---|---|
-| `stet init [--base <ref>]` | start a review for the current branch (done automatically on first use) |
+| `stet init [--base <ref>\|empty]` | start a review for the current branch (done automatically on first use); `--base empty` shows every file as new, e.g. to review a repository's first commit |
 | `stet status` | versions, thread counts, UI URL |
 | `stet serve [--open] [--stop]` | the web UI; `--open` runs it in the background and opens the browser |
 | `stet version create [--label] [--at <commit>]` | snapshot the working tree (or the index) as the next version, or make a commit one |
-| `stet versions diff <a> <b>` | files and thread placements between two refs (`base`, `N`, `latest`, `now`, sha) |
+| `stet versions diff <a> <b>` | files and thread placements between two refs (`base`, `N`, `latest`, `now`, `empty`, sha) |
 | `stet threads list [--needs-reply] [--unread] [--state changed,outdated] [--new-since N] [--file glob]` | threads |
 | `stet thread show <id>` | conversation, timeline, code then / now, interdiff; for an image, the paths of the PNGs with the area framed |
 | `stet comment add --file <p> --range a-b --body <t> [--at <ref>] [--draft]` | new thread; `--region x,y,w,h` in place of `--range` for an area of an image |
@@ -142,12 +142,14 @@ All of them, and how the pages and panels work: [docs/ui.md](docs/ui.md).
 
 ## Data
 
-Everything lives in `.git/stet/` (SQLite, mode `0700`) and `refs/stet/snap/*`, shared by all worktrees of
-the repository. Nothing shows up in `git status`, and nothing leaves the machine. To remove stet from a
-repository, stop its server (`stet serve --stop`), delete `.git/stet/`, and drop the refs:
+Everything lives in `.git/stet/` (SQLite, mode `0700`) and under `refs/stet/`, shared by all worktrees of
+the repository: `refs/stet/snap/*` keeps the snapshots, and `refs/stet/empty` an empty commit, the base of
+code that has nothing below it (`--base empty`, a repository's first commit). Nothing shows up in
+`git status`, and nothing leaves the machine. To remove stet from a repository, stop its server
+(`stet serve --stop`), delete `.git/stet/`, and drop the refs:
 
 ```bash
-git for-each-ref --format='delete %(refname)' refs/stet/snap | git update-ref --stdin
+git for-each-ref --format='delete %(refname)' refs/stet | git update-ref --stdin
 ```
 
 ## Limits

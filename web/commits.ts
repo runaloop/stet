@@ -41,6 +41,15 @@ export function commitAt(ref: string): CommitDto | null {
   return commitOf(ref);
 }
 
+/** The row of a compare end in the commit list: the commit it points at, or under the root commit for "empty". */
+export function rowOf(ref: string): number | null {
+  const list = commits.value?.commits;
+  if (!list) return null;
+  if (ref === "empty") return list.length === 0 || !list[list.length - 1]!.parent ? list.length : null;
+  const c = commitAt(ref);
+  return c ? list.indexOf(c) : null;
+}
+
 export function commitSubject(c: CommitDto, max = 90): string {
   return c.subject.length > max ? c.subject.slice(0, max - 1) + "…" : c.subject;
 }

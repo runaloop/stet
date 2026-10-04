@@ -20,9 +20,10 @@ export const HELP = `stet — thread-first local code review between a human rev
 Usage: stet <command> [options]    (JSON output when piped or with --json)
 
 Review
-  init [--staged] [--base <ref>] [--worktree <path>]
+  init [--staged] [--base <ref>|empty] [--worktree <path>]
                                                 start a review for the current branch; --staged reviews
-                                                the index against HEAD instead of the whole working tree
+                                                the index against HEAD instead of the whole working tree;
+                                                --base empty: every file is new, e.g. for the first commit
   status                                        versions, thread counts, UI url
   review submit [--body <text>]                 publish all your drafts as one review
   review close | review move --to <branch>
@@ -31,7 +32,7 @@ Versions
   version create [--label <text>] [--allow-empty] [--at <commit>]
                                                 a version of the working tree (or the index), or of a commit
   versions list
-  versions diff <a> <b> [--patch]               refs: base, 1..N, latest, now, <sha>
+  versions diff <a> <b> [--patch]               refs: base, 1..N, latest, now, empty, <sha>
 
 Threads
   threads list [--status open|resolved|all] [--state ok,moved,changed,outdated]

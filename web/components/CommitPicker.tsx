@@ -1,5 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
-import { commitAt, commitPicker, commitRef, commits, commitSubject, loadCommits } from "../commits.ts";
+import { commitPicker, commitRef, commits, commitSubject, loadCommits, rowOf } from "../commits.ts";
 import { link, status } from "../state.ts";
 import { ago } from "./Bits.tsx";
 
@@ -27,29 +27,29 @@ export function CommitPicker(props: { from: string; to: string; fromSha: string 
   const list = data?.commits ?? [];
   const source = status.value?.review.source === "index" ? "staged changes" : "working tree";
   // Row -1 is "now"; null means the end is not in the list (a version snapshot, an older commit).
-  const at = (sha: string | null) => {
+  const at = (ref: string, sha: string | null) => {
+    const row = rowOf(ref);
+    if (row !== null) return row;
     const i = sha ? list.findIndex((c) => c.sha === sha) : -1;
     return i >= 0 ? i : null;
   };
-  const toRow = to === "now" ? -1 : at(commitAt(to)?.sha ?? props.toSha);
-  const fromState = from === "now" ? null : at(commitAt(from)?.sha ?? props.fromSha);
+  const toRow = to === "now" ? -1 : at(to, props.toSha);
+  const fromState = from === "now" ? null : at(from, props.fromSha);
   const fromRow = fromState === null ? null : fromState - 1;
   const stateOf = (i: number) => (i === -1 ? "now" : commitRef(list[i]!.sha));
   const stateBefore = (i: number) => {
     const parent = i === -1 ? list[0]?.sha : list[i]!.parent;
-    return parent ? commitRef(parent) : null;
+    return parent ? commitRef(parent) : "empty";
   };
   const pick = (end: "from" | "to", i: number) => {
     let f = from;
     let t = to;
     if (end === "from") {
-      const before = stateBefore(i);
-      if (!before) return;
-      f = before;
+      f = stateBefore(i);
       if (toRow !== null && toRow > i) t = stateOf(i);
     } else {
       t = stateOf(i);
-      if (fromRow !== null && fromRow < i) f = stateBefore(i) ?? f;
+      if (fromRow !== null && fromRow < i) f = stateBefore(i);
     }
     if (f !== t) onPick(f, t);
   };
@@ -91,18 +91,15 @@ export function CommitPicker(props: { from: string; to: string; fromSha: string 
           </li>
           {list.map((c, i) => {
             const ref = commitRef(c.sha);
-            const parent = c.parent ? commitRef(c.parent) : null;
-            const body = <><code class="sha">{c.sha.slice(0, 8)}</code> <span class="subject">{commitSubject(c)}</span></>;
+            const before = stateBefore(i);
             return (
               <>
                 {i === firstMain ? <li class="commit-sep">↓ already in {data.forkRef}: the branch starts above this line</li> : null}
                 <li class={`commit-row${shown(i) ? " in" : ""}${c.onBranch ? "" : " main"}`}>
                   {ends(i)}
-                  {parent ? (
-                    <a class="commit-msg" title={`${c.sha}\n${c.subject}\n\nshow this commit alone`} {...link({ name: "compare", from: parent, to: ref }, () => onPick(parent, ref))}>{body}</a>
-                  ) : (
-                    <span class="commit-msg" title={c.sha}>{body}</span>
-                  )}
+                  <a class="commit-msg" title={`${c.sha}\n${c.subject}\n\nshow this commit alone`} {...link({ name: "compare", from: before, to: ref }, () => onPick(before, ref))}>
+                    <code class="sha">{c.sha.slice(0, 8)}</code> <span class="subject">{commitSubject(c)}</span>
+                  </a>
                   <span class="commit-meta">
                     {versionRuns(c.versions).map((r) => {
                       const name = r.to > r.from ? `v${r.from}–v${r.to}` : `v${r.from}`;

@@ -640,6 +640,10 @@ try {
     await b.eval(`${commitRow("ui: first commit")}.querySelector(".end").click(); true`);
     const cpBoth = await waitFor(`document.querySelector(".range-title")?.textContent.startsWith("2 commits") ? document.querySelector(".range-title").textContent : null`, 8000);
     const cpMarked = await b.eval(`document.querySelectorAll(".commit-row.in").length`);
+    await b.eval(`${commitRow("base")}.querySelector("a.commit-msg").click(); true`);
+    const cpRoot = await waitFor(`/^Commit \\w{8}: base · 2 files$/.test(document.querySelector(".range-title")?.textContent) ? location.hash : null`, 8000);
+    const cpRootIn = await b.eval(`[...document.querySelectorAll(".commit-row.in")].map(r => r.querySelector(".subject").textContent)`);
+    check("the repository's first commit shows alone, from the empty tree", (cpRoot?.startsWith("#/compare/empty..") ?? false) && JSON.stringify(cpRootIn) === JSON.stringify(["base"]), { cpRoot, cpRootIn });
     await keys("");
     await sleep(300);
     const cpClosed = await b.eval(`!document.querySelector(".commit-picker")`);
