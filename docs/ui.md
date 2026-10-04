@@ -61,7 +61,8 @@ Threads are on lines here too. A thread shows on the blocks its lines are in, wi
 them (and its lines on the card when it covers only part of a block); a thread on blank lines shows on the
 block before them. A click on a block puts the cursor on it; **+** beside a block (or `i` on the cursor's
 block, `V` with `j` / `k` for several) starts a thread on the block's lines, on its side, and **‹/›** beside it
-shows those lines in the code with the cursor on them. A link to another file opens it in the preview.
+shows those lines in the code with the cursor on them. A link to another file opens it in the preview
+([guide](guide/README.md#markdown)).
 
 ## Keys
 

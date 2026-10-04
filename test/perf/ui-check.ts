@@ -974,13 +974,16 @@ try {
     await keys("[", "c");
     await sleep(300);
     const prevChange = await stops();
-    await keys("j");
-    await sleep(200);
+    for (let i = 0; i < 6; i++) {
+      await keys("]", "t");
+      await sleep(400);
+      if (await b.eval(`!!document.querySelector('.md-view .thread-mini.focused[data-thread="${mdCard}"]')`)) break;
+    }
     const onThread = await stops();
     await keys("");
     const mdOpened = await waitFor(`location.hash === "#/thread/${mdCard}" ? location.hash : null`, 5000);
     check(
-      "in the rendered view j/k step over the blocks and ]c/[c over the changed ones, both sides in reading order; Enter opens the thread on the block",
+      "in the rendered view j/k step over the blocks and ]c/[c over the changed ones, both sides in reading order; ]t goes to the block of a thread, Enter opens it",
       JSON.stringify([afterJ, afterJJ, nextChange, nextChange2, prevChange, onThread]) === JSON.stringify([["old:3", "new:3"], ["old:5"], ["old:9"], ["new:11"], ["old:9"], ["new:7"]]) && !!mdOpened,
       { afterJ, afterJJ, nextChange, nextChange2, prevChange, onThread, mdOpened },
     );
