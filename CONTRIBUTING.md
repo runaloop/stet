@@ -47,7 +47,8 @@ bun run guide images       # one section: check-claim, tests, commits, conversat
 
 Bump `version` in `package.json`, commit, tag the commit `vX.Y.Z` and push the tag: the release workflow
 runs the checks and publishes the binaries in a GitHub release. `NOTICE` lists what the binary bundles;
-update it when a runtime dependency or the Bun version changes.
+`bun test` fails when a bundled package is missing from it. The Bun runtime part is kept by hand: update
+it when the Bun version changes.
 
 ## Conventions
 
