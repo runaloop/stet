@@ -72,7 +72,7 @@ export async function commitsGuide() {
       await p.click(ends);
       await p.waitFor(`document.querySelector(".range-title")?.textContent.startsWith("4 commits")`);
       await p.click(endsTo);
-      await p.waitFor(`document.querySelector(".range-title")?.textContent.startsWith("3 commits")`);
+      await p.waitFor(`document.querySelector(".range-title")?.textContent.startsWith("3 commits") && document.querySelectorAll(".commit-row.in").length === 3`);
       await p.sleep(1500);
       const head = await p.need(".compare .range-title");
       const bar = await p.eval(`(() => { const rows = [...document.querySelectorAll(".commit-row.in")]; const a = rows[0].getBoundingClientRect(), b = rows[rows.length - 1].getBoundingClientRect(); return { x: Math.round(a.left), y: Math.round(a.top), w: 8, h: Math.round(b.bottom - a.top) }; })()`);

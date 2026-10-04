@@ -119,8 +119,10 @@ export class Page {
   sleep(ms: number) {
     return this.b.eval(`new Promise(r => setTimeout(r, ${ms}))`);
   }
-  waitFor(expr: string, ms = 8000) {
-    return this.b.eval(`new Promise(r => { const end = Date.now() + ${ms}; const t = () => { let v; try { v = ${expr}; } catch { v = null; } if (v || Date.now() > end) r(v ?? null); else setTimeout(t, 50); }; t(); })`);
+  async waitFor(expr: string, ms = 8000) {
+    const v = await this.b.eval(`new Promise(r => { const end = Date.now() + ${ms}; const t = () => { let v; try { v = ${expr}; } catch { v = null; } if (v || Date.now() > end) r(v ?? null); else setTimeout(t, 50); }; t(); })`);
+    if (!v) throw new Error(`timed out after ${ms}ms waiting for: ${expr}`);
+    return v;
   }
   eval(expr: string) {
     return this.b.eval(expr);
