@@ -56,8 +56,6 @@ export interface ThreadRow {
   resolve_reason: ResolveReason | null;
   resolved_by: string | null;
   resolved_at: string | null;
-  origin: string;
-  origin_id: string | null;
   created_at: string;
   /** JSON Region: the thread is on an area of an image, not on lines. */
   region: string | null;
@@ -75,8 +73,6 @@ export interface CommentRow {
   version_id: number | null;
   submission_id: number | null;
   published_seq: number | null;
-  origin: string;
-  origin_id: string | null;
   created_at: string;
   updated_at: string | null;
 }

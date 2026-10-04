@@ -142,4 +142,11 @@ export const MIGRATIONS: string[] = [
     created_at TEXT NOT NULL
   );
   `,
+  `
+  DROP INDEX threads_origin;
+  ALTER TABLE threads DROP COLUMN origin;
+  ALTER TABLE threads DROP COLUMN origin_id;
+  ALTER TABLE comments DROP COLUMN origin;
+  ALTER TABLE comments DROP COLUMN origin_id;
+  `,
 ];
