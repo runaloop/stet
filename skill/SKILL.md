@@ -34,18 +34,21 @@ stopped after a time limit, and the review UI dies with them in the middle of th
 `version create` exits with code 3 when nothing changed since the last version: that is fine
 if you only answered questions.
 
-## 2. Wait for the review
+## 2. End your turn
+
+Do not wait for the review. End your turn after handing over the version. The human reviews when they can,
+maybe hours later, and calls you back ("answer the review") once they have submitted; then start at step 3.
+Do not remind them about the review, and do not report that it has not arrived.
+
+Only when the human asks you to wait, run this in the background:
 
 ```bash
-stet wait --for review --timeout 60m --json
+stet wait --for review --json
 ```
 
-It returns immediately when threads already wait for you (`reason: "pending"`), otherwise
-when the reviewer submits. Exit code 5 means timeout: run it again or ask the human.
-Run it in the background if your harness can, and let it wake you when it exits. If your harness has no
-such background commands, do not sit in a long wait (a command in the foreground is stopped after a
-time limit): end your turn after handing over the version and ask the human to call you back ("answer
-the review") once they have submitted. Then start at step 3.
+Without `--timeout` it blocks until the reviewer submits; it returns at once (`reason: "pending"`) when
+threads already wait for you. If the wait ends without a review (a timeout, or your harness stopped the
+command), do not report it and do not start it again: the human will call you back.
 
 ## 3. Read the threads
 

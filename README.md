@@ -26,8 +26,8 @@ stet is merge-request review on your machine, on the working tree, with the agen
   written on.
 - **A timeline per thread.** One key shows the code as it was when the comment was written, at every version
   since, and what changed between them.
-- **Drafts and rounds.** Your comments stay drafts until you submit the review. The agent, waiting for it,
-  replies in every thread (`fixed`, `answered`, `disagree`, `question`), fixes the code and hands over the
+- **Drafts and rounds.** Your comments stay drafts until you submit the review. Then the agent replies in
+  every thread (`fixed`, `answered`, `disagree`, `question`), fixes the code and hands over the
   next version.
 - **An API for the agent.** A JSON CLI, and a skill for Claude Code, Codex, Gemini CLI, Cursor, OpenCode and
   Copilot that teaches the agent the loop.
@@ -67,8 +67,9 @@ one and prints how to serve it.
    worktree of the repository.
 3. Press `v` for the changes since you last looked. Select lines or click `+`, and the comment box opens
    right under them. Comments stay drafts (saved on disk, invisible to the agent) until you submit.
-4. Press `S` to see all drafts, then `S` again to submit the review. The agent, waiting in
-   `stet wait --for review`, wakes up.
+4. Press `S` to see all drafts, then `S` again to submit the review, whenever you get to it. Then tell the
+   agent to answer the review. It does not wait for you; if you ask it to, it waits in
+   `stet wait --for review` and wakes up when you submit.
 5. The agent replies in every thread, fixes the code and creates the next version.
 6. You press `n` to step through new replies, `[` / `]` to walk a thread's timeline, and `x` to resolve.
    The **Round** page lists what is left: threads waiting for you, new code, unsent drafts.

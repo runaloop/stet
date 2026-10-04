@@ -291,7 +291,7 @@ function Round() {
       <h3>Loop</h3>
       <ol class="loop">
         <li>Open the changes (<Kbd>v</Kbd>), select lines, write drafts.</li>
-        <li>Submit the review (<Kbd>S</Kbd>). The agent picks it up with <code>stet wait --for review</code>.</li>
+        <li>Submit the review (<Kbd>S</Kbd>), then tell the agent to answer it.</li>
         <li>The agent replies in each thread and hands over the next version.</li>
         <li>Step through new replies with <Kbd>n</Kbd>, check each thread's timeline with <Kbd>[</Kbd> <Kbd>]</Kbd>, resolve with <Kbd>x</Kbd>, then go through the new code.</li>
       </ol>
