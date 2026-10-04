@@ -7,6 +7,7 @@ import {
   fileRows,
   grepHits,
   groupsOpen,
+  isCollapsed,
   openSearch,
   peek,
   searchHits,
@@ -16,7 +17,7 @@ import {
   stepHit,
   visualAnchor,
 } from "./compare.ts";
-import type { Cursor } from "./lib/cursor.ts";
+import type { Cursor, Span } from "./lib/cursor.ts";
 import { stepFile, stepThread, stepUnread } from "./lib/nav.ts";
 import { commitPicker } from "./commits.ts";
 import { gitOpen } from "./components/GitState.tsx";
@@ -130,6 +131,11 @@ function threadUnderCursor(): number | null {
   const c = cursor.value;
   const r = c ? cursorSpace.value.row(c) : null;
   if (!c || !r) return null;
+  const block = cursorSpace.value.block(c);
+  if (block) {
+    const meets = (s: Span | null, p: { start: number; end: number }) => !!s && s.start <= p.end && p.start <= s.end;
+    return compareHandle.current?.order.find((p) => p.path === c.path && meets(p.side === "additions" ? block.new : block.old, p.range))?.threadId ?? null;
+  }
   const inRange = (n: number | null, a: number, b: number) => n !== null && n >= a && n <= b;
   const hit = compareHandle.current?.order.find(
     (p) =>
@@ -154,7 +160,7 @@ function comment(): boolean {
   const range = cursorSpace.value.range(visualAnchor.value ?? c, c);
   visualAnchor.value = null;
   if (!range) {
-    notify("put the cursor on a line of code (a collapsed file has none)");
+    notify("put the cursor on a line of code or a rendered block (a collapsed file or a picture has none)");
     return true;
   }
   nav.startComment(range);
@@ -174,8 +180,7 @@ function fold(open: boolean | "toggle"): boolean {
   const row = fileRows.value.find((r) => r.fd.name === path);
   if (!row) return true;
   const m = new Map(fileOpen.value);
-  const nowOpen = cursorSpace.value.rows(cursorSpace.value.fileIndex(row.fd.name)).length > 0;
-  const next = open === "toggle" ? !nowOpen : open;
+  const next = open === "toggle" ? isCollapsed(row.fd) : open;
   m.set(row.fd.name, next);
   fileOpen.value = m;
   setCursor({ path: row.fd.name, row: next ? 0 : -1 });

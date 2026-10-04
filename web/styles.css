@@ -549,10 +549,19 @@ a.img-frame:hover, a.img-frame.hover, a.img-frame.focused { border-width: 3px; b
 .imgstack-wrap { display: inline-block; max-width: 100%; }
 
 /* rendered Markdown */
-.md-anno { padding: 6px 10px 14px 22px; font: 14px/1.6 var(--sans); color: var(--fg); white-space: normal; }
-.md-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 10px; }
+.md-anno { padding: 6px 10px 14px 12px; font: 14px/1.6 var(--sans); color: var(--fg); white-space: normal; }
+.md-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 0 0 10px 30px; }
 .md-caption { font: 12px var(--mono); color: var(--fg-soft); }
-.md { max-width: 900px; overflow-wrap: anywhere; }
+.md-grid { position: relative; display: grid; grid-template-columns: minmax(0, 930px); }
+.md-split .md-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.md-head { padding: 0 16px 4px 30px; margin-bottom: 10px; font: 12px var(--mono); color: var(--fg-soft); border-bottom: 1px solid var(--border); }
+.md-cell { position: relative; min-width: 0; padding: 0 16px 12px 30px; }
+.md-cell:has(> :is(h1, h2, h3, h4, h5, h6):first-child) { padding-top: 8px; }
+.md-split :is(.md-head, .md-cell)[data-side="new"] { border-left: 1px solid var(--border); }
+.md-split .md-cell.md-empty { background: repeating-linear-gradient(-45deg, transparent 0 7px, color-mix(in srgb, var(--border) 60%, transparent) 7px 8px); }
+.md-one .md-cell[data-side="old"] { padding-top: 18px; box-shadow: inset 2px 0 0 color-mix(in srgb, var(--bad) 35%, transparent); }
+.md-one .md-cell[data-side="old"]::before { content: "was, at " attr(data-label); position: absolute; top: 0; left: 30px; font: 11px/16px var(--mono); color: var(--bad); }
+.md { overflow-wrap: anywhere; }
 .md > :first-child { margin-top: 0; }
 .md > :last-child { margin-bottom: 0; }
 .md h1, .md h2, .md h3, .md h4, .md h5, .md h6 { margin: 20px 0 10px; line-height: 1.25; font-weight: 600; }
@@ -580,13 +589,30 @@ a.img-frame:hover, a.img-frame.hover, a.img-frame.focused { border-width: 3px; b
 .md a.md-outside { text-decoration: underline dotted; cursor: help; }
 .md .md-image-off { display: inline-block; max-width: 100%; padding: 1px 8px; font-size: 12px; color: var(--fg-soft); border: 1px dashed var(--border); border-radius: 4px; overflow-wrap: anywhere; }
 .md .md-image-off code { border: 0; background: none; padding: 0; }
-.md .md-changed { --md-mark: color-mix(in srgb, var(--ok) 11%, transparent); background: var(--md-mark); box-shadow: -8px 0 0 var(--md-mark); border-radius: 0 3px 3px 0; }
-.md .md-changed:not(tr, thead, tbody) { position: relative; }
-.md .md-changed:not(tr, thead, tbody)::before { content: ""; position: absolute; top: 0; bottom: 0; left: -11px; width: 3px; border-radius: 2px; background: var(--ok); }
-.md li.md-changed { box-shadow: calc(-2em - 8px) 0 0 var(--md-mark); }
-.md li.md-changed::before { left: calc(-2em - 11px); }
-.md :is(tr, thead, tbody).md-changed { box-shadow: none; }
-.md .md-removed { margin: 0 0 12px -11px; padding: 0 8px; font: 12px var(--mono); color: var(--bad); border-left: 3px solid var(--bad); background: color-mix(in srgb, var(--bad) 8%, transparent); cursor: pointer; }
+.md :is(.md-changed, .md-thread) { --md-bar: var(--ok); background: var(--md-mark); box-shadow: -8px 0 0 var(--md-mark); border-radius: 0 3px 3px 0; }
+.md .md-changed { --md-mark: color-mix(in srgb, var(--ok) 11%, transparent); }
+.md-cell[data-side="old"] .md-changed { --md-mark: color-mix(in srgb, var(--bad) 11%, transparent); --md-bar: var(--bad); }
+.md .md-thread { --md-mark: light-dark(rgb(255 190 0 / 0.16), rgb(255 190 0 / 0.1)); }
+.md .md-thread:not(.md-changed) { --md-bar: light-dark(#e0a800, #b8900a); }
+.md .md-thread.md-thread-focus { --md-mark: light-dark(rgb(255 170 0 / 0.3), rgb(255 170 0 / 0.22)); }
+.md :is(.md-changed, .md-thread):not(tr, thead, tbody) { position: relative; }
+.md :is(.md-changed, .md-thread):not(tr, thead, tbody)::before { content: ""; position: absolute; top: 0; bottom: 0; left: -11px; width: 3px; border-radius: 2px; background: var(--md-bar); }
+.md li:is(.md-changed, .md-thread) { box-shadow: calc(-2em - 8px) 0 0 var(--md-mark); }
+.md li:is(.md-changed, .md-thread)::before { left: calc(-2em - 11px); }
+.md :is(tr, thead, tbody):is(.md-changed, .md-thread) { box-shadow: none; }
+.md :is(.md-visual, .md-picked) { background: color-mix(in srgb, var(--accent) 13%, transparent); }
+.md .md-cursor { outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset: 2px; border-radius: 3px; }
+.md-gutter { position: absolute; z-index: 2; display: flex; flex-direction: column; gap: 3px; padding: 1px 0 0 5px; }
+.md-gutter button { width: 20px; height: 18px; padding: 0; font: 600 12px/16px var(--mono); color: var(--fg-soft); background: var(--bg); border: 1px solid var(--border); border-radius: 4px; }
+.md-gutter button:hover { color: var(--fg); border-color: var(--accent); }
+.md-gutter .md-plus { color: #fff; background: var(--accent); border-color: var(--accent); font-size: 14px; }
+.md-gutter .md-plus:hover { color: #fff; filter: brightness(1.1); }
+.md-gutter .md-jump { font-size: 9px; letter-spacing: -1px; }
+.md .md-threads { margin: 6px 0 12px; display: flex; flex-direction: column; gap: 4px; font: 12px/1.45 var(--sans); }
+.md-grid > .md-threads { grid-column: 1 / -1; }
+.md .md-thread-card { display: flex; align-items: center; gap: 8px; }
+.md .md-thread-card .thread-mini { flex: 1; min-width: 0; margin: 0; color: var(--fg); }
+.md .md-thread-lines { font: 11px var(--mono); color: var(--fg-soft); white-space: nowrap; }
 
 /* git state: header line, file marks, the panel */
 header.top .gitchip { flex: none; display: inline-flex; gap: 5px; align-items: center; font: 12px var(--mono); background: transparent; border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; color: var(--fg-soft); white-space: nowrap; cursor: pointer; }

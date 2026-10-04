@@ -34,9 +34,9 @@ stet is merge-request review on your machine, on the working tree, with the agen
 - **Local.** One binary; one process bound to 127.0.0.1; data in `.git/stet` (SQLite). No service, no
   account, nothing in `git status`.
 
-Also: a commit picker, image diffs with threads on an area of the image, rendered Markdown, folding of test
-files that only add code, `git grep` over any version, vim-style keys. The [guide](docs/guide/README.md) shows each with
-screenshots; the [UI reference](docs/ui.md) lists every page and key.
+Also: a commit picker, image diffs with threads on an area of the image, rendered Markdown diffs with threads
+on its blocks, folding of test files that only add code, `git grep` over any version, vim-style keys. The
+[guide](docs/guide/README.md) shows each with screenshots; the [UI reference](docs/ui.md) lists every page and key.
 
 ## Install
 

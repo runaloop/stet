@@ -1,6 +1,7 @@
 import type { FileDiffMetadata } from "@pierre/diffs";
 import MarkdownIt, { type Env, type Token } from "markdown-it";
 import { imageType } from "../../src/core/image.ts";
+import type { NavBlock, Span } from "./cursor.ts";
 
 export function isMarkdown(path: string): boolean {
   return /\.(md|markdown)$/i.test(path);
@@ -30,67 +31,69 @@ export function resolveRef(ref: string, from: string): Ref {
   return { path: parts.join("/"), line: line ? Number(line) : null };
 }
 
-/** What the diff changed in the new file: the lines it added, and where it only removed lines (after which new line, how many, from which old line). */
-export interface Changes {
-  added: ReadonlySet<number>;
-  removed: { after: number; count: number; old: number }[];
+/** What the diff changed on one side: its lines that the other side does not have, and the places between its lines (after line `g`) where only the other side has lines. */
+export interface SideChanges {
+  lines: ReadonlySet<number>;
+  gaps: readonly number[];
 }
 
-export function changesOf(fd: FileDiffMetadata): Changes {
+// a hunk with no lines on a side names the line before them
+const firstLine = (start: number, count: number) => (count ? start : start + 1);
+
+export function changesOf(fd: FileDiffMetadata): { old: SideChanges; new: SideChanges } {
+  const removed = new Set<number>();
   const added = new Set<number>();
-  const removed: Changes["removed"] = [];
+  const oldGaps: number[] = [];
+  const newGaps: number[] = [];
   for (const h of fd.hunks) {
-    let o = h.deletionStart;
-    let n = h.additionStart;
+    let o = firstLine(h.deletionStart, h.deletionCount);
+    let n = firstLine(h.additionStart, h.additionCount);
     for (const g of h.hunkContent) {
       if (g.type === "context") {
         o += g.lines;
         n += g.lines;
         continue;
       }
+      for (let i = 0; i < g.deletions; i++) removed.add(o + i);
       for (let i = 0; i < g.additions; i++) added.add(n + i);
-      if (g.deletions && !g.additions) removed.push({ after: n - 1, count: g.deletions, old: o });
+      if (!g.additions) newGaps.push(n - 1);
+      if (!g.deletions) oldGaps.push(o - 1);
       o += g.deletions;
       n += g.additions;
     }
   }
-  return { added, removed };
+  return { old: { lines: removed, gaps: oldGaps }, new: { lines: added, gaps: newGaps } };
 }
 
 /** A rendered block and its source lines, 1-based and inclusive; `parent` is the index of the block around it, -1 at the top. */
-export interface Block {
-  start: number;
-  end: number;
+export interface Block extends Span {
   parent: number;
 }
 
-export interface BlockMarks {
-  /** The innermost blocks whose lines changed. */
-  changed: Set<number>;
-  /** Lines removed between top-level blocks, shown before the block at that index (`blocks.length`: at the end). */
-  removedBefore: Map<number, { count: number; old: number }>;
+/** Blocks whose lines changed, or that the other side has lines inside of. */
+export function hitBlocks(blocks: readonly Block[], changes: SideChanges): boolean[] {
+  return blocks.map((b) => {
+    for (let n = b.start; n <= b.end; n++) if (changes.lines.has(n)) return true;
+    return changes.gaps.some((g) => b.start <= g && g < b.end);
+  });
 }
 
-export function markBlocks(blocks: readonly Block[], changes: Changes): BlockMarks {
-  const inside = (b: Block, after: number) => b.start <= after && after < b.end;
-  const hit = blocks.map((b) => {
-    for (let n = b.start; n <= b.end; n++) if (changes.added.has(n)) return true;
-    return changes.removed.some((r) => inside(b, r.after));
-  });
+/** The innermost blocks that changed: not the ones around them. */
+export function changedBlocks(blocks: readonly Block[], hit: readonly boolean[]): Set<number> {
   const around = new Set<number>();
   blocks.forEach((b, i) => {
     if (hit[i]) for (let p = b.parent; p !== -1; p = blocks[p]!.parent) around.add(p);
   });
-  const changed = new Set(blocks.flatMap((_, i) => (hit[i] && !around.has(i) ? [i] : [])));
-  const removedBefore: BlockMarks["removedBefore"] = new Map();
-  for (const r of changes.removed) {
-    if (blocks.some((b) => inside(b, r.after))) continue;
-    const next = blocks.findIndex((b) => b.parent === -1 && b.start > r.after);
-    const at = next === -1 ? blocks.length : next;
-    const had = removedBefore.get(at);
-    removedBefore.set(at, { count: (had?.count ?? 0) + r.count, old: had?.old ?? r.old });
-  }
-  return { changed, removedBefore };
+  return new Set(blocks.flatMap((_, i) => (hit[i] && !around.has(i) ? [i] : [])));
+}
+
+/**
+ * The blocks the cursor stops at: a block stops it unless a block inside it starts on the same line (a list stops at
+ * its items, a table at its rows, a loose list item at its paragraphs).
+ */
+export function isStop(blocks: readonly Block[], i: number): boolean {
+  const next = blocks[i + 1];
+  return !(next && next.parent === i && next.start === blocks[i]!.start);
 }
 
 export interface RenderOptions {
@@ -98,13 +101,16 @@ export interface RenderOptions {
   path: string;
   /** Where the page loads an image file of the repository from, at the snapshot of the text. */
   imageUrl: (path: string) => string;
-  changes: Changes | null;
+  changes: SideChanges | null;
   /** HTML of a highlighted code block, or null to leave it plain. */
   highlight?: ((code: string, lang: string) => string | null) | null;
 }
 
 export interface Rendered {
-  html: string;
+  blocks: Block[];
+  hit: boolean[];
+  /** HTML of each top-level block, by its index in `blocks`. */
+  tops: { block: number; html: string }[];
   /** Languages of the fenced code blocks. */
   langs: string[];
 }
@@ -154,12 +160,9 @@ md.renderer.rules.code_block = (tokens, idx, _options, _env, self) => {
   return `<div${self.renderAttrs(t)}><pre><code>${escapeHtml(t.content)}</code></pre></div>\n`;
 };
 
-const removedNote = (r: { count: number; old: number } | undefined) =>
-  r ? `<div class="md-removed" data-old="${r.old}">− ${r.count} line${r.count === 1 ? "" : "s"} removed here</div>\n` : "";
-
 /**
- * The file as HTML: every block carries its source lines (`data-start`, `data-end`), the innermost blocks the diff
- * changed are marked `md-changed`, and lines removed between blocks are listed where they were.
+ * The file as HTML, one piece per top-level block: every block carries its index (`data-b`) and its source lines
+ * (`data-start`, `data-end`), and the innermost blocks the diff changed are marked `md-changed`.
  */
 export function renderMarkdown(text: string, opts: RenderOptions): Rendered {
   const env: RenderEnv = { ...opts, langs: new Set() };
@@ -178,19 +181,223 @@ export function renderMarkdown(text: string, opts: RenderOptions): Rendered {
     while (end > start && !lines[end - 1]!.trim()) end--;
     blocks.push({ start, end, parent: stack[stack.length - 1]?.i ?? -1 });
     owner.set(t, i);
+    t.attrSet("data-b", i);
     t.attrSet("data-start", start);
     t.attrSet("data-end", end);
     if (t.nesting === 1) stack.push({ i, level: t.level });
   }
-  const marks = opts.changes ? markBlocks(blocks, opts.changes) : null;
-  for (const [t, i] of owner) if (marks?.changed.has(i)) t.attrJoin("class", "md-changed");
-  let html = "";
+  const hit = opts.changes ? hitBlocks(blocks, opts.changes) : blocks.map(() => false);
+  const changed = changedBlocks(blocks, hit);
+  for (const [t, i] of owner) if (changed.has(i)) t.attrJoin("class", "md-changed");
+  const tops: Rendered["tops"] = [];
   let from = 0;
   tokens.forEach((t, i) => {
     if (t.level !== 0 || t.nesting === 1) return;
-    html += removedNote(marks?.removedBefore.get(owner.get(tokens[from]!) ?? -1)) + md.renderer.render(tokens.slice(from, i + 1), md.options, env);
+    const block = owner.get(tokens[from]!);
+    const html = md.renderer.render(tokens.slice(from, i + 1), md.options, env);
     from = i + 1;
+    if (block !== undefined) tops.push({ block, html });
   });
-  html += removedNote(marks?.removedBefore.get(blocks.length));
-  return { html, langs: [...env.langs] };
+  return { blocks, hit, tops, langs: [...env.langs] };
+}
+
+/**
+ * Where each line of both sides sits in the diff: an unchanged line shares its place with the same line on the other
+ * side, and all lines of one change (removed and added together) share one place.
+ */
+export interface Slots {
+  old: number[];
+  new: number[];
+}
+
+export function slotsOf(fd: FileDiffMetadata, oldLines: number, newLines: number): Slots {
+  const old: number[] = [];
+  const nw: number[] = [];
+  let slot = 0;
+  let o = 1;
+  let n = 1;
+  const same = () => {
+    old[o++] = slot;
+    nw[n++] = slot++;
+  };
+  for (const h of fd.hunks) {
+    const first = firstLine(h.deletionStart, h.deletionCount);
+    while (o < first) same();
+    for (const g of h.hunkContent) {
+      if (g.type === "context") {
+        for (let i = 0; i < g.lines; i++) same();
+        continue;
+      }
+      for (let i = 0; i < g.deletions; i++) old[o++] = slot;
+      for (let i = 0; i < g.additions; i++) nw[n++] = slot;
+      slot++;
+    }
+  }
+  while (o <= oldLines || n <= newLines) {
+    if (o <= oldLines) old[o++] = slot;
+    if (n <= newLines) nw[n++] = slot;
+    slot++;
+  }
+  return { old, new: nw };
+}
+
+export type RowKind = "same" | "changed" | "removed" | "added";
+
+/** Top-level blocks of the two sides that face each other, by their index among the top-level blocks of their side. */
+export interface Row {
+  kind: RowKind;
+  old: number[];
+  new: number[];
+}
+
+/**
+ * Pairs the top-level blocks of the two sides: blocks that share a line or a change face each other in one row, a
+ * block the other side has nothing of is a row of its own. A row is `same` when one unchanged block faces one
+ * unchanged block.
+ */
+export function alignTops(oldTops: readonly (Span & { hit: boolean })[], newTops: readonly (Span & { hit: boolean })[], slots: Slots): Row[] {
+  const parent = Array.from({ length: oldTops.length + newTops.length }, (_, i) => i);
+  const root = (x: number): number => {
+    while (parent[x] !== x) x = parent[x] = parent[parent[x]!]!;
+    return x;
+  };
+  const oldAt = new Map<number, number[]>();
+  oldTops.forEach((t, i) => {
+    for (let l = t.start; l <= t.end; l++) {
+      const s = slots.old[l];
+      if (s === undefined) continue;
+      const list = oldAt.get(s);
+      if (!list) oldAt.set(s, [i]);
+      else if (list[list.length - 1] !== i) list.push(i);
+    }
+  });
+  newTops.forEach((t, j) => {
+    for (let l = t.start; l <= t.end; l++) for (const i of oldAt.get(slots.new[l] ?? -1) ?? []) parent[root(i)] = root(oldTops.length + j);
+  });
+  const groups = new Map<number, { old: number[]; new: number[]; at: number }>();
+  const add = (x: number, side: "old" | "new", i: number, at: number) => {
+    const r = root(x);
+    const g = groups.get(r) ?? { old: [], new: [], at };
+    g[side].push(i);
+    g.at = Math.min(g.at, at);
+    groups.set(r, g);
+  };
+  oldTops.forEach((t, i) => add(i, "old", i, slots.old[t.start] ?? 0));
+  newTops.forEach((t, j) => add(oldTops.length + j, "new", j, slots.new[t.start] ?? 0));
+  return [...groups.values()]
+    .sort((a, b) => a.at - b.at || b.old.length - a.old.length)
+    .map((g) => {
+      const kind: RowKind =
+        g.old.length && g.new.length
+          ? g.old.length === 1 && g.new.length === 1 && !oldTops[g.old[0]!]!.hit && !newTops[g.new[0]!]!.hit
+            ? "same"
+            : "changed"
+          : g.old.length
+            ? "removed"
+            : "added";
+      return { kind, old: g.old, new: g.new };
+    });
+}
+
+export type MdSide = "old" | "new";
+
+/** A block the cursor stops at: on which side it is drawn, its index among that side's blocks, and its unchanged twin on the old side. */
+export interface Stop {
+  side: MdSide;
+  block: number;
+  twin: number | null;
+  row: number;
+  nav: NavBlock;
+}
+
+export interface Layout {
+  rows: Row[];
+  stops: Stop[];
+}
+
+interface SideBlocks {
+  blocks: readonly Block[];
+  hit: readonly boolean[];
+}
+
+const topsOf = (s: SideBlocks | null) => (s ? s.blocks.flatMap((b, i) => (b.parent === -1 ? [i] : [])) : []);
+
+/** The subtree of the top-level block `i`: it and the blocks after it up to the next top-level one. */
+function subtree(blocks: readonly Block[], i: number): number[] {
+  const out = [i];
+  for (let k = i + 1; k < blocks.length && blocks[k]!.parent !== -1; k++) out.push(k);
+  return out;
+}
+
+/**
+ * Old and new rendered next to each other: rows of top-level blocks (by block index), and the blocks the cursor stops
+ * at in reading order: in a row, the old side's before the new side's; an unchanged row stops on its new side only.
+ */
+export function layoutOf(old: SideBlocks | null, nw: SideBlocks | null, slots: Slots): Layout {
+  const oldTops = topsOf(old);
+  const newTops = topsOf(nw);
+  const span = (s: SideBlocks, i: number) => ({ start: s.blocks[i]!.start, end: s.blocks[i]!.end, hit: s.hit[i]! });
+  const aligned = alignTops(
+    oldTops.map((i) => span(old!, i)),
+    newTops.map((i) => span(nw!, i)),
+    slots,
+  );
+  const rows = aligned.map((r) => ({ kind: r.kind, old: r.old.map((i) => oldTops[i]!), new: r.new.map((j) => newTops[j]!) }));
+  const stops: Stop[] = [];
+  rows.forEach((r, row) => {
+    if (r.kind === "same") {
+      const o = r.old[0]!;
+      const n = r.new[0]!;
+      const a = subtree(old!.blocks, o);
+      const b = subtree(nw!.blocks, n);
+      const shift = old!.blocks[o]!.start - nw!.blocks[n]!.start;
+      for (const [k, i] of b.entries()) {
+        if (!isStop(nw!.blocks, i)) continue;
+        const { start, end } = nw!.blocks[i]!;
+        stops.push({ side: "new", block: i, twin: a.length === b.length ? a[k]! : null, row, nav: { old: { start: start + shift, end: end + shift }, new: { start, end }, changed: false, group: row } });
+      }
+      return;
+    }
+    const first = stops.length;
+    for (const [side, s, list] of [["old", old, r.old], ["new", nw, r.new]] as const) {
+      for (const top of list) {
+        for (const i of subtree(s!.blocks, top)) {
+          if (!isStop(s!.blocks, i)) continue;
+          const { start, end } = s!.blocks[i]!;
+          stops.push({ side, block: i, twin: null, row, nav: { old: side === "old" ? { start, end } : null, new: side === "new" ? { start, end } : null, changed: s!.hit[i]!, group: row } });
+        }
+      }
+    }
+    if (stops.length > first && !stops.slice(first).some((s) => s.nav.changed)) stops[first]!.nav.changed = true;
+  });
+  return { rows, stops };
+}
+
+/**
+ * Where a thread on lines `start`-`end` of one side shows: the stops it covers, without one around another when only
+ * the inner one has its lines (or the stop closest before it when it covers none, such as blank lines), and whether it
+ * covers only part of them.
+ */
+export function stopsOn(stops: readonly Stop[], side: MdSide, start: number, end: number): { stops: number[]; partial: boolean } {
+  const on = (s: Stop) => (side === "old" ? s.nav.old : s.nav.new);
+  const meets = (r: Span | null): r is Span => !!r && r.start <= end && start <= r.end;
+  const hits = stops.flatMap((s, k) => (meets(on(s)) ? [k] : []));
+  const kept = hits.filter((k) => {
+    const r = on(stops[k]!)!;
+    const inner = hits.map((x) => on(stops[x]!)!).filter((x) => x !== r && r.start <= x.start && x.end <= r.end);
+    for (let l = Math.max(r.start, start); l <= Math.min(r.end, end); l++) if (!inner.some((x) => x.start <= l && l <= x.end)) return true;
+    return false;
+  });
+  if (kept.length === 0) {
+    let best = -1;
+    stops.forEach((s, k) => {
+      const r = on(s);
+      if (r && r.start <= start && (best === -1 || r.start >= on(stops[best]!)!.start)) best = k;
+    });
+    if (best === -1) best = stops.findIndex((s) => on(s) !== null);
+    return { stops: best === -1 ? [] : [best], partial: true };
+  }
+  const lo = Math.min(...kept.map((k) => on(stops[k]!)!.start));
+  const hi = Math.max(...kept.map((k) => on(stops[k]!)!.end));
+  return { stops: kept, partial: start > lo || end < hi };
 }

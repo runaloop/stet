@@ -6,9 +6,25 @@ export interface Cursor {
   row: number;
 }
 
+export interface Span {
+  start: number;
+  end: number;
+}
+
+/** A block of a file drawn as rendered Markdown: its lines on the old side, the new side, or both when it did not change. */
+export interface NavBlock {
+  old: Span | null;
+  new: Span | null;
+  changed: boolean;
+  /** Blocks of one group face each other; `]c` stops once per group. */
+  group: number;
+}
+
 export interface CursorFile {
   fd: FileDiffMetadata;
   collapsed: boolean;
+  /** A file drawn instead of its lines: the cursor stops at these blocks (none for a picture) rather than at the lines. */
+  blocks?: readonly NavBlock[];
 }
 
 export interface LineRange {
@@ -39,7 +55,15 @@ export class CursorSpace {
 
   rows(i: number): DiffRow[] {
     const f = this.files[i]!;
-    return f.collapsed ? [] : diffRows(f.fd);
+    if (f.collapsed) return [];
+    return f.blocks ? blockRows(f.blocks) : diffRows(f.fd);
+  }
+
+  /** The rendered block under the cursor, in a file drawn as blocks. */
+  block(c: Cursor): NavBlock | null {
+    const i = this.fileIndex(c.path);
+    const f = this.files[i];
+    return f && !f.collapsed && f.blocks ? (f.blocks[c.row] ?? null) : null;
   }
 
   private stops(i: number): number {
@@ -122,6 +146,19 @@ export class CursorSpace {
   locate(path: string, side: Side, line: number): Cursor | null {
     const i = this.fileIndex(path);
     if (i === -1) return null;
+    const blocks = this.files[i]!.collapsed ? null : this.files[i]!.blocks;
+    if (blocks) {
+      const on = (b: NavBlock) => (side === "deletions" ? b.old : b.new);
+      // the innermost block that holds the line, else the last one before it
+      let best = -1;
+      for (const [k, b] of blocks.entries()) {
+        const r = on(b);
+        if (!r || r.start > line) continue;
+        const was = best === -1 ? null : on(blocks[best]!)!;
+        if (!was || (r.end >= line ? was.end < line || r.start >= was.start : was.end < line && r.start >= was.start)) best = k;
+      }
+      return best === -1 ? null : { path, row: best };
+    }
     const rows = this.rows(i);
     const r = rows.findIndex((x) => (side === "deletions" ? x.kind !== "add" && x.old === line : x.kind !== "del" && x.new === line));
     return r === -1 ? null : { path, row: r };
@@ -131,6 +168,17 @@ export class CursorSpace {
     const i = this.fileIndex(anchor.path);
     const a = this.row(anchor);
     if (i === -1 || !a) return null;
+    const blocks = this.files[i]!.blocks;
+    if (blocks) {
+      const first = blocks[anchor.row]!;
+      const side: Side = first.new ? "additions" : "deletions";
+      const end = head.path === anchor.path && head.row >= 0 ? head.row : anchor.row;
+      const spans = blocks.slice(Math.min(anchor.row, end), Math.max(anchor.row, end) + 1).flatMap((b) => {
+        const r = side === "additions" ? b.new : b.old;
+        return r ? [r] : [];
+      });
+      return { path: anchor.path, side, start: Math.min(...spans.map((r) => r.start)), end: Math.max(...spans.map((r) => r.end)) };
+    }
     const rows = this.rows(i);
     const end = head.path === anchor.path && head.row >= 0 ? head.row : anchor.row;
     const side: Side = a.kind === "del" ? "deletions" : "additions";
@@ -143,4 +191,16 @@ export class CursorSpace {
     if (lines.length === 0) return null;
     return { path: anchor.path, side, start: Math.min(...lines), end: Math.max(...lines) };
   }
+}
+
+const blockRowCache = new WeakMap<readonly NavBlock[], DiffRow[]>();
+
+/** Rendered blocks as rows of the diff: a changed block is an added or removed row, so `]c` finds it. */
+function blockRows(blocks: readonly NavBlock[]): DiffRow[] {
+  let rows = blockRowCache.get(blocks);
+  if (!rows) {
+    rows = blocks.map((b) => ({ kind: !b.changed ? "context" : b.new ? "add" : "del", old: b.old?.start ?? null, new: b.new?.start ?? null, text: "", hunk: b.group }));
+    blockRowCache.set(blocks, rows);
+  }
+  return rows;
 }

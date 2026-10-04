@@ -1,10 +1,10 @@
-import type { FileDiffMetadata } from "@pierre/diffs";
+import type { FileDiffMetadata, SelectedLineRange } from "@pierre/diffs";
 import { computed, effect, signal } from "@preact/signals";
 import type { CompareDto, GrepResultDto, Region } from "../src/core/types.ts";
 import { DEFAULT_COLLAPSE_GLOBS, DEFAULT_SKIP_MARKERS, foldOf, isTestPath, parseList, viewedKey, type FoldDecision, type FoldGroup } from "./lib/fold.ts";
 import { groupTitle } from "./lib/order.ts";
 import type { LineMark } from "./lib/marks.ts";
-import { CursorSpace, type Cursor, type LineRange } from "./lib/cursor.ts";
+import { CursorSpace, type Cursor, type LineRange, type NavBlock } from "./lib/cursor.ts";
 import { api } from "./api.ts";
 import { compileQuery, diffRows, flatHits, matchRanges, searchDiff, type Hit, type Side } from "./lib/search.ts";
 import { clampStep } from "./lib/timeline.ts";
@@ -91,6 +91,26 @@ export const fileView = signal<Map<string, FileView>>(new Map());
 export function setFileView(path: string, view: FileView): void {
   fileView.value = new Map(fileView.value).set(path, view);
 }
+
+/** Files of the diff drawn as a picture or as rendered Markdown right now, not as lines. */
+export const drawnFiles = signal<ReadonlySet<string>>(new Set());
+
+/** The blocks of rendered Markdown files, for the cursor; kept with the file diff they were laid out for. */
+export const fileBlocks = signal<ReadonlyMap<string, { fd: FileDiffMetadata; blocks: readonly NavBlock[] }>>(new Map());
+
+export function setFileBlocks(fd: FileDiffMetadata, blocks: readonly NavBlock[]): void {
+  const had = fileBlocks.peek().get(fd.name);
+  if (had?.fd === fd && JSON.stringify(had.blocks) === JSON.stringify(blocks)) return;
+  fileBlocks.value = new Map(fileBlocks.peek()).set(fd.name, { fd, blocks });
+}
+
+/** Lines picked for a new thread on the Changes page, waiting for its first message: in the code or on a rendered block. */
+export interface PendingLines {
+  path: string;
+  oldPath: string;
+  range: SelectedLineRange;
+}
+export const pendingLines = signal<PendingLines | null>(null);
 
 export const searchInput = signal("");
 export const searchQuery = signal("");
@@ -185,6 +205,8 @@ export interface CompareHandle {
   openLine(path: string, side: Side, line: number): void;
   revealCursor(c: Cursor, align?: "nearest" | "center"): void;
   startComment(range: LineRange): void;
+  submitComment(body: string, mode: "draft" | "now"): Promise<boolean | void>;
+  cancelComment(): void;
   pageRows(): number;
   getScrollTop(): number;
   setScrollTop(top: number): void;
@@ -394,7 +416,17 @@ effect(() => {
 
 export const cursor = signal<Cursor | null>(null);
 export const visualAnchor = signal<Cursor | null>(null);
-export const cursorSpace = computed(() => new CursorSpace(visibleFiles.value.map((fd) => ({ fd, collapsed: isCollapsed(fd) }))));
+export const cursorSpace = computed(() => {
+  const drawn = drawnFiles.value;
+  const blocks = fileBlocks.value;
+  return new CursorSpace(
+    visibleFiles.value.map((fd) => {
+      if (!drawn.has(fd.name)) return { fd, collapsed: isCollapsed(fd) };
+      const laid = blocks.get(fd.name);
+      return { fd, collapsed: isCollapsed(fd), blocks: laid?.fd === fd ? laid.blocks : [] };
+    }),
+  );
+});
 effect(() => {
   const c = cursor.value;
   if (c && c.path !== activeFile.peek()) activeFile.value = c.path;
