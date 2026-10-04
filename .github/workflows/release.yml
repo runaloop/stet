@@ -1,0 +1,51 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - name: Tag matches package.json
+        if: github.event_name == 'push'
+        run: |
+          version=$(jq -r .version package.json)
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match version $version in package.json"
+            exit 1
+          fi
+      - run: bun run typecheck
+      - run: bun test
+      - name: Build
+        run: |
+          rm -rf dist
+          for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64 windows-x64; do
+            bun build --compile --minify --splitting --target="bun-$target" src/cli.ts --outfile "dist/stet-$target"
+          done
+          test "$(dist/stet-linux-x64 --version)" = "stet $(jq -r .version package.json)"
+          (cd dist && sha256sum stet-* > SHA256SUMS)
+          cp LICENSE NOTICE dist/
+          ls -l dist
+      - name: Upload the dry run
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: stet-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+      - name: Create the release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
