@@ -1,7 +1,8 @@
 import type { SelectedLineRange } from "@pierre/diffs";
 import { useState } from "preact/hooks";
 import { api } from "../api.ts";
-import { guard, notify, reloadAll, reviewId } from "../state.ts";
+import { compareData, compareNav, type PendingLines } from "../compare.ts";
+import { guard, notify, reloadAll, reviewId, route } from "../state.ts";
 import { canQuote, quoteLines } from "../quote.ts";
 import { rangeText } from "./Bits.tsx";
 import { Composer } from "./Composer.tsx";
@@ -73,6 +74,30 @@ export function NewHereBox({ here, p }: { here: Here; p: NewHere }) {
         ) : null}
       </div>
       <Composer storageKey={here.storageKey(p)} autoFocus placeholder="What is wrong here?" onCancel={here.cancel} onSubmit={here.create} secondaryLabel="Send now" />
+    </div>
+  );
+}
+
+/** The comment box for lines picked on the Changes page: under them in the code, or under a rendered block. */
+export function PendingBox({ p }: { p: PendingLines }) {
+  const d = compareData.value;
+  const r = route.value;
+  const [from, to] = r.name === "compare" ? [r.from, r.to] : ["", ""];
+  const where = p.range.side === "deletions" ? `${p.oldPath} · removed lines (${d?.from.label ?? from})` : `${p.path} (${d?.to.label ?? to})`;
+  return (
+    <div class="new-thread inline">
+      <div class="note">
+        New thread on {where} · lines {rangeText({ start: lo(p.range), end: hi(p.range) })}
+      </div>
+      <Composer
+        storageKey={`new:${reviewId.value}:${from}..${to}:${p.path}:${p.range.side}:${p.range.start}-${p.range.end}`}
+        autoFocus
+        placeholder="What is wrong here?"
+        onCancel={() => compareNav.current?.cancelComment()}
+        onSubmit={(body, mode) => compareNav.current?.submitComment(body, mode) ?? Promise.resolve(false)}
+        onEscape={(el) => el.blur()}
+        secondaryLabel="Send now"
+      />
     </div>
   );
 }

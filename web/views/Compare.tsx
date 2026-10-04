@@ -1,15 +1,15 @@
 import { CodeView, parsePatchFiles, type CodeViewItem, type CodeViewScrollTarget, type DiffLineAnnotation, type FileDiffMetadata, type SelectedLineRange } from "@pierre/diffs";
-import { effect, signal } from "@preact/signals";
+import { effect } from "@preact/signals";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { isPixelImage, isSvg } from "../../src/core/image.ts";
 import type { ComparePlacement } from "../../src/core/types.ts";
 import { api } from "../api.ts";
-import { Kbd, rangeText } from "../components/Bits.tsx";
+import { Kbd } from "../components/Bits.tsx";
 import { mount, workerPool } from "../components/Code.tsx";
-import { Composer } from "../components/Composer.tsx";
 import { FileGitMarks } from "../components/GitState.tsx";
 import { ImageDiff } from "../components/ImageView.tsx";
 import { MarkdownView } from "../components/MarkdownView.tsx";
+import { hi, lo, PendingBox } from "../components/NewThread.tsx";
 import { ThreadMini } from "../components/ThreadMini.tsx";
 import { CommitPicker } from "../components/CommitPicker.tsx";
 import { commitPicker, commits, isSha, loadCommits } from "../commits.ts";
@@ -30,6 +30,9 @@ import {
   cursor,
   cursorLayer,
   cursorSpace,
+  drawnFiles,
+  pendingLines,
+  type PendingLines,
   setCursor,
   resolvedIds,
   setViewed,
@@ -85,7 +88,7 @@ function FileMeta({ path }: { path: string }) {
         <button class="btn ghost small svg-toggle" title="an SVG: show it as a picture or as code" onClick={() => setFileView(path, drawnFiles.value.has(path) ? "code" : "picture")}>
           {drawnFiles.value.has(path) ? "‹/› code" : "▣ picture"}
         </button>
-      ) : isMarkdown(path) && fd.type !== "deleted" ? (
+      ) : isMarkdown(path) ? (
         <button class="btn ghost small md-toggle" title="Markdown: show it rendered or as code" onClick={() => setFileView(path, drawnFiles.value.has(path) ? "code" : "rendered")}>
           {drawnFiles.value.has(path) ? "‹/› code" : "¶ rendered"}
         </button>
@@ -157,12 +160,6 @@ function FoldSummary() {
   );
 }
 
-interface Pending {
-  path: string;
-  oldPath: string;
-  range: SelectedLineRange;
-}
-
 type Viewer = "image" | "markdown";
 type Anno = { kind: "thread"; placement: ComparePlacement } | { kind: "new" } | { kind: Viewer; path: string };
 type SelectionContext = { item: { id: string; fileDiff?: FileDiffMetadata } };
@@ -173,12 +170,17 @@ type SelectionContext = { item: { id: string; fileDiff?: FileDiffMetadata } };
  */
 function viewerOf(fd: FileDiffMetadata, placed: ComparePlacement[] | undefined): Viewer | null {
   if (fd.hunks.length === 0 && isPixelImage(fd.name)) return "image";
-  if (isMarkdown(fd.name)) return fd.type !== "deleted" && fileView.value.get(fd.name) === "rendered" ? "markdown" : null;
+  if (isMarkdown(fd.name)) return fileView.value.get(fd.name) === "rendered" ? "markdown" : null;
   if (!isSvg(fd.name)) return null;
   const view = fileView.value.get(fd.name);
   if (view) return view === "picture" ? "image" : null;
   return (placed ?? []).some((p) => !threads.peek().find((t) => t.id === p.threadId)?.region) ? null : "image";
 }
+
+// The empty file a viewer is drawn on gets a key of its own: pierre takes an equal file (same name, same empty text) for
+// the one it drew earlier, and then fails with "rendered a different file than its prepared layout".
+let viewerFiles = 0;
+const viewerFile = (name: string) => ({ name, contents: "", cacheKey: `stet-viewer-${++viewerFiles}` });
 
 /** True when a file kept from `before` to `after` sits at another index. */
 function moved(before: string[], after: string[]): boolean {
@@ -186,13 +188,7 @@ function moved(before: string[], after: string[]): boolean {
   return before.some((id, i) => at.has(id) && at.get(id) !== i);
 }
 
-/** Files of the diff drawn as a picture or as rendered Markdown right now, not as lines. */
-const drawnFiles = signal<ReadonlySet<string>>(new Set());
-
-const lo = (r: SelectedLineRange) => Math.min(r.start, r.end);
-const hi = (r: SelectedLineRange) => Math.max(r.start, r.end);
-
-function annotationsFor(placements: ComparePlacement[] | undefined, pending: Pending | null, path: string): DiffLineAnnotation<Anno>[] {
+function annotationsFor(placements: ComparePlacement[] | undefined, pending: PendingLines | null, path: string): DiffLineAnnotation<Anno>[] {
   const out: DiffLineAnnotation<Anno>[] = (placements ?? []).map((p) => ({ side: p.side, lineNumber: p.range.end, metadata: { kind: "thread", placement: p } }));
   if (pending && pending.path === path) {
     out.push({ side: pending.range.side === "deletions" ? "deletions" : "additions", lineNumber: hi(pending.range), metadata: { kind: "new" } });
@@ -200,38 +196,24 @@ function annotationsFor(placements: ComparePlacement[] | undefined, pending: Pen
   return out;
 }
 
-function NewThreadBox(props: { title: string; storageKey: string; onSubmit: (body: string, mode: "draft" | "now") => Promise<boolean | void>; onCancel: () => void }) {
-  return (
-    <div class="new-thread inline">
-      <div class="note">{props.title}</div>
-      <Composer
-        storageKey={props.storageKey}
-        autoFocus
-        placeholder="What is wrong here?"
-        onCancel={props.onCancel}
-        onSubmit={props.onSubmit}
-        onEscape={(el) => el.blur()}
-        secondaryLabel="Send now"
-      />
-    </div>
-  );
-}
-
 export function CompareView({ from, to }: { from: string; to: string }) {
   const data = compareData.value;
   const files = compareFiles.value;
   const [error, setError] = useState<string | null>(null);
   const pendingKey = `stet.pending.${reviewId.value}.${from}..${to}`;
-  const [pending, setPendingState] = useState<Pending | null>(() => {
+  // read once as the page opens, like a state: the box stays put while the range in the address settles
+  useState(() => {
     try {
       const raw = localStorage.getItem(pendingKey);
-      return raw ? (JSON.parse(raw) as Pending) : null;
+      pendingLines.value = raw ? (JSON.parse(raw) as PendingLines) : null;
     } catch {
-      return null;
+      pendingLines.value = null;
     }
   });
-  const setPending = (p: Pending | null) => {
-    setPendingState(p);
+  useEffect(() => () => void (pendingLines.value = null), []);
+  const pending = pendingLines.value;
+  const setPending = (p: PendingLines | null) => {
+    pendingLines.value = p;
     try {
       if (p) localStorage.setItem(pendingKey, JSON.stringify(p));
       else localStorage.removeItem(pendingKey);
@@ -309,6 +291,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
   };
 
   const createThread = async (body: string, mode: "draft" | "now") => {
+    const pending = pendingLines.peek();
     if (!pending || !data || rid === null) return false;
     const side = pending.range.side === "deletions" ? "old" : "new";
     const t = await guard(
@@ -348,6 +331,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
   };
 
   const pendingScroll = useRef<CodeViewScrollTarget | null>(null);
+  const placeCursor = useRef<(() => void) | null>(null);
   const scrollOrQueue = (target: CodeViewScrollTarget, wait: boolean) => {
     if (wait) pendingScroll.current = target;
     else view.current?.scrollTo(target);
@@ -370,7 +354,9 @@ export function CompareView({ from, to }: { from: string; to: string }) {
   const scrollToThread = (id: number) => {
     const p = order.find((x) => x.threadId === id);
     if (!p || !view.current) return false;
-    if (threads.peek().find((t) => t.id === id)?.region) {
+    const block = isMarkdown(p.path) && drawnFiles.peek().has(p.path) ? cursorSpace.peek().locate(p.path, p.side, p.range.start) : null;
+    if (block) revealBlock(p.path, block.row, "center");
+    else if (threads.peek().find((t) => t.id === id)?.region) {
       view.current.scrollTo({ type: "item", id: p.path, align: "start" });
       settleOn(p.path);
     } else scrollOrQueue({ type: "line", id: p.path, lineNumber: p.range.end, side: p.side, align: "center" }, codeOf(p.path));
@@ -394,7 +380,41 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     settleOn(path);
   };
 
+  // A block of rendered Markdown, by its place among the file's blocks (`data-stop`): drawn inside the file's one row,
+  // so pierre cannot scroll to it; the file is scrolled into view first when it is not drawn.
+  const revealBlock = (path: string, stop: number, align: "nearest" | "center") => {
+    const find = () => document.querySelector<HTMLElement>(`.md-view[data-file="${CSS.escape(path)}"] [data-stop="${stop}"]`);
+    const go = (el: HTMLElement) => {
+      const v = view.current;
+      const h = host.current;
+      if (!v || !h) return;
+      const box = el.getBoundingClientRect();
+      const top = box.top - h.getBoundingClientRect().top + v.getScrollTop();
+      const head = 72;
+      const now = v.getScrollTop();
+      const height = v.getHeight();
+      let to = now;
+      if (align === "center") to = top - (height - box.height) / 2;
+      else if (top - head < now) to = top - head;
+      else if (top + box.height + 24 > now + height) to = Math.min(top - head, top + box.height + 24 - height);
+      if (Math.abs(to - now) > 1) v.scrollTo({ type: "position", position: Math.max(0, to) });
+    };
+    const el = find();
+    if (el) return go(el);
+    view.current?.scrollTo({ type: "item", id: path, align: "start" });
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        const later = find();
+        if (later) go(later);
+      }),
+    );
+  };
+
   const revealCursor = (c: Cursor, align: "nearest" | "center" = "nearest") => {
+    if (c.row >= 0 && cursorSpace.peek().block(c)) {
+      revealBlock(c.path, c.row, align);
+      return;
+    }
     const r = cursorSpace.peek().row(c);
     if (!r) {
       view.current?.scrollTo({ type: "item", id: c.path, align: "nearest" });
@@ -423,9 +443,15 @@ export function CompareView({ from, to }: { from: string; to: string }) {
       return;
     }
     if (diffRows(fd).some((r) => (side === "deletions" ? r.old : r.new) === line)) {
+      const switching = drawnFiles.peek().has(path);
       scrollToLine(path, side, line);
-      const c = cursorSpace.peek().locate(path, side, line);
-      if (c) cursor.value = c;
+      const place = () => {
+        const c = cursorSpace.peek().locate(path, side, line);
+        if (c) cursor.value = c;
+      };
+      // a file drawn as a picture or rendered has its lines in the cursor only once it is drawn as code
+      if (switching) placeCursor.current = place;
+      else place();
     } else if (at) peek.value = { path, sha: at.sha, label: at.label, line };
   };
 
@@ -467,6 +493,8 @@ export function CompareView({ from, to }: { from: string; to: string }) {
       openLine: (path: string, side: Side, line: number) => latest.current.openTarget(path, line, side),
       revealCursor: (c: Cursor, align?: "nearest" | "center") => latest.current.revealCursor(c, align),
       startComment: (range: LineRange) => latest.current.startComment(range),
+      submitComment: (body: string, mode: "draft" | "now") => latest.current.createThread(body, mode),
+      cancelComment: () => latest.current.cancelPending(),
       pageRows: () => latest.current.pageRows(),
       getScrollTop: () => view.current?.getScrollTop() ?? 0,
       setScrollTop: (top: number) => view.current?.scrollTo({ type: "position", position: top }),
@@ -518,20 +546,8 @@ export function CompareView({ from, to }: { from: string; to: string }) {
         if (a.metadata.kind === "image") return mount(<ImageDiff file={a.metadata.path} />, "anno image-anno");
         if (a.metadata.kind === "markdown") return mount(<MarkdownView file={a.metadata.path} />, "anno md-anno");
         if (a.metadata.kind === "thread") return mount(<ThreadMini id={a.metadata.placement.threadId} state={a.metadata.placement.state} />, "anno");
-        const cur = latest.current;
-        const p = cur.pending;
-        if (!p) return undefined;
-        const d = cur.data;
-        const where = p.range.side === "deletions" ? `${p.oldPath} · removed lines (${d?.from.label ?? cur.from})` : `${p.path} (${d?.to.label ?? cur.to})`;
-        return mount(
-          <NewThreadBox
-            title={`New thread on ${where} · lines ${rangeText({ start: lo(p.range), end: hi(p.range) })}`}
-            storageKey={`new:${cur.rid}:${cur.from}..${cur.to}:${p.path}:${p.range.side}:${p.range.start}-${p.range.end}`}
-            onSubmit={(body, mode) => latest.current.createThread(body, mode)}
-            onCancel={() => latest.current.cancelPending()}
-          />,
-          "anno",
-        );
+        const p = pendingLines.peek();
+        return p ? mount(<PendingBox p={p} />, "anno") : undefined;
       },
       onLineClick: (p: { lineNumber: number; annotationSide: Side }, ctx: SelectionContext) => {
         const c = cursorSpace.peek().locate(ctx.item.id, p.annotationSide, p.lineNumber);
@@ -595,7 +611,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     };
   }, [diffStyle.value, wrap.value]);
 
-  const versions = useRef({ gen: 0, byItem: new Map<string, { sig: string; version: number }>(), files: null as FileDiffMetadata[] | null, scrolled: false, ids: [] as string[] });
+  const versions = useRef({ gen: 0, byItem: new Map<string, { sig: string; version: number; file?: ReturnType<typeof viewerFile> }>(), files: null as FileDiffMetadata[] | null, scrolled: false, ids: [] as string[] });
   useEffect(() => {
     const cv = view.current;
     if (!cv || !files) return;
@@ -614,10 +630,10 @@ export function CompareView({ from, to }: { from: string; to: string }) {
         const collapsed = isCollapsed(fd);
         let entry = v.byItem.get(fd.name);
         if (!entry || entry.sig !== String(collapsed)) {
-          entry = { sig: String(collapsed), version: ++v.gen };
+          entry = { sig: String(collapsed), version: ++v.gen, file: viewerFile(fd.name) };
           v.byItem.set(fd.name, entry);
         }
-        return { id: fd.name, type: "file", file: { name: fd.name, contents: "" }, annotations: [{ lineNumber: 1, metadata: { kind: viewer, path: fd.name } }], version: entry.version, collapsed };
+        return { id: fd.name, type: "file", file: entry.file!, annotations: [{ lineNumber: 1, metadata: { kind: viewer, path: fd.name } }], version: entry.version, collapsed };
       }
       const annotations = annotationsFor(byPath.get(fd.name), pending, fd.name);
       const collapsed = isCollapsed(fd);
@@ -637,6 +653,8 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     v.ids = ids;
     cv.setItems(items);
     if ([...drawn].join("\n") !== [...drawnFiles.peek()].join("\n")) drawnFiles.value = drawn;
+    placeCursor.current?.();
+    placeCursor.current = null;
     const queued = pendingScroll.current;
     if (queued) {
       pendingScroll.current = null;

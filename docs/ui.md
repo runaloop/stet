@@ -49,11 +49,19 @@ gets the image with the area framed and the area at full size as PNG files (`ste
 
 ## Markdown
 
-A Markdown file shows as code; the button on its header (**¶ rendered** / **‹/› code**) shows its new side
-rendered. Its pictures load from the repository at the same version; pictures from the web are not loaded
-(their address is shown instead), raw HTML stays text, and code blocks are highlighted. Blocks the diff
-changed are marked, and lines it removed are counted where they were. A click on a block shows its lines in
-the code with the cursor on them, where threads are written; a link to another file opens it in the preview.
+A Markdown file shows as code; the button on its header (**¶ rendered** / **‹/› code**) shows it rendered. In
+split view the old and the new version stand side by side, block facing block: unchanged blocks are level, a
+changed block is marked on both sides, a removed one red on the old side and an added one green on the new. In
+unified view it is one column: unchanged blocks once, and a changed block's old version (marked "was") above
+its new one, the way unified code shows removed lines above added ones. An added or a deleted file has one side.
+Pictures load from the repository at the version of their side; pictures from the web are not loaded (their
+address is shown instead), raw HTML stays text, and code blocks are highlighted.
+
+Threads are on lines here too. A thread shows on the blocks its lines are in, with its card under the last of
+them (and its lines on the card when it covers only part of a block); a thread on blank lines shows on the
+block before them. A click on a block puts the cursor on it; **+** beside a block (or `i` on the cursor's
+block, `V` with `j` / `k` for several) starts a thread on the block's lines, on its side, and **‹/›** beside it
+shows those lines in the code with the cursor on them. A link to another file opens it in the preview.
 
 ## Keys
 
@@ -62,7 +70,9 @@ searches the keys like LazyVim's keymaps picker and runs the one you pick; `Spac
 what can follow it. Counts work (`5j`), and so do non-Latin keyboard layouts (keys are matched by their
 physical position). A tour with screenshots: [guide](guide/README.md#navigation).
 
-On the Changes page a cursor moves over the diff (a click on a line puts it there):
+On the Changes page a cursor moves over the diff (a click on a line puts it there). In a rendered Markdown file it
+moves over the blocks instead of the hidden lines, the old side's before the new side's where they differ; a picture
+(an image, an SVG shown as a picture) is one stop:
 
 | Key | Action |
 |---|---|

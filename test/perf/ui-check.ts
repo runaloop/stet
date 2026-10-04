@@ -844,6 +844,15 @@ try {
     const toCode = await svgToggle(`!document.querySelector('.imgdiff[data-file="res/logo.svg"]') && [...document.querySelectorAll(".codeview-host diffs-container")].some(h => h.shadowRoot?.querySelector("[data-title]")?.textContent === "res/logo.svg" && h.shadowRoot.querySelector("[data-line]")?.textContent.includes("circle"))`);
     const toPicture = await svgToggle(`document.querySelector('.imgdiff[data-file="res/logo.svg"] img')?.getBoundingClientRect().width >= 96`);
     check("an SVG (only a viewBox, no size) shows as a picture, enlarged, and the button on its header switches it to its code and back", toCode.before?.includes("code") && !!toCode.ok && toPicture.before?.includes("picture") && !!toPicture.ok, { toCode, toPicture });
+    await b.eval(`document.activeElement?.blur(); true`);
+    await keys("g", "g");
+    await sleep(200);
+    await keys("j", "j", "j");
+    await sleep(300);
+    const svgStop = await b.eval(`document.querySelector(".file-toggle.at-cursor")?.closest("diffs-container")?.shadowRoot?.querySelector("[data-title]")?.textContent ?? "none"`);
+    check("an SVG shown as a picture is one stop for the cursor, like an image: j does not walk its hidden code", svgStop === "res/logo.svg", svgStop);
+    await keys("g", "g");
+    await sleep(500);
 
     const pane = await b.eval(`(() => { const r = document.querySelectorAll('.imgdiff[data-file="res/card.png"] .imgbox')[1].getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) }; })()`);
     await pointer([{ type: "pointerMove", x: pane.x + 10, y: pane.y + 5 }, { type: "pointerDown", button: 0 }, { type: "pointerMove", x: pane.x + Math.round(pane.w / 2), y: pane.y + 40 }, { type: "pointerMove", x: pane.x + Math.round(pane.w / 2) + 5, y: pane.y + 45 }, { type: "pointerUp", button: 0 }]);
@@ -871,37 +880,133 @@ try {
       page,
     );
 
-    writeFileSync(join(repo, "docs/guide.md"), ["# Guide", "", "Intro.", "", "Old paragraph that goes away.", "", "## Usage", "", "Run it.", ""].join("\n"));
+    writeFileSync(join(repo, "docs/guide.md"), ["# Guide", "", "Intro.", "", "Old paragraph that goes away.", "", "## Usage", "", "Run it.", "", "![the card](../res/card.png)", ""].join("\n"));
     run(repo, ["git", "add", "-A"]);
-    run(repo, ["bun", CLI, "version", "create", "--label", "guide", "--json"]);
+    const mdFrom = JSON.parse(run(repo, ["bun", CLI, "version", "create", "--label", "guide", "--json"])).version.snapshot as string;
     writeFileSync(
       join(repo, "docs/guide.md"),
       ["# Guide", "", "Intro.", "", "## Usage", "", "Run it, then open the card:", "", "![the card](../res/card.png)", "", "![remote](https://example.com/remote.png)", "", "```ts", 'const card: string = "red";', "```", ""].join("\n"),
     );
+    writeFileSync(join(repo, "res/card.png"), pngCard(240, 160, { bar: { y: 0, h: 30, color: [120, 40, 160, 255] } }));
+    writeFileSync(join(repo, "docs/added.md"), "# Added\n\nA new page.\n");
+    rmSync(join(repo, "docs/notes.md"));
     run(repo, ["git", "add", "-A"]);
-    run(repo, ["bun", CLI, "version", "create", "--label", "guide with a picture", "--json"]);
+    const mdTo = JSON.parse(run(repo, ["bun", CLI, "version", "create", "--label", "guide with a picture", "--json"])).version.snapshot as string;
     const mdV = JSON.parse(run(repo, ["bun", CLI, "status", "--json"])).versions as number;
     await b.eval(`location.hash = "#/compare/${mdV - 1}..${mdV}"; true`);
-    await waitFor(`document.querySelector(".md-toggle")`, 10000);
+    await waitFor(`document.querySelectorAll(".md-toggle").length === 3`, 10000);
     await sleep(800);
-    const mdToggle = await b.eval(`document.querySelector(".md-toggle").textContent`);
-    await b.eval(`document.querySelector(".md-toggle").click(); true`);
-    const picture = await waitFor(`(() => { const i = document.querySelector(".md-view img"); return i?.complete && i.naturalWidth > 0 ? { w: i.naturalWidth, src: i.getAttribute("src") } : null; })()`, 10000);
-    const lit = await waitFor(`!!document.querySelector(".md-view pre.shiki")`, 8000);
-    const rendered = await b.eval(`({ changed: [...document.querySelectorAll(".md-view .md-changed")].map(e => e.tagName.toLowerCase() + ":" + e.dataset.start), removed: document.querySelector(".md-view .md-removed")?.textContent, removedAt: document.querySelector(".md-view .md-removed")?.nextElementSibling?.textContent, remote: document.querySelector(".md-view .md-image-off")?.textContent, outside: document.querySelectorAll('.md-view img[src^="http"]').length, csp: window.__csp })`);
+    const toggleOf = (path: string) => `[...document.querySelectorAll(".md-toggle")].find(t => t.closest("diffs-container")?.shadowRoot?.querySelector("[data-title]")?.textContent === ${JSON.stringify(path)})`;
+    const brokenBefore = await b.eval(`[...document.querySelectorAll(".codeview-host diffs-container")].filter(c => c.shadowRoot?.textContent.includes("VirtualizedFile")).map(c => c.shadowRoot.querySelector("[data-title]")?.textContent ?? "?")`);
+    const mdToggle = await b.eval(`${toggleOf("docs/guide.md")}?.textContent`);
+    await b.eval(`${toggleOf("docs/guide.md")}.click(); true`);
+    const md = `document.querySelector('.md-view[data-file="docs/guide.md"]')`;
+    const pictures = await waitFor(`(() => { const i = [...${md}?.querySelectorAll("img") ?? []]; return i.length === 2 && i.every(x => x.complete && x.naturalWidth > 0) ? i.map(x => ({ side: x.closest(".md-cell").dataset.side, w: x.naturalWidth, src: x.getAttribute("src") })) : null; })()`, 10000);
+    const lit = await waitFor(`!!${md}.querySelector("pre.shiki")`, 8000);
+    const topOf = (sel: string) => `Math.round(${md}.querySelector(${JSON.stringify(sel)})?.getBoundingClientRect().top ?? -1)`;
+    const rendered = await b.eval(`({
+      changed: ["old", "new"].map(s => [...${md}.querySelectorAll('.md-cell[data-side="' + s + '"] .md-changed')].map(e => e.tagName.toLowerCase() + ":" + e.dataset.start)),
+      level: [${topOf('.md-cell[data-side="old"] h2')}, ${topOf('.md-cell[data-side="new"] h2')}, ${topOf('.md-cell[data-side="old"] p[data-start="11"]')}, ${topOf('.md-cell[data-side="new"] p[data-start="9"]')}],
+      facing: [...${md}.querySelector('.md-cell[data-side="old"] p[data-start="5"]').closest(".md-cell").nextElementSibling.classList].join(" "),
+      remote: ${md}.querySelector(".md-image-off")?.textContent, outside: ${md}.querySelectorAll('img[src^="http"]').length, broken: [...document.querySelectorAll(".codeview-host diffs-container")].filter(c => c.shadowRoot?.textContent.includes("VirtualizedFile")).map(c => c.shadowRoot.querySelector("[data-title]")?.textContent ?? "?"), csp: window.__csp })`);
     await b.screenshot(join(OUT, "shots", "ui-check-markdown.png"));
     check(
-      "a Markdown file switches to rendered: its picture loads from the repository, a remote one stays a link, code is highlighted, changed blocks are marked, removed lines are counted where they were",
-      mdToggle.includes("rendered") && picture?.w === 240 && picture.src.startsWith("/api/raw?") && picture.src.includes("path=res%2Fcard.png") && lit === true &&
-        JSON.stringify(rendered.changed) === JSON.stringify(["p:7", "p:9", "p:11", "div:13"]) && rendered.removed === "− 2 lines removed here" && rendered.removedAt === "Usage" &&
-        (rendered.remote?.includes("https://example.com/remote.png") ?? false) && rendered.outside === 0 && rendered.csp.length === 0,
-      { mdToggle, picture, lit, rendered },
+      "a Markdown file switches to rendered, old and new side by side: unchanged blocks level, what was removed red on the old side, what was added green on the new, each side's picture from its own version",
+      mdToggle.includes("rendered") && lit === true && pictures?.length === 2 && pictures.every((p: { w: number }) => p.w === 240) &&
+        pictures.some((p: { side: string; src: string }) => p.side === "old" && p.src.includes(`sha=${mdFrom}`)) && pictures.some((p: { side: string; src: string }) => p.side === "new" && p.src.includes(`sha=${mdTo}`)) &&
+        JSON.stringify(rendered.changed) === JSON.stringify([["p:5", "p:9"], ["p:7", "p:11", "div:13"]]) && rendered.level[0] === rendered.level[1] && rendered.level[2] === rendered.level[3] && rendered.level[0] > 0 &&
+        rendered.facing.includes("md-empty") && rendered.broken.length + brokenBefore.length === 0 && (rendered.remote?.includes("https://example.com/remote.png") ?? false) && rendered.outside === 0 && rendered.csp.length === 0,
+      { brokenBefore, mdToggle, pictures, mdFrom, mdTo, lit, rendered },
     );
-    await b.eval(`document.querySelector('.md-view p[data-start="7"]')?.scrollIntoView({ block: "center" }); true`);
+
+    await b.eval(`${toggleOf("docs/added.md")}.click(); ${toggleOf("docs/notes.md")}.click(); true`);
+    const oneSide = await waitFor(`(() => { const a = document.querySelector('.md-view[data-file="docs/added.md"]'); const d = document.querySelector('.md-view[data-file="docs/notes.md"]'); return a && d ? { added: [...a.querySelectorAll(".md-cell")].map(c => c.dataset.side), deleted: [...d.querySelectorAll(".md-cell")].map(c => c.dataset.side) } : null; })()`, 8000);
+    check("an added Markdown file renders its new side only, a deleted one its old side", JSON.stringify(oneSide) === JSON.stringify({ added: ["new", "new"], deleted: ["old"] }), oneSide);
+
+    await b.eval(`[...document.querySelectorAll(".compare-head .btn")].find(x => x.textContent === "unified").click(); true`);
+    const unified = await waitFor(`(() => { const v = document.querySelector('.md-view.md-one[data-file="docs/guide.md"]'); return v ? [...v.querySelectorAll(".md-cell")].map(c => c.dataset.side + ":" + c.firstElementChild?.tagName.toLowerCase() + (c.firstElementChild?.dataset.start ?? "")) : null; })()`, 8000);
+    check(
+      "in unified view one column: unchanged blocks once, a changed block's old version above its new one, a removed block in its place",
+      JSON.stringify(unified) === JSON.stringify(["new:h11", "new:p3", "old:p5", "new:h25", "old:p9", "new:p7", "new:p9", "new:p11", "new:div13"]),
+      unified,
+    );
+    await b.eval(`[...document.querySelectorAll(".compare-head .btn")].find(x => x.textContent === "split").click(); true`);
+    await waitFor(`${md}?.classList.contains("md-split") && ${md}.querySelector("pre.shiki")`, 8000);
+    await sleep(500);
+
+    await b.eval(`${md}.querySelector('.md-cell[data-side="new"] p[data-start="7"]').scrollIntoView({ block: "center" }); true`);
     await sleep(400);
-    await click('.md-view p[data-start="7"]');
-    const jumped = await waitFor(`(() => { const c = [...document.querySelectorAll(".codeview-host diffs-container")].find(c => c.shadowRoot.textContent.includes("Run it, then open the card")); const rows = c ? [...c.shadowRoot.querySelectorAll('[data-content] > [data-stet-mark~="cursor"]')].map(r => r.getAttribute("data-line-type") + ":" + r.getAttribute("data-line")) : []; return rows.length ? { rows, toggle: document.querySelector(".md-toggle")?.textContent } : null; })()`, 8000);
-    check("a click on a rendered block shows the code with the cursor on its line, to comment there", !!jumped && jumped.rows.includes("change-addition:7") && jumped.toggle.includes("rendered"), jumped);
+    await click(`.md-view[data-file="docs/guide.md"] .md-cell[data-side="new"] p[data-start="7"]`);
+    const clicked = await waitFor(`(() => { const c = [...document.querySelectorAll(".md-view .md-cursor")].map(e => e.closest(".md-cell").dataset.side + ":" + e.dataset.start); return c.length ? c : null; })()`, 3000);
+    const hoverAt = await rect(`.md-view[data-file="docs/guide.md"] .md-cell[data-side="new"] p[data-start="7"]`);
+    await pointer([{ type: "pointerMove", x: hoverAt!.x, y: hoverAt!.y }]);
+    await waitFor(`document.querySelector(".md-gutter .md-plus")`, 3000);
+    await click(".md-gutter .md-plus");
+    const box = await waitFor(`(() => { const n = document.querySelector(".md-view .new-thread .note"); return n && document.activeElement?.tagName === "TEXTAREA" ? { note: n.textContent, after: n.closest(".md-threads").previousElementSibling?.dataset.start } : null; })()`, 3000);
+    await keys(..."why a colon?");
+    await b.eval(`[...document.querySelectorAll(".md-view .new-thread button")].find(x => x.textContent.includes("Save draft")).click(); true`);
+    const mdCard = await waitFor(`(() => { const c = document.querySelector('.md-view .md-cell[data-side="new"] p[data-start="7"]'); const m = c?.nextElementSibling?.querySelector(".thread-mini"); return m && c.classList.contains("md-thread") ? m.dataset.thread : null; })()`, 8000);
+    const blockThread = mdCard ? JSON.parse(run(repo, ["bun", CLI, "thread", "show", String(mdCard), "--as", "reviewer", "--json"])).thread : null;
+    check(
+      "a click on a rendered block puts the cursor on it; its + starts a thread on the block's lines, shown on the block like a thread on lines",
+      JSON.stringify(clicked) === JSON.stringify(["new:7"]) && (box?.note.includes("lines 7") ?? false) && box?.after === "7" && blockThread?.range.start === 7 && blockThread.range.end === 7 && blockThread.side === "new",
+      { clicked, box, mdCard, range: blockThread?.range, side: blockThread?.side },
+    );
+
+    const stops = () => b.eval(`[...document.querySelectorAll(".md-view .md-cursor")].map(e => e.closest(".md-cell").dataset.side + ":" + e.dataset.start)`) as Promise<string[]>;
+    await b.eval(`document.activeElement?.blur(); true`);
+    await b.eval(`${md}.querySelector('.md-cell[data-side="new"] h1').scrollIntoView({ block: "center" }); true`);
+    await sleep(400);
+    await click(`.md-view[data-file="docs/guide.md"] .md-cell[data-side="new"] h1`);
+    await sleep(200);
+    await keys("j");
+    await sleep(200);
+    const afterJ = await stops();
+    await keys("j");
+    await sleep(200);
+    const afterJJ = await stops();
+    await keys("]", "c");
+    await sleep(300);
+    const nextChange = await stops();
+    await keys("]", "c");
+    await sleep(300);
+    const nextChange2 = await stops();
+    await keys("[", "c");
+    await sleep(300);
+    const prevChange = await stops();
+    await keys("j");
+    await sleep(200);
+    const onThread = await stops();
+    await keys("");
+    const mdOpened = await waitFor(`location.hash === "#/thread/${mdCard}" ? location.hash : null`, 5000);
+    check(
+      "in the rendered view j/k step over the blocks and ]c/[c over the changed ones, both sides in reading order; Enter opens the thread on the block",
+      JSON.stringify([afterJ, afterJJ, nextChange, nextChange2, prevChange, onThread]) === JSON.stringify([["old:3", "new:3"], ["old:5"], ["old:9"], ["new:11"], ["old:9"], ["new:7"]]) && !!mdOpened,
+      { afterJ, afterJJ, nextChange, nextChange2, prevChange, onThread, mdOpened },
+    );
+
+    await b.eval(`location.hash = "#/compare/${mdV - 1}..${mdV}"; true`);
+    await waitFor(`${md}?.querySelector("[data-stop]")`, 8000);
+    await sleep(500);
+    await b.eval(`${md}.querySelector('.md-cell[data-side="old"] p[data-start="5"]').scrollIntoView({ block: "center" }); true`);
+    await sleep(400);
+    await click(`.md-view[data-file="docs/guide.md"] .md-cell[data-side="old"] p[data-start="5"]`);
+    await keys("i");
+    const oldBox = await waitFor(`document.querySelector(".md-view .new-thread .note")?.textContent ?? null`, 3000);
+    await keys("");
+    await sleep(150);
+    await keys("");
+    const mdClosed = await waitFor(`!document.querySelector(".md-view .new-thread")`, 3000);
+    const jumpAt = await rect(`.md-view[data-file="docs/guide.md"] .md-cell[data-side="new"] p[data-start="7"]`);
+    await pointer([{ type: "pointerMove", x: jumpAt!.x, y: jumpAt!.y }]);
+    await waitFor(`document.querySelector(".md-gutter .md-jump")`, 3000);
+    await click(".md-gutter .md-jump");
+    const jumped = await waitFor(`(() => { const c = [...document.querySelectorAll(".codeview-host diffs-container")].find(c => c.shadowRoot.textContent.includes("Run it, then open the card")); const rows = c ? [...c.shadowRoot.querySelectorAll('[data-content] > [data-stet-mark~="cursor"]')].map(r => r.getAttribute("data-line-type") + ":" + r.getAttribute("data-line")) : []; return rows.length ? { rows, toggle: ${toggleOf("docs/guide.md")}?.textContent } : null; })()`, 8000);
+    check(
+      "i comments on the block under the cursor, on its side (a removed block: the old lines); its ‹/› shows the block's lines in the code with the cursor on them",
+      (oldBox?.includes("removed lines") ?? false) && (oldBox?.includes("lines 5") ?? false) && !!mdClosed && !!jumped && jumped.rows.includes("change-addition:7") && jumped.toggle.includes("rendered"),
+      { oldBox, mdClosed, jumped },
+    );
 
     await b.eval(`location.hash = "#/compare/${imgV - 1}..${imgV}"; true`);
     await waitFor(`[...document.querySelectorAll(".imgdiff img")].length >= 5`, 10000);
