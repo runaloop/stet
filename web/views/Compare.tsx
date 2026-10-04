@@ -1,0 +1,740 @@
+import { CodeView, parsePatchFiles, type CodeViewItem, type CodeViewScrollTarget, type DiffLineAnnotation, type FileDiffMetadata, type SelectedLineRange } from "@pierre/diffs";
+import { effect, signal } from "@preact/signals";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { isPixelImage, isSvg } from "../../src/core/image.ts";
+import type { ComparePlacement } from "../../src/core/types.ts";
+import { api } from "../api.ts";
+import { Kbd, rangeText } from "../components/Bits.tsx";
+import { mount, workerPool } from "../components/Code.tsx";
+import { Composer } from "../components/Composer.tsx";
+import { FileGitMarks } from "../components/GitState.tsx";
+import { ImageDiff } from "../components/ImageView.tsx";
+import { ThreadMini } from "../components/ThreadMini.tsx";
+import { CommitPicker } from "../components/CommitPicker.tsx";
+import { commitPicker, commits, isSha, loadCommits } from "../commits.ts";
+import {
+  compareData,
+  compareFiles,
+  compareNav,
+  activeFile,
+  fileRows,
+  groupsOpen,
+  imagePending,
+  isCollapsed,
+  setSvgView,
+  svgView,
+  isViewed,
+  marksByPath,
+  marksFor,
+  cursor,
+  cursorLayer,
+  cursorSpace,
+  setCursor,
+  resolvedIds,
+  setViewed,
+  shownPlacements,
+  toggleFile,
+  viewed,
+  visibleFiles,
+  fileOpen,
+  peek,
+  sideTab,
+} from "../compare.ts";
+import { MARK_CSS, paintMarks } from "../lib/marks.ts";
+import { rowPosition, type Cursor, type LineRange } from "../lib/cursor.ts";
+import { compareOrder } from "../lib/nav.ts";
+import { PeekView } from "./Peek.tsx";
+import { Presets, rangeTitle, ReviewedButton, VersionStrip } from "../components/VersionStrip.tsx";
+import { takeSpot } from "../jumps.ts";
+import { diffRows } from "../lib/search.ts";
+import type { Side } from "../lib/search.ts";
+import { compareFocus, diffStyle, guard, navigate, noteJump, notify, reloadAll, reviewId, route, showResolved, status, threads, wrap } from "../state.ts";
+
+function FileToggle({ path }: { path: string }) {
+  const fd = compareFiles.value?.find((f) => f.name === path);
+  if (!fd) return null;
+  const collapsed = isCollapsed(fd);
+  const here = cursor.value?.path === path && cursor.value.row === -1;
+  return (
+    <button class={`file-toggle${here ? " at-cursor" : ""}`} title={collapsed ? "show this file" : "collapse this file"} onClick={() => toggleFile(fd)}>
+      {collapsed ? "▸" : "▾"}
+    </button>
+  );
+}
+
+function FileMeta({ path }: { path: string }) {
+  const fd = compareFiles.value?.find((f) => f.name === path);
+  if (!fd) return null;
+  const rows = fileRows.value;
+  const at = rows.findIndex((r) => r.fd === fd);
+  const row = rows[at];
+  const next = row?.section ? rows.findIndex((r, i) => i > at && r.section !== null) : -1;
+  const count = (next === -1 ? rows.length : next) - at;
+  return (
+    <span class="file-meta">
+      {row?.section ? (
+        <span class="section-tag" title="files are ordered by kind: code, then resources, build and config, changed tests, docs (compare.order)">
+          {row.section}: {count} file{count === 1 ? "" : "s"} from here
+        </span>
+      ) : null}
+      {row?.keptBecause ? <span class="kept" title="a test file that is shown on purpose: tests are hidden only when they only add code">⚠ {row.keptBecause}</span> : null}
+      <FileGitMarks path={path} />
+      {isSvg(path) ? (
+        <button class="btn ghost small svg-toggle" title="an SVG: show it as a picture or as code" onClick={() => setSvgView(path, pictureFiles.value.has(path) ? "code" : "picture")}>
+          {pictureFiles.value.has(path) ? "‹/› code" : "▣ picture"}
+        </button>
+      ) : null}
+      <label class="viewed" title="mark as viewed: the file collapses until its content changes">
+        <input type="checkbox" checked={isViewed(fd)} onChange={(e) => setViewed(fd, (e.target as HTMLInputElement).checked)} /> viewed
+      </label>
+    </span>
+  );
+}
+
+function FoldFooter() {
+  const rows = fileRows.value;
+  const open = groupsOpen.value;
+  const groups = (["tests", "generated"] as const)
+    .map((g) => {
+      const list = rows.filter((r) => r.group === g);
+      const add = list.reduce((s, r) => s + r.fd.hunks.reduce((a, h) => a + h.additionLines, 0), 0);
+      const del = list.reduce((s, r) => s + r.fd.hunks.reduce((a, h) => a + h.deletionLines, 0), 0);
+      return { g, n: list.length, add, del };
+    })
+    .filter((x) => x.n > 0);
+  if (groups.length === 0) return null;
+  return (
+    <div class="fold-footer">
+      {groups.map(({ g, n, add, del }) => (
+        <div class="fold-group">
+          <button class="btn small" onClick={() => (groupsOpen.value = { ...open, [g]: !open[g] })}>
+            {open[g] ? "▾ hide" : "▸ show"} {n} {g === "tests" ? "test" : "generated / lock"} file{n === 1 ? "" : "s"}
+          </button>{" "}
+          <span class="stat"><span class="add">+{add}</span> <span class="del">−{del}</span></span>{" "}
+          <span class="hint">
+            {g === "tests"
+              ? "only new test code: nothing removed, no skip markers. Tests that remove or change lines stay in the list above."
+              : "matched by compare.collapse"}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FoldSummary() {
+  const rows = fileRows.value;
+  const open = groupsOpen.value;
+  const kept = rows.filter((r) => r.keptBecause).length;
+  const groups = (["tests", "generated"] as const).map((g) => ({ g, list: rows.filter((r) => r.group === g) })).filter((x) => x.list.length);
+  if (!groups.length && !kept) return null;
+  return (
+    <span class="fold-summary">
+      {groups.map(({ g, list }) => {
+        const what = `${list.length} ${g === "tests" ? "test" : "generated / lock"} file${list.length === 1 ? "" : "s"}`;
+        return (
+          <button
+            class={`btn ghost small fold-${g}`}
+            title={g === "tests" ? "test files that only add code (nothing removed or changed, no skip markers) are folded into one group at the end · Space u t" : "files matched by compare.collapse"}
+            onClick={() => (open[g] ? (groupsOpen.value = { ...open, [g]: false }) : compareNav.current?.scrollToFile(list[0]!.fd.name))}
+          >
+            {open[g] ? `▾ ${what} shown · hide` : `▸ ${what} with only new code folded · show`}
+          </button>
+        );
+      })}
+      {kept ? (
+        <span class="kept" title="a test that removes or changes lines, adds a skip marker or is deleted is never folded: that is how a test gets weakened">
+          ⚠ {kept} changed test file{kept === 1 ? "" : "s"} stay{kept === 1 ? "s" : ""} in the diff
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+interface Pending {
+  path: string;
+  oldPath: string;
+  range: SelectedLineRange;
+}
+
+type Anno = { kind: "thread"; placement: ComparePlacement } | { kind: "new" } | { kind: "image"; path: string };
+type SelectionContext = { item: { id: string; fileDiff?: FileDiffMetadata } };
+
+/** Shown as pictures: an image git calls binary, or an SVG unless the reader picked its code or lines of it have threads. */
+function asPicture(fd: FileDiffMetadata, placed: ComparePlacement[] | undefined): boolean {
+  if (fd.hunks.length === 0 && isPixelImage(fd.name)) return true;
+  if (!isSvg(fd.name)) return false;
+  const view = svgView.value.get(fd.name);
+  if (view) return view === "picture";
+  return !(placed ?? []).some((p) => !threads.peek().find((t) => t.id === p.threadId)?.region);
+}
+
+/** True when a file kept from `before` to `after` sits at another index. */
+function moved(before: string[], after: string[]): boolean {
+  const at = new Map(after.map((id, i) => [id, i]));
+  return before.some((id, i) => at.has(id) && at.get(id) !== i);
+}
+
+/** Files of the diff shown as pictures right now. */
+const pictureFiles = signal<ReadonlySet<string>>(new Set());
+
+const lo = (r: SelectedLineRange) => Math.min(r.start, r.end);
+const hi = (r: SelectedLineRange) => Math.max(r.start, r.end);
+
+function annotationsFor(placements: ComparePlacement[] | undefined, pending: Pending | null, path: string): DiffLineAnnotation<Anno>[] {
+  const out: DiffLineAnnotation<Anno>[] = (placements ?? []).map((p) => ({ side: p.side, lineNumber: p.range.end, metadata: { kind: "thread", placement: p } }));
+  if (pending && pending.path === path) {
+    out.push({ side: pending.range.side === "deletions" ? "deletions" : "additions", lineNumber: hi(pending.range), metadata: { kind: "new" } });
+  }
+  return out;
+}
+
+function NewThreadBox(props: { title: string; storageKey: string; onSubmit: (body: string, mode: "draft" | "now") => Promise<boolean | void>; onCancel: () => void }) {
+  return (
+    <div class="new-thread inline">
+      <div class="note">{props.title}</div>
+      <Composer
+        storageKey={props.storageKey}
+        autoFocus
+        placeholder="What is wrong here?"
+        onCancel={props.onCancel}
+        onSubmit={props.onSubmit}
+        onEscape={(el) => el.blur()}
+        secondaryLabel="Send now"
+      />
+    </div>
+  );
+}
+
+export function CompareView({ from, to }: { from: string; to: string }) {
+  const data = compareData.value;
+  const files = compareFiles.value;
+  const [error, setError] = useState<string | null>(null);
+  const pendingKey = `stet.pending.${reviewId.value}.${from}..${to}`;
+  const [pending, setPendingState] = useState<Pending | null>(() => {
+    try {
+      const raw = localStorage.getItem(pendingKey);
+      return raw ? (JSON.parse(raw) as Pending) : null;
+    } catch {
+      return null;
+    }
+  });
+  const setPending = (p: Pending | null) => {
+    setPendingState(p);
+    try {
+      if (p) localStorage.setItem(pendingKey, JSON.stringify(p));
+      else localStorage.removeItem(pendingKey);
+    } catch {
+      return;
+    }
+  };
+  const host = useRef<HTMLDivElement>(null);
+  const view = useRef<CodeView<Anno> | null>(null);
+  const rid = reviewId.value;
+  const seq = status.value?.lastSeq ?? 0;
+  const pinned = status.value?.pinnedNow ?? null;
+
+  useEffect(() => {
+    if (rid === null) return;
+    let live = true;
+    setError(null);
+    api.compare(rid, from, to).then(
+      (d) => {
+        if (!live) return;
+        const cur = compareData.value;
+        if (cur && (cur.from.sha !== d.from.sha || cur.to.sha !== d.to.sha)) compareFiles.value = null;
+        compareData.value = d;
+      },
+      (e) => live && setError((e as Error).message),
+    );
+    return () => {
+      live = false;
+    };
+  }, [rid, from, to, seq, pinned]);
+
+  useEffect(() => {
+    if (!data) return;
+    let live = true;
+    if (files && (files as FileDiffMetadata[] & { key?: string }).key === `${data.from.sha}-${data.to.sha}`) return;
+    api.patch(data.from.sha, data.to.sha).then(
+      (text) => {
+        if (!live) return;
+        const parsed = parsePatchFiles(text, `${data.from.sha}-${data.to.sha}`).flatMap((p) => p.files) as FileDiffMetadata[] & { key?: string };
+        parsed.key = `${data.from.sha}-${data.to.sha}`;
+        fileOpen.value = new Map();
+        compareFiles.value = parsed;
+      },
+      (e) => live && setError((e as Error).message),
+    );
+    return () => {
+      live = false;
+    };
+  }, [data?.from.sha, data?.to.sha]);
+
+  const shown = shownPlacements.value;
+  const outside = (data?.outside ?? []).filter((id) => showResolved.value || !resolvedIds.value.has(id));
+  const hiddenCount = (data?.placements.length ?? 0) - shown.length + (data?.outside.length ?? 0) - outside.length;
+  const byPath = useMemo(() => {
+    const m = new Map<string, ComparePlacement[]>();
+    for (const p of shown) m.set(p.path, [...(m.get(p.path) ?? []), p]);
+    return m;
+  }, [shown]);
+  const visible = visibleFiles.value;
+  const order = useMemo(() => compareOrder(shown, visible.map((f) => f.name)), [shown, visible]);
+
+  const startThread = (range: SelectedLineRange | null, ctx: SelectionContext) => {
+    if (!range) return;
+    if (range.endSide && range.side && range.endSide !== range.side) {
+      notify("select lines on one side of the diff: removed or added lines", "error");
+      return;
+    }
+    setPending({ path: ctx.item.id, oldPath: ctx.item.fileDiff?.prevName ?? ctx.item.id, range });
+  };
+
+  const cancelPending = () => {
+    setPending(null);
+    imagePending.value = null;
+    view.current?.clearSelectedLines();
+  };
+
+  const createThread = async (body: string, mode: "draft" | "now") => {
+    if (!pending || !data || rid === null) return false;
+    const side = pending.range.side === "deletions" ? "old" : "new";
+    const t = await guard(
+      api.addThread(rid, {
+        path: side === "old" ? pending.oldPath : pending.path,
+        start: lo(pending.range),
+        end: hi(pending.range),
+        side,
+        at: side === "old" ? data.from.sha : data.to.sha,
+        body,
+        draft: mode === "draft",
+      }),
+    );
+    if (!t) return false;
+    setPending(null);
+    view.current?.clearSelectedLines();
+    compareFocus.value = t.id;
+    notify(mode === "draft" ? `draft #${t.id} saved · the agent sees it after you submit the review` : `thread #${t.id} sent to the agent`, "info", { label: `open #${t.id}`, route: { name: "thread", id: t.id } });
+    await reloadAll();
+  };
+
+  const reveal = (path: string, expand: boolean): boolean => {
+    const row = fileRows.value.find((r) => r.fd.name === path);
+    if (!row) return false;
+    let changed = false;
+    if (row.hidden && row.group) {
+      groupsOpen.value = { ...groupsOpen.value, [row.group]: true };
+      changed = true;
+    }
+    if (expand && isCollapsed(row.fd)) {
+      const open = new Map(fileOpen.value);
+      open.set(path, true);
+      fileOpen.value = open;
+      changed = true;
+    }
+    return changed;
+  };
+
+  const pendingScroll = useRef<CodeViewScrollTarget | null>(null);
+  const scrollOrQueue = (target: CodeViewScrollTarget, wait: boolean) => {
+    if (wait) pendingScroll.current = target;
+    else view.current?.scrollTo(target);
+  };
+
+  // Images measure their height only when drawn, and the ones drawn around a jump move it: jump again
+  // once they are measured, unless the reader scrolls, clicks or types meanwhile.
+  const settleOn = (path: string) => {
+    if (!isPixelImage(path)) return;
+    let moved = false;
+    const stop = () => (moved = true);
+    const events = ["wheel", "pointerdown", "keydown"] as const;
+    for (const ev of events) window.addEventListener(ev, stop, { capture: true, passive: true });
+    for (const ms of [250, 700, 1400]) setTimeout(() => moved || view.current?.scrollTo({ type: "item", id: path, align: "start" }), ms);
+    setTimeout(() => {
+      for (const ev of events) window.removeEventListener(ev, stop, { capture: true });
+    }, 1500);
+  };
+
+  const scrollToThread = (id: number) => {
+    const p = order.find((x) => x.threadId === id);
+    if (!p || !view.current) return false;
+    if (threads.peek().find((t) => t.id === id)?.region) {
+      view.current.scrollTo({ type: "item", id: p.path, align: "start" });
+      settleOn(p.path);
+    } else scrollOrQueue({ type: "line", id: p.path, lineNumber: p.range.end, side: p.side, align: "center" }, codeOf(p.path));
+    return true;
+  };
+
+  // Lines of an SVG shown as a picture: show its code first.
+  const codeOf = (path: string): boolean => {
+    if (!isSvg(path) || !pictureFiles.peek().has(path)) return false;
+    setSvgView(path, "code");
+    return true;
+  };
+
+  const scrollToLine = (path: string, side: Side, line: number) => {
+    const switched = codeOf(path);
+    scrollOrQueue({ type: "line", id: path, lineNumber: line, side, align: "center" }, reveal(path, true) || switched);
+  };
+
+  const scrollToFile = (path: string) => {
+    scrollOrQueue({ type: "item", id: path, align: "start" }, reveal(path, false));
+    settleOn(path);
+  };
+
+  const revealCursor = (c: Cursor, align: "nearest" | "center" = "nearest") => {
+    const r = cursorSpace.peek().row(c);
+    if (!r) {
+      view.current?.scrollTo({ type: "item", id: c.path, align: "nearest" });
+      return;
+    }
+    const { side, line } = rowPosition(r);
+    view.current?.scrollTo({ type: "line", id: c.path, lineNumber: line, side, align });
+  };
+
+  const startComment = (range: LineRange) => {
+    const fd = files?.find((x) => x.name === range.path);
+    setPending({ path: range.path, oldPath: fd?.prevName ?? range.path, range: { start: range.start, end: range.end, side: range.side } });
+  };
+
+  const pageRows = () => Math.max(4, Math.floor((host.current?.clientHeight ?? 600) / 20 / 2));
+
+  const openTarget = (path: string, line: number | null, side: Side) => {
+    const fd = files?.find((x) => x.name === path);
+    const at = side === "deletions" ? data?.from : data?.to;
+    if (!fd) {
+      if (at) peek.value = { path, sha: at.sha, label: at.label, line: line ?? 1 };
+      return;
+    }
+    if (line === null) {
+      scrollToFile(path);
+      return;
+    }
+    if (diffRows(fd).some((r) => (side === "deletions" ? r.old : r.new) === line)) {
+      scrollToLine(path, side, line);
+      const c = cursorSpace.peek().locate(path, side, line);
+      if (c) cursor.value = c;
+    } else if (at) peek.value = { path, sha: at.sha, label: at.label, line };
+  };
+
+  const latest = useRef({ data, pending, from, to, rid, order, visible, startThread, createThread, cancelPending, scrollToThread, scrollToLine, scrollToFile, revealCursor, startComment, pageRows, openTarget });
+  latest.current = { data, pending, from, to, rid, order, visible, startThread, createThread, cancelPending, scrollToThread, scrollToLine, scrollToFile, revealCursor, startComment, pageRows, openTarget };
+
+  const r = route.value;
+  const targetKey = r.name === "compare" && r.file ? `${r.file}:${r.line ?? ""}:${r.side ?? ""}` : "";
+  const handledTarget = useRef(targetKey);
+  useEffect(() => {
+    if (!targetKey || handledTarget.current === targetKey || !files || r.name !== "compare") return;
+    handledTarget.current = targetKey;
+    latest.current.openTarget(r.file!, r.line ?? null, r.side === "old" ? "deletions" : "additions");
+  }, [targetKey, files]);
+
+  const firstRange = useRef(`${from}..${to}`);
+  useEffect(() => {
+    if (firstRange.current === `${from}..${to}`) return;
+    firstRange.current = `${from}..${to}`;
+    imagePending.value = null;
+    if (sideTab.value === "threads") sideTab.value = "files";
+  }, [from, to]);
+
+  useEffect(() => {
+    const handle = {
+      get order() {
+        return latest.current.order;
+      },
+      scrollToThread: (id: number) => latest.current.scrollToThread(id),
+      cancelPending: () => latest.current.cancelPending(),
+    };
+    compareHandle.current = handle;
+    const nav = {
+      scrollToFile: (path: string) => {
+        noteJump();
+        latest.current.scrollToFile(path);
+      },
+      scrollToLine: (path: string, side: Side, line: number) => latest.current.scrollToLine(path, side, line),
+      revealCursor: (c: Cursor, align?: "nearest" | "center") => latest.current.revealCursor(c, align),
+      startComment: (range: LineRange) => latest.current.startComment(range),
+      pageRows: () => latest.current.pageRows(),
+      getScrollTop: () => view.current?.getScrollTop() ?? 0,
+      setScrollTop: (top: number) => view.current?.scrollTo({ type: "position", position: top }),
+    };
+    compareNav.current = nav;
+    return () => {
+      if (compareHandle.current === handle) compareHandle.current = null;
+      if (compareNav.current === nav) compareNav.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!host.current) return;
+    const headers = new Map<string, { prefix: HTMLElement; meta: HTMLElement }>();
+    const header = (path: string) => {
+      let h = headers.get(path);
+      if (!h) headers.set(path, (h = { prefix: mount(<FileToggle path={path} />, "hdr-prefix"), meta: mount(<FileMeta path={path} />, "hdr-meta") }));
+      return h;
+    };
+    const footer = mount(<FoldFooter />, "codeview-footer");
+    const options = {
+      diffStyle: diffStyle.value,
+      overflow: wrap.value ? ("wrap" as const) : ("scroll" as const),
+      themeType: "system" as const,
+      lineDiffType: "word" as const,
+      hunkSeparators: "line-info" as const,
+      stickyHeaders: true,
+      enableLineSelection: true,
+      enableGutterUtility: true,
+      unsafeCSS: MARK_CSS,
+      loadDiffFiles: async (fd: FileDiffMetadata) => {
+        const d = latest.current.data!;
+        const oldPath = fd.prevName ?? fd.name;
+        const [oldBlob, newBlob] = await Promise.all([api.blob(d.from.sha, oldPath), api.blob(d.to.sha, fd.name)]);
+        return {
+          oldFile: { name: oldPath, contents: oldBlob.contents ?? "" },
+          newFile: { name: fd.name, contents: newBlob.contents ?? "" },
+        };
+      },
+      renderHeaderPrefix: (fd: FileDiffMetadata) => header(fd.name).prefix,
+      renderHeaderMetadata: (fd: FileDiffMetadata) => header(fd.name).meta,
+      renderCodeViewFooter: () => footer,
+      onPostRender: (node: HTMLElement, _inst: unknown, phase: string, ctx: SelectionContext) => {
+        if (phase === "unmount") return;
+        node.toggleAttribute("data-stet-image", !ctx.item.fileDiff);
+        paintMarks(node, marksFor(ctx.item.id));
+      },
+      renderAnnotation: (a: DiffLineAnnotation<Anno>) => {
+        if (a.metadata.kind === "image") return mount(<ImageDiff file={a.metadata.path} />, "anno image-anno");
+        if (a.metadata.kind === "thread") return mount(<ThreadMini id={a.metadata.placement.threadId} state={a.metadata.placement.state} />, "anno");
+        const cur = latest.current;
+        const p = cur.pending;
+        if (!p) return undefined;
+        const d = cur.data;
+        const where = p.range.side === "deletions" ? `${p.oldPath} · removed lines (${d?.from.label ?? cur.from})` : `${p.path} (${d?.to.label ?? cur.to})`;
+        return mount(
+          <NewThreadBox
+            title={`New thread on ${where} · lines ${rangeText({ start: lo(p.range), end: hi(p.range) })}`}
+            storageKey={`new:${cur.rid}:${cur.from}..${cur.to}:${p.path}:${p.range.side}:${p.range.start}-${p.range.end}`}
+            onSubmit={(body, mode) => latest.current.createThread(body, mode)}
+            onCancel={() => latest.current.cancelPending()}
+          />,
+          "anno",
+        );
+      },
+      onLineClick: (p: { lineNumber: number; annotationSide: Side }, ctx: SelectionContext) => {
+        const c = cursorSpace.peek().locate(ctx.item.id, p.annotationSide, p.lineNumber);
+        if (c) setCursor(c, false);
+      },
+      onLineSelectionEnd: (range: SelectedLineRange | null, ctx: SelectionContext) => latest.current.startThread(range, ctx),
+      onGutterUtilityClick: (range: SelectedLineRange, ctx: SelectionContext) => latest.current.startThread(range, ctx),
+    };
+    const cv = new CodeView<Anno>(options as never, workerPool());
+    // Rows must be measured before they scroll into view: a wrapped line is 5-6x the estimated 20 px, and with
+    // pierre's 200 px a fast wheel shifts the code under the pointer (`bun run perf:scroll`).
+    cv.config.overscrollSize = 1600;
+    cv.setup(host.current);
+    view.current = cv;
+
+    let frame = 0;
+    const spy = () => {
+      frame = 0;
+      const list = latest.current.visible;
+      if (list.length === 0) return;
+      const at = cursor.peek()?.path;
+      const ci = at ? list.findIndex((f) => f.name === at) : -1;
+      if (ci >= 0) {
+        const top = cv.getTopForItem(at!) ?? 0;
+        const bottom = ci + 1 < list.length ? (cv.getTopForItem(list[ci + 1]!.name) ?? cv.getScrollHeight()) : cv.getScrollHeight();
+        if (bottom > cv.getScrollTop() && top < cv.getScrollTop() + cv.getHeight()) {
+          if (activeFile.peek() !== at) activeFile.value = at!;
+          return;
+        }
+      }
+      if (cv.getScrollTop() + cv.getHeight() >= cv.getScrollHeight() - 4) {
+        const last = list[list.length - 1]!.name;
+        if (activeFile.peek() !== last) activeFile.value = last;
+        return;
+      }
+      const top = cv.getScrollTop() + 40;
+      let lo = 0;
+      let hi = list.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if ((cv.getTopForItem(list[mid]!.name) ?? Infinity) <= top) lo = mid;
+        else hi = mid - 1;
+      }
+      const name = list[lo]!.name;
+      if (activeFile.peek() !== name) activeFile.value = name;
+    };
+    const unsubscribe = cv.subscribeToScroll(() => {
+      if (!frame) frame = requestAnimationFrame(spy);
+    });
+    const stopPaint = effect(() => {
+      marksByPath.value;
+      cursorLayer.value;
+      for (const r of cv.getRenderedItems()) paintMarks(r.element, marksFor(r.id));
+    });
+    return () => {
+      stopPaint();
+      unsubscribe();
+      cancelAnimationFrame(frame);
+      cv.cleanUp();
+      view.current = null;
+    };
+  }, [diffStyle.value, wrap.value]);
+
+  const versions = useRef({ gen: 0, byItem: new Map<string, { sig: string; version: number }>(), files: null as FileDiffMetadata[] | null, scrolled: false, ids: [] as string[] });
+  useEffect(() => {
+    const cv = view.current;
+    if (!cv || !files) return;
+    const v = versions.current;
+    if (v.files !== files) {
+      v.files = files;
+      v.byItem.clear();
+      v.scrolled = false;
+    }
+    const pendingSig = pending ? `${pending.path}:${pending.range.side}:${pending.range.start}-${pending.range.end}` : "";
+    const pictures = new Set<string>();
+    const items: CodeViewItem<Anno>[] = visible.map((fd): CodeViewItem<Anno> => {
+      if (asPicture(fd, byPath.get(fd.name))) {
+        pictures.add(fd.name);
+        const collapsed = isCollapsed(fd);
+        let entry = v.byItem.get(fd.name);
+        if (!entry || entry.sig !== String(collapsed)) {
+          entry = { sig: String(collapsed), version: ++v.gen };
+          v.byItem.set(fd.name, entry);
+        }
+        return { id: fd.name, type: "file", file: { name: fd.name, contents: "" }, annotations: [{ lineNumber: 1, metadata: { kind: "image", path: fd.name } }], version: entry.version, collapsed };
+      }
+      const annotations = annotationsFor(byPath.get(fd.name), pending, fd.name);
+      const collapsed = isCollapsed(fd);
+      const sig = JSON.stringify([collapsed, annotations.map((a) => [a.side, a.lineNumber, a.metadata.kind === "thread" ? [a.metadata.placement.threadId, a.metadata.placement.state] : pendingSig])]);
+      let entry = v.byItem.get(fd.name);
+      if (!entry || entry.sig !== sig) {
+        entry = { sig, version: ++v.gen };
+        v.byItem.set(fd.name, entry);
+      }
+      return { id: fd.name, type: "diff", fileDiff: fd, annotations, version: entry.version, collapsed };
+    });
+    const ids = items.map((i) => i.id);
+    // pierre releases only the items at the indexes it had drawn, so a drawn file that lands at another index
+    // (another range: files added before it) stays in the DOM, unseen and tall; the drawn window then sticks
+    // and jumps while scrolling (Chromium draws before the new list arrives)
+    if (moved(v.ids, ids)) cv.setItems([]);
+    v.ids = ids;
+    cv.setItems(items);
+    if ([...pictures].join("\n") !== [...pictureFiles.peek()].join("\n")) pictureFiles.value = pictures;
+    const queued = pendingScroll.current;
+    if (queued) {
+      pendingScroll.current = null;
+      requestAnimationFrame(() => view.current?.scrollTo(queued));
+    }
+    if (!v.scrolled) {
+      const spot = takeSpot(location.hash);
+      const r = route.peek();
+      const target = r.name === "compare" && r.file ? r : null;
+      if (spot && spot.compareTop !== null) {
+        v.scrolled = true;
+        const top = spot.compareTop;
+        if (spot.cursor) cursor.value = spot.cursor;
+        requestAnimationFrame(() => view.current?.scrollTo({ type: "position", position: top }));
+      } else if (target) {
+        v.scrolled = true;
+        requestAnimationFrame(() => latest.current.openTarget(target.file!, target.line ?? null, target.side === "old" ? "deletions" : "additions"));
+      } else if (compareFocus.value !== null) {
+        v.scrolled = true;
+        const id = compareFocus.value;
+        requestAnimationFrame(() => latest.current.scrollToThread(id));
+      }
+    }
+  }, [files, visible, byPath, pending, fileOpen.value, viewed.value, diffStyle.value, wrap.value, svgView.value]);
+
+  useEffect(() => {
+    if ((isSha(from) || isSha(to)) && !commits.peek()) void loadCommits();
+  }, [from, to]);
+  const pickRange = (f: string, t: string) => navigate({ name: "compare", from: f, to: t });
+  const rows = fileRows.value;
+  const allViewed = rows.length > 0 && rows.every((x) => isViewed(x.fd));
+
+  return (
+    <div class="compare">
+      <div class="compare-head">
+        <h2 class="range-title" title={data ? `${data.from.label} (${data.from.sha.slice(0, 8)}) → ${data.to.label} (${data.to.sha.slice(0, 8)})` : ""}>
+          {rangeTitle(from, to)}
+          {data ? <span class="subtle"> · {data.files.length} file{data.files.length === 1 ? "" : "s"}</span> : null}
+        </h2>
+        <ReviewedButton to={to} toSha={data?.to.sha ?? null} allViewed={allViewed} />
+        <FoldSummary />
+        <span class="spacer" />
+        <button class={`btn ghost small${wrap.value ? " on" : ""}`} title="w" onClick={() => (wrap.value = !wrap.value)}>wrap</button>
+        <button class="btn ghost small" onClick={() => (diffStyle.value = diffStyle.value === "split" ? "unified" : "split")}>
+          {diffStyle.value === "split" ? "unified" : "split"}
+        </button>
+      </div>
+      <div class="range-bar">
+        <VersionStrip from={from} to={to} onPick={pickRange} />
+        <Presets from={from} to={to} onPick={pickRange} />
+        <button class={`chip commits-chip${commitPicker.value ? " on" : ""}`} title="pick commits to compare (Space g c)" onClick={() => (commitPicker.value = !commitPicker.value)}>
+          commits…
+        </button>
+      </div>
+      {commitPicker.value ? <CommitPicker from={from} to={to} fromSha={data?.from.sha ?? null} toSha={data?.to.sha ?? null} onPick={pickRange} /> : null}
+      {error ? <div class="note error">{error}</div> : null}
+      {data ? (
+        <div class="note subtle">
+          {shown.length} threads on this diff{shown.length ? <> (<Kbd>]t</Kbd>/<Kbd>[t</Kbd> to step, <Kbd>Enter</Kbd> to open)</> : null} ·{" "}
+          {outside.length} elsewhere
+          {hiddenCount || showResolved.value ? (
+            <>
+              {" · "}
+              <button class="link" onClick={() => (showResolved.value = !showResolved.value)}>
+                {showResolved.value ? "hide resolved" : `${hiddenCount} resolved hidden · show`}
+              </button>
+            </>
+          ) : null}
+          {data.files.length === 0 ? " · no changes between these two" : ""}
+          {" · "}select lines or click <b>+</b> to comment ({"j k V i"}) · <Kbd>/</Kbd> search · <Kbd>]v</Kbd> <Kbd>[v</Kbd> <Kbd>{"{"}</Kbd> <Kbd>{"}"}</Kbd> move the range · <Kbd>Space</Kbd> menu · <Kbd>?</Kbd> keys
+        </div>
+      ) : !error ? (
+        <div class="note">loading…</div>
+      ) : null}
+      {data && outside.length ? (
+        <details class="outside">
+          <summary>Threads outside this diff ({outside.length})</summary>
+          <p class="note subtle">Their code did not change between {data.from.label} and {data.to.label}, or it is gone.</p>
+          {outside.map((id) => {
+            const t = threads.value.find((x) => x.id === id);
+            return t ? <ThreadMini id={t.id} state={t.anchor.state} /> : null;
+          })}
+        </details>
+      ) : null}
+      <div class="code-stack">
+        <div class="codeview-host" ref={host} />
+        <PeekView />
+      </div>
+    </div>
+  );
+}
+
+export function stepCompareThread(dir: 1 | -1): boolean {
+  const cur = compareHandle.current;
+  if (!cur) return false;
+  const { order, scrollToThread } = cur;
+  if (order.length === 0) {
+    notify("no threads on this diff");
+    return true;
+  }
+  const i = order.findIndex((p) => p.threadId === compareFocus.value);
+  const next = order[i === -1 ? (dir === 1 ? 0 : order.length - 1) : (i + dir + order.length) % order.length]!;
+  compareFocus.value = next.threadId;
+  scrollToThread(next.threadId);
+  return true;
+}
+
+export function openFocusedCompareThread(): boolean {
+  const id = compareFocus.value;
+  if (id === null || !compareHandle.current?.order.some((p) => p.threadId === id)) return false;
+  navigate({ name: "thread", id });
+  return true;
+}
+
+export const compareHandle: { current: { order: ComparePlacement[]; scrollToThread: (id: number) => boolean; cancelPending: () => void } | null } = { current: null };

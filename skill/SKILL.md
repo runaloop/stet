@@ -1,0 +1,117 @@
+---
+name: stet-review
+description: Take part in a local multi-round code review as the author, through the `stet` CLI. Use when the user says the work is ready for review, asks you to "answer the review", "take the review comments", "check stet", "fix what I commented", mentions stet threads or versions, or when `stet status` shows threads that need an agent reply. You reply in each thread, fix the code, and hand over the next version; the human reviews in the stet web UI.
+---
+
+# stet review loop (you are the author)
+
+The human is the reviewer. They comment on line ranges in the stet web UI and submit a
+review. You answer every thread, fix the code, and hand over a new version. Threads,
+versions and replies live in `.git/stet/`; every worktree of the branch sees the same review.
+
+All commands print JSON when piped. Run them from the worktree you are working in.
+
+First run `stet status --json`. If `.review.source` is `"index"`, the human reviews **staged
+changes**: versions are snapshots of the index, compared with HEAD. Then, after you fix a file,
+stage exactly that file (`git add <file>`) before `stet version create`, or the fix will not be in
+the version. Never stage anything else and never commit.
+
+## 1. Hand over a version
+
+When the task (or a round of fixes) is done:
+
+```bash
+stet version create --label "<one line: what this version contains>"
+stet status --json            # .server.url is the review UI, if it is running
+```
+
+Tell the human the version number and give the `.server.url` from your own worktree: one server serves
+every worktree of the repository, and the URL names your branch's review (`?review=N`). A URL from
+another worktree, or one without `review=`, opens someone else's review. If `.server` is null, run
+`stet serve --open --json`: it starts the server on its own and returns at once (when a server already runs, it
+opens your review there). Never keep `stet serve` running in your shell or as a background task: those are
+stopped after a time limit, and the review UI dies with them in the middle of the review.
+`version create` exits with code 3 when nothing changed since the last version: that is fine
+if you only answered questions.
+
+## 2. Wait for the review
+
+```bash
+stet wait --for review --timeout 60m --json
+```
+
+It returns immediately when threads already wait for you (`reason: "pending"`), otherwise
+when the reviewer submits. Exit code 5 means timeout: run it again or ask the human.
+Run it in the background if your harness can, and let it wake you when it exits. If your harness has no
+such background commands, do not sit in a long wait (a command in the foreground is stopped after a
+time limit): end your turn after handing over the version and ask the human to call you back ("answer
+the review") once they have submitted. Then start at step 3.
+
+## 3. Read the threads
+
+```bash
+stet threads list --needs-reply --json
+stet thread show <id> --json
+```
+
+`thread show` gives the conversation, the code the comment was written on
+(`code.then`), where that code is now (`thread.anchor`: `ok`, `moved`, `changed` or
+`outdated`), and the thread's timeline across versions. Read the whole conversation, not
+only the last comment. `anchor.path` and `anchor.range` point at the current location.
+
+A thread on an image has `thread.region` (`x,y,w,h` in pixels of an `iw`×`ih` image) instead of lines,
+and `code.then` is null. `thread show` writes the picture the reviewer framed and prints its path:
+`image.shot` is the image with the area framed and the rest dimmed, `image.crop` the area at full size.
+Open both with the tool you read images with before you answer; the frame is what the comment is about.
+The thread turns `changed` once the image file changes.
+
+## 4. Answer every thread, exactly once per round
+
+Pick one intent per thread:
+
+| Intent | When | Body |
+|---|---|---|
+| `fixed` | you changed the code | what you changed and where (file:line) |
+| `answered` | it was a question, no code change | the answer |
+| `disagree` | you think the current code is right | the reason, concretely |
+| `question` | you need a decision from the reviewer | the question, with options |
+
+```bash
+stet reply <id> --intent fixed --body "Moved the null check before the cache lookup (Foo.kt:42)."
+stet reply <id> --intent disagree --body - <<'EOF'
+Multi-line bodies go through stdin.
+EOF
+```
+
+Reply to a specific comment in the thread with `--to <commentId>` when the thread branches.
+Refer to other threads as `#N`: the review UI turns that into a link. When you agree but wait for the
+reviewer (an answer in another thread, a choice), use `question` and say what you wait for; the UI shows
+the reviewer that the thread waits for them.
+
+Make the code changes in the working tree as usual. Reply `fixed` only after the change is
+actually in the files.
+
+## 5. Hand over the next version
+
+```bash
+stet version create --label "fixes for review <N>"
+```
+
+Report to the human: how many threads fixed / answered / disagreed / questions, and the
+version number. Then go back to step 2.
+
+## Rules
+
+- Reply in the language the reviewer wrote the thread in (a comment in Spanish gets a reply in Spanish),
+  whatever language the code, commits or docs use. Code identifiers, paths and event names stay as is.
+- Never resolve or reopen threads: that is the reviewer's call. (`stet resolve` exits 3 for you.)
+- Never commit, amend, checkout, stash or reset unless the human asked; stet snapshots the
+  working tree itself, uncommitted changes are fine. The one exception is the staged mode above:
+  `git add` the files you fixed.
+- Never edit files under `.git/stet/`. If `stet` fails because it may not write there (a sandbox that lets
+  you write only the worktree; a linked worktree keeps it in the main checkout's `.git`), ask the human
+  to allow it. Do not work around it.
+- Do not start new threads unless you need to flag something the reviewer must see; then use
+  `stet comment add --file <path> --range <a-b> --body <text>`.
+- If a thread is `outdated`, read `code.then` to understand what it was about and answer
+  anyway; say where that code went, or that it is gone.

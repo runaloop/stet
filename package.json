@@ -1,0 +1,45 @@
+{
+  "name": "stet",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.4.2",
+  "bin": {
+    "stet": "src/cli.ts"
+  },
+  "scripts": {
+    "dev": "bun --hot src/cli.ts serve",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "build": "rm -rf dist && bun build --compile --minify --splitting src/cli.ts --outfile dist/stet",
+    "install:local": "bun run build && mkdir -p ~/.local/bin && cp dist/stet ~/.local/bin/stet",
+    "perf": "bun test/perf/run.ts",
+    "ui-check": "bun test/perf/ui-check.ts",
+    "check": "bun scripts/check.ts",
+    "guide": "bun scripts/guide/run.ts",
+    "perf:scroll": "bun test/perf/scroll.ts"
+  },
+  "dependencies": {
+    "@pierre/diffs": "1.4.3",
+    "@preact/signals": "2.11.2",
+    "diff": "9.0.0",
+    "preact": "10.29.8"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "20.14.5",
+    "@types/bun": "1.4.2",
+    "typescript": "7.0.2"
+  },
+  "engines": {
+    "bun": ">=1.4.2"
+  },
+  "description": "Local code review between you and your coding agent, in rounds: threads that follow the code across versions",
+  "license": "MIT",
+  "keywords": [
+    "code-review",
+    "coding-agent",
+    "git",
+    "diff",
+    "cli"
+  ]
+}
