@@ -40,8 +40,8 @@ screenshots; the [UI reference](docs/ui.md) lists every page and key.
 
 ## Install
 
-Requirements: git 2.36+, and [Bun](https://bun.com) 1.4.2+ to build. Linux is tested; macOS and Windows
-should work but have not been tested.
+Requirements: git 2.36+, and [Bun](https://bun.com) 1.4.2+ to build. The tests run on Linux and macOS in CI;
+Windows should work but has not been tested.
 
 From a clone of this repository:
 
