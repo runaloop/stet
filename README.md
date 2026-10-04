@@ -161,20 +161,20 @@ git for-each-ref --format='delete %(refname)' refs/stet | git update-ref --stdin
 
 ## Compared to other tools
 
-As of September 2026:
+As of October 2026:
 
 - **GitHub pull requests, GitLab merge requests.** The model stet copies: versions, threads, outdated notes,
   resolve, a review submitted at once. They work on pushed commits on a server, and the agent is not in the
   conversation.
 - **[Hunk](https://github.com/modem-dev/hunk)** is a fine terminal diff viewer made for agent work and takes
-  any two refs. Its notes (as of 0.22) are anchored to fixed line numbers and have no resolved state.
+  any two refs. Its notes (as of 0.23) are anchored to fixed line numbers and have no resolved state.
 - **[Orca](https://github.com/stablyai/orca)** runs agents side by side and lets you comment on their diffs.
   The comments are kept per worktree path with line numbers only, have no replies or resolve, and go to the
   agent as one prompt.
 - **[diffity](https://github.com/nilbuild/diffity), [tuicr](https://github.com/agavra/tuicr),
-  [git-appraise](https://github.com/google/git-appraise)** each cover part of it: threads and resolve, a
-  review TUI, reviews stored in git. None has versions, threads that follow the code and per-branch storage
-  together.
+  [git-appraise](https://github.com/google/git-appraise)** each cover part of it: threads and resolve kept
+  per branch, a review TUI, reviews stored in git. None has versions, threads that follow the code and
+  per-branch storage together.
 
 ## Contributing, security, license
 
