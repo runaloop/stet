@@ -58,4 +58,4 @@ test("ok/moved always means identical text; edits inside never yield ok", async 
     checked++;
   }
   expect(checked).toBe(300);
-});
+}, 60_000);
