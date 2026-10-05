@@ -43,7 +43,7 @@ Payments go through the old gateway, see [payments](docs/payments.md).
 
 const after = `# Shop
 
-A small demo shop for the Android app. The cart is kept in SQLite, so it survives a restart.
+A small demo shop for the Android app. The cart lives in SQLite and survives a restart.
 
 ## Run it
 
@@ -96,8 +96,6 @@ export async function markdownGuide() {
       await p.go("#/compare/base..1");
       await p.waitFor(`document.querySelector(".md-toggle")`, 15000);
       await p.eval(`[...document.querySelectorAll(".side-tabs button")].find(b => b.textContent === "Files").click(); document.activeElement?.blur(); true`);
-      await p.sleep(800);
-      await p.eval(`document.querySelector(".md-toggle").click(); true`);
       await p.waitFor(`${md}?.querySelectorAll("img").length === 2 && [...${md}.querySelectorAll("img")].every(i => i.complete) && ${md}.querySelector("pre.shiki")`, 15000);
       await p.sleep(600);
       await toTop(`.md-view[data-file="README.md"]`, 70);
@@ -110,11 +108,13 @@ export async function markdownGuide() {
       const card = await p.need(".md-cell[data-side='new'] .md-threads .thread-mini");
       const pictureOld = await p.need(".md-cell[data-side='old'] img");
       const pictureNew = await p.need(".md-cell[data-side='new'] img");
+      const gap = await p.need(".md-cell[data-side='old'] .md-gap");
       await p.shot("markdown-1.png", [
-        { html: "<b>¶ rendered</b> / <b>‹/› code</b>: a Markdown file as text or rendered", at: { x: toggle.x - 470, y: toggle.y - 46 }, to: { x: toggle.x - 4, y: toggle.y + toggle.h / 2 }, ring: toggle, w: 400 },
+        { html: "<b>‹/› code</b>: this file as code, at the same place on the screen. Markdown opens rendered (<code>compare.markdown</code>)", at: { x: toggle.x - 520, y: toggle.y - 56 }, to: { x: toggle.x - 4, y: toggle.y + toggle.h / 2 }, ring: toggle, w: 450 },
         { html: "Split view: the old version and the new one, block facing block. Unchanged blocks stay level", at: { x: 40, y: 250 }, to: { x: heads.x - 4, y: heads.y + heads.h / 2 }, w: 420 },
-        { html: "A changed block is marked on both sides: red what was, green what is", at: { x: 40, y: 360 }, to: { x: changedOld.x - 14, y: changedOld.y + changedOld.h / 2 }, ring: { x: changedOld.x - 12, y: changedOld.y, w: changedNew.x + changedNew.w - changedOld.x + 12, h: Math.max(changedOld.h, changedNew.h) }, w: 420 },
-        { html: "Removed: red on the old side, nothing facing it. A thread on old lines shows on the old side", at: { x: 40, y: removed.y - 20 }, to: { x: removed.x - 14, y: removed.y + removed.h / 2 }, w: 420 },
+        { html: "The words that changed: struck through on the old side, green on the new one", at: { x: 40, y: 360 }, to: { x: changedOld.x - 14, y: changedOld.y + changedOld.h / 2 }, ring: { x: changedOld.x - 12, y: changedOld.y, w: changedNew.x + changedNew.w - changedOld.x + 12, h: Math.max(changedOld.h, changedNew.h) }, w: 420 },
+        { html: "Items of a changed list face each other; an added one faces an empty slot", at: { x: 40, y: gap.y - 70 }, to: { x: gap.x - 4, y: gap.y + gap.h / 2 }, ring: gap, w: 420 },
+        { html: "Removed: red on the old side, nothing facing it. A thread on old lines shows on the old side", at: { x: 40, y: removed.y + 10 }, to: { x: removed.x - 14, y: removed.y + removed.h / 2 }, w: 420 },
         { html: "A thread shows on the block its lines are in, with its card under it", at: { x: card.x + 200, y: card.y + 50 }, to: { x: card.x + 160, y: card.y + card.h + 2 }, ring: card, w: 330 },
         { html: "Each side's pictures come from its own version", at: { x: 40, y: pictureOld.y + 20 }, to: { x: pictureOld.x - 4, y: pictureOld.y + pictureOld.h / 2 }, ring: { x: pictureOld.x, y: pictureOld.y, w: pictureNew.x + pictureNew.w - pictureOld.x, h: pictureNew.h }, w: 420 },
       ]);
@@ -146,10 +146,12 @@ export async function markdownGuide() {
       await p.sleep(600);
       await toTop(`.md-view[data-file="README.md"]`, 70);
       await p.sleep(800);
-      const was = await p.need(".md-one .md-cell[data-side='old']");
-      const now = await p.need(".md-one .md-cell[data-side='new'] p.md-changed");
+      const inline = await p.need(".md-one .md-cell[data-side='new'] p.md-words");
+      const was = await p.need(".md-one .md-cell[data-side='old']", "Order history");
+      const now = await p.need(".md-one .md-cell[data-side='new'] ul");
       await p.shot("markdown-3.png", [
-        { html: "Unified view: one column. A changed block's old version, marked “was”, stands above its new one; unchanged blocks show once", at: { x: was.x + was.w + 30, y: was.y - 10 }, to: { x: was.x + was.w - 20, y: was.y + was.h / 2 }, ring: { x: was.x, y: was.y, w: was.w, h: now.y + now.h - was.y }, w: 360 },
+        { html: "Unified view: one column. A block with a few words changed shows once, with the changes in its text", at: { x: inline.x + inline.w + 30, y: inline.y - 40 }, to: { x: inline.x + inline.w + 4, y: inline.y + inline.h / 2 }, ring: inline, w: 360 },
+        { html: "Items added: the old version, marked “was”, stands above the new one", at: { x: was.x + was.w + 30, y: was.y + 20 }, to: { x: was.x + was.w - 20, y: was.y + was.h / 2 }, ring: { x: was.x, y: was.y, w: was.w, h: now.y + now.h - was.y }, w: 360 },
       ]);
       await p.eval(`[...document.querySelectorAll(".compare-head .btn")].find(b => b.textContent === "split").click(); true`);
     });

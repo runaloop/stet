@@ -106,20 +106,24 @@ their paths: the image with the area framed and the rest dimmed, and the area wi
 
 ## Markdown
 
-A Markdown file of the diff shows as code; **¶ rendered** on its header shows it rendered (and **‹/› code** goes
-back). In split view the old version and the new one stand side by side, block facing block, so a reader sees
-what changed in the text as it reads, not in the markup. Pictures of the repository load at the version of their
-side; pictures from the web are not loaded, raw HTML stays text.
+A Markdown file of the diff shows rendered (`stet config set compare.markdown code` makes code the default, and
+**‹/› code** on its header switches one file, keeping your place on the screen). In split view the old version and
+the new one stand side by side, block facing block, so a reader sees what changed in the text as it reads, not in
+the markup: the words that changed are marked, items and rows of a changed list or table face each other, and an
+added one faces an empty slot. Pictures of the repository load at the version of their side; pictures from the web
+are not loaded, raw HTML stays text.
 
-![The old and the new README side by side, with threads on their blocks](markdown-1.png)
+![The old and the new README side by side, with the changed words and a thread on a block](markdown-1.png)
 
 Threads are still on lines, so the agent gets the same thread as from the code. A thread shows on the blocks its
 lines are in; **+** beside a block, or `i` on the block under the cursor, starts one on the block's lines. The
-cursor keys of the code move over the blocks, and **‹/›** beside a block shows its lines in the code.
+cursor keys of the code move over the blocks, and **‹/›** beside a block shows its lines in the code. Search
+finds matches in the rendered text.
 
 ![A thread on a list item, and the buttons beside a block](markdown-2.png)
 
-In unified view the text is one column: a changed block's old version, marked "was", stands above its new one.
+In unified view the text is one column: a block with a few words changed shows once with the changes in it, and a
+block that was rewritten or changed its structure shows its old version, marked "was", above the new one.
 
 ![The same change in unified view](markdown-3.png)
 
