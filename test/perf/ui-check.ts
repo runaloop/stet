@@ -1092,6 +1092,39 @@ try {
       lined,
     );
 
+    const onLine = (line: number, body: string) => JSON.parse(run(repo, ["bun", CLI, "comment", "add", "--file", "docs/list.md", "--range", `${line}-${line}`, "--at", String(longV), "--body", body, "--as", "reviewer", "--json"])).id as number;
+    const onRows = [onLine(8, "which port?"), onLine(9, "why 64 MB?"), onLine(2, "invoices how?")];
+    // where each card is: what stands before and after its slot, how far below its row, and whether the facing slot is level
+    const cardsAt = () =>
+      b.eval(`(() => { const v = ${lmd}; if (!v) return null; const ids = ${JSON.stringify(onRows)}; return ids.map(id => {
+        const mini = v.querySelector('.md-slot .thread-mini[data-thread="' + id + '"]'); if (!mini) return null;
+        const slot = mini.closest(".md-slot"); const cell = slot.closest(".md-cell"); const before = slot.previousElementSibling; const after = slot.nextElementSibling;
+        const rows = (e) => e ? [...e.querySelectorAll(":scope > * > tr, :scope > li")].map(r => r.textContent.trim().split(/\\s+/)[0]) : [];
+        const last = before?.tagName === "TABLE" ? [...before.querySelectorAll("tr")].pop() : before?.lastElementChild;
+        const facing = [...v.querySelectorAll('.md-cell[data-row="' + cell.dataset.row + '"]')].find(c => c !== cell)?.querySelector('.md-slot[data-pair="' + slot.dataset.pair + '"]');
+        return { before: rows(before).join("|"), after: rows(after).join("|"), gap: Math.round(mini.getBoundingClientRect().top - last.getBoundingClientRect().bottom), facing: facing ? Math.round(facing.getBoundingClientRect().top - slot.getBoundingClientRect().top) : null };
+      }); })()`);
+    const inSplit = (await waitFor(`${lmd}?.querySelectorAll(".md-slot .thread-mini").length === 3`, 10000)) ? await cardsAt() : null;
+    await b.eval(`[...document.querySelectorAll(".compare-head .btn")].find(x => x.textContent === "unified").click(); true`);
+    await sleep(800);
+    await b.eval(`[...document.querySelectorAll(".side-tabs button")].find(x => x.textContent.startsWith("Files")).click(); true`);
+    await sleep(200);
+    await b.eval(`[...document.querySelectorAll(".file-row")].find(r => r.textContent.includes("list.md")).querySelector(".file-link").click(); true`);
+    const inUnified = (await waitFor(`document.querySelector('.md-view.md-one[data-file="docs/list.md"]')?.querySelectorAll(".md-slot .thread-mini").length === 3`, 10000)) ? await cardsAt() : null;
+    await b.eval(`[...document.querySelectorAll(".compare-head .btn")].find(x => x.textContent === "split").click(); true`);
+    await sleep(800);
+    const wantRows = (cards: { before: string; after: string; gap: number }[] | null) =>
+      !!cards &&
+      cards[0]!.before === "Setting|port" && cards[0]!.after === "Setting|cache" &&
+      cards[1]!.before === "Setting|cache" && cards[1]!.after === "Setting|theme" &&
+      cards[2]!.before === "Cart|Pay" && cards[2]!.after === "Order|Promo" &&
+      cards.every((c) => c.gap >= 0 && c.gap <= 16);
+    check(
+      "a thread on a table row or a list item has its card right under the row: the table goes on below with its header again, the list from the next item; in split view the other side breaks level with it",
+      wantRows(inSplit) && inSplit!.every((c: { facing: number | null }) => c.facing !== null && Math.abs(c.facing) <= 2) && wantRows(inUnified),
+      { inSplit, inUnified },
+    );
+
     const long = `document.querySelector('.md-view[data-file="docs/long.md"]')`;
     const longToggle = toggleOf("docs/long.md");
     await b.eval(`location.hash = "#/compare/${longV - 1}..${longV}?file=docs/long.md"; true`);
@@ -1103,17 +1136,35 @@ try {
     await sleep(200);
     const hostTop = `document.querySelector(".codeview-host").getBoundingClientRect().top`;
     const blockY = await b.eval(`Math.round(${long}.querySelector('.md-cell[data-side="new"] p[data-start="${27 * 4 - 1}"]').getBoundingClientRect().top - ${hostTop})`);
-    await b.eval(`${longToggle}.click(); true`);
-    await sleep(1600);
-    const codeRow = `(() => { const c = [...document.querySelectorAll(".codeview-host diffs-container")].find(c => c.shadowRoot?.querySelector("[data-title]")?.textContent === "docs/long.md"); const r = c ? [...c.shadowRoot.querySelectorAll('code[data-additions] > [data-content] > [data-line="${27 * 4 - 1}"]')][0] : null; return r ? { y: Math.round(r.getBoundingClientRect().top - ${hostTop}), cursor: r.getAttribute("data-stet-mark") } : null; })()`;
-    const asCodeRow = await b.eval(codeRow);
-    await b.eval(`${longToggle}.click(); true`);
-    await sleep(2200);
-    const longBack = await b.eval(`(() => { const e = ${long}?.querySelector('.md-cell[data-side="new"] p[data-start="${27 * 4 - 1}"]'); return e ? { y: Math.round(e.getBoundingClientRect().top - ${hostTop}), cursor: e.classList.contains("md-cursor") } : null; })()`);
+    // every frame for 2 s after the click: the scroll position and where the point you were at is on the screen
+    const traced = (anchor: string) =>
+      b.eval(`new Promise(done => {
+        const h = document.querySelector(".codeview-host");
+        const t0 = performance.now();
+        const rec = [];
+        const at = () => { const e = (() => { ${anchor} })(); return e ? Math.round(e.getBoundingClientRect().top - h.getBoundingClientRect().top) : null; };
+        const f = () => { rec.push([Math.round(h.scrollTop), at()]); if (performance.now() - t0 < 2000) requestAnimationFrame(f); else done(rec); };
+        ${longToggle}.click();
+        requestAnimationFrame(f);
+      })`) as Promise<[number, number | null][]>;
+    // after the frame that first shows the point where it was, the page may still settle a little, but not shake
+    const steady = (rec: [number, number | null][], y: number) => {
+      const first = rec.findIndex((r) => r[1] !== null && Math.abs(r[1] - y) <= 4);
+      const later = rec.slice(Math.max(first, 0)).flatMap((r, i, a) => (i > 0 && r[0] !== a[i - 1]![0] ? [Math.abs(r[0] - a[i - 1]![0])] : []));
+      const end = rec[rec.length - 1]![1];
+      return { ok: first !== -1 && later.length <= 2 && later.every((d) => d <= 16) && end !== null && Math.abs(end - y) <= 4, first, later, end };
+    };
+    const line = 27 * 4 - 1;
+    const longToCode = steady(await traced(`const c = [...document.querySelectorAll(".codeview-host diffs-container")].find(c => c.shadowRoot?.querySelector("[data-title]")?.textContent === "docs/long.md"); return c ? c.shadowRoot.querySelector('code[data-additions] > [data-content] > [data-line="${line}"]') : null;`), blockY);
+    await sleep(300);
+    const codeCursor = await b.eval(`(() => { const c = [...document.querySelectorAll(".codeview-host diffs-container")].find(c => c.shadowRoot?.querySelector("[data-title]")?.textContent === "docs/long.md"); return c?.shadowRoot.querySelector('code[data-additions] > [data-content] > [data-line="${line}"]')?.getAttribute("data-stet-mark") ?? ""; })()`);
+    const toRendered = steady(await traced(`return ${long}?.querySelector('.md-cell[data-side="new"] p[data-start="${line}"]');`), blockY);
+    await sleep(300);
+    const blockCursor = await b.eval(`!!${long}?.querySelector('.md-cell[data-side="new"] p[data-start="${line}"]')?.classList.contains("md-cursor")`);
     check(
-      "switching a long Markdown file between rendered and code keeps the point you were at, at the same height, and the cursor on it",
-      !!asCodeRow && Math.abs(asCodeRow.y - blockY) <= 3 && (asCodeRow.cursor ?? "").includes("cursor") && !!longBack && Math.abs(longBack.y - blockY) <= 3 && longBack.cursor,
-      { blockY, asCodeRow, longBack },
+      "switching a long Markdown file between rendered and code keeps the point you were at, at the same height, without the page shaking, and the cursor on it",
+      longToCode.ok && toRendered.ok && codeCursor.includes("cursor") && blockCursor,
+      { blockY, longToCode, toRendered, codeCursor, blockCursor },
     );
     await b.eval(`document.activeElement?.blur(); true`);
     const docTop = (e: string) => `Math.round(${e}.getBoundingClientRect().top + document.querySelector(".codeview-host").scrollTop)`;

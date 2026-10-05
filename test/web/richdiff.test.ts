@@ -9,6 +9,7 @@ afterAll(async () => {
 });
 
 const { isSimple, markInline, markPairs, markWords, REWRITTEN, rewritten, textOf, unitsOf } = await import("../../web/lib/richdiff.ts");
+const { breakAfter, unitOf } = await import("../../web/lib/breaks.ts");
 
 const box = (html: string) => {
   const d = document.createElement("div");
@@ -93,6 +94,43 @@ describe("one version with the changes in it", () => {
     const e = box(`<ul data-b="0"><li data-b="1">one!</li><li data-b="2">two</li></ul>`);
     const list: Pair[] = [{ old: [0], new: [0], children: [leaf(1, 1), { old: [], new: [2], children: null }] }];
     expect(isSimple(list, unitsOf(c, e, list), tags(c, e))).toBe(false);
+  });
+});
+
+describe("a thread under its row or item", () => {
+
+  test("a table ends after the row, a slot follows, and the rest goes on with the header again", () => {
+    const d = box(
+      `<table data-b="0"><thead data-b="1"><tr data-b="2"><th>k</th><th>v</th></tr></thead><tbody data-b="3"><tr data-b="4"><td>a</td><td>1</td></tr><tr data-b="5"><td>b</td><td>2</td></tr><tr data-b="6"><td>c</td><td>3</td></tr></tbody></table>`,
+    );
+    breakAfter(d.querySelector('[data-b="4"]')!, "0");
+    breakAfter(d.querySelector('[data-b="5"]')!, "1");
+    expect([...d.children].map((e) => (e.tagName === "TABLE" ? [...e.querySelectorAll("tr")].map((r) => r.textContent).join("|") : `${e.className}@${e.getAttribute("data-after")}`))).toEqual([
+      "kv|a1",
+      "md-slot@4",
+      "kv|b2",
+      "md-slot@5",
+      "kv|c3",
+    ]);
+    expect(d.querySelectorAll('[data-b="2"]').length).toBe(1);
+    expect(d.querySelectorAll("thead.md-again").length).toBe(2);
+    expect(d.lastElementChild!.getAttribute("data-pair")).toBe("more-1");
+  });
+
+  test("the last row of a table needs no rest; an ordered list goes on from the next number", () => {
+    const t = box(`<table data-b="0"><tbody data-b="1"><tr data-b="2"><td>a</td></tr></tbody></table>`);
+    breakAfter(t.querySelector("tr")!, "0");
+    expect([...t.children].map((e) => e.tagName)).toEqual(["TABLE", "DIV"]);
+    const l = box(`<ol data-b="0" start="3"><li data-b="1">c</li><li class="md-gap"></li><li data-b="2">d</li><li data-b="3">e</li></ol>`);
+    breakAfter(l.querySelector('[data-b="2"]')!, "0");
+    expect(l.innerHTML).toBe(`<ol data-b="0" start="3"><li data-b="1">c</li><li class="md-gap"></li><li data-b="2">d</li></ol><div class="md-slot" data-after="2" data-pair="slot-0"></div><ol start="5" class="md-more" data-pair="more-0"><li data-b="3">e</li></ol>`);
+  });
+
+  test("a nested item breaks its own list, inside the item around it; a paragraph of a loose item stands for the item", () => {
+    const d = box(`<ul data-b="0"><li data-b="1">a<ul data-b="2"><li data-b="3">a1</li><li data-b="4">a2</li></ul></li><li data-b="5"><p data-b="6">b</p></li></ul>`);
+    breakAfter(unitOf(d.querySelector('[data-b="3"]')!)!, "0");
+    expect(d.querySelector('[data-b="1"]')!.innerHTML).toBe(`a<ul data-b="2"><li data-b="3">a1</li></ul><div class="md-slot" data-after="3" data-pair="slot-0"></div><ul class="md-more" data-pair="more-0"><li data-b="4">a2</li></ul>`);
+    expect(unitOf(d.querySelector('[data-b="6"]')!)!.getAttribute("data-b")).toBe("5");
   });
 });
 

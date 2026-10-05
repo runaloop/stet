@@ -8,10 +8,11 @@ const HEADER = 48;
 let release: (() => void) | null = null;
 
 /**
- * Keeps an element at `y` px below the top of the scroller while it is laid out (pictures load, code is highlighted,
- * pierre measures rows), until the reader scrolls, clicks or types. The element may appear later.
+ * Puts a rendered block `y` px below the top of the scroller: once as soon as it is drawn, and once more when the
+ * pictures above it have loaded (they push it down), within `ms` and unless the reader scrolls, clicks or types first.
+ * Between the two pierre keeps the place itself; a correction on every frame would fight its own and shake the page.
  */
-export function holdAt(scroller: HTMLElement, find: () => Element | null, y: number, ms = 1500): void {
+export function placeAt(scroller: HTMLElement, find: () => Element | null, y: number, ms = 1500): void {
   release?.();
   let done = false;
   const events = ["wheel", "pointerdown", "keydown"] as const;
@@ -23,14 +24,68 @@ export function holdAt(scroller: HTMLElement, find: () => Element | null, y: num
   release = stop;
   for (const ev of events) window.addEventListener(ev, stop, { capture: true, passive: true });
   const end = performance.now() + ms;
+  const fix = (el: Element) => {
+    const off = el.getBoundingClientRect().top - scroller.getBoundingClientRect().top - y;
+    if (Math.abs(off) >= 1) scroller.scrollTop += off;
+  };
+  const above = (el: Element) => [...(el.closest(".md-view")?.querySelectorAll("img") ?? [])].filter((img) => img.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+  let placed = false;
+  let last = NaN;
+  let still = 0;
   const tick = () => {
     if (done) return;
-    if (performance.now() > end) return stop();
     const el = find();
-    if (el) {
-      const off = el.getBoundingClientRect().top - scroller.getBoundingClientRect().top - y;
-      if (Math.abs(off) >= 1) scroller.scrollTop += off;
+    const late = performance.now() > end;
+    if (el && !placed) {
+      fix(el);
+      placed = true;
+    } else if (el) {
+      const top = el.getBoundingClientRect().top;
+      still = top === last ? still + 1 : 0;
+      last = top;
+      // the second time only once the layout around it is quiet: pictures loaded, nothing moved for a few frames
+      if (late || (still >= 4 && above(el).every((img) => img.complete))) {
+        fix(el);
+        return stop();
+      }
     }
+    if (late) return stop();
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+/**
+ * Puts a line of the code `y` px below the top: pierre's own line target keeps it there while it lays the rows out,
+ * and once the line has stood still for a few frames one last nudge takes up what pierre's sum leaves over.
+ */
+export function lineAt(scroller: HTMLElement, view: CodeView<never>, path: string, side: Side, line: number, y: number, ms = 1500): void {
+  release?.();
+  const sticky = (view as unknown as { getStickyHeaderOffset?: () => number }).getStickyHeaderOffset?.() ?? 0;
+  view.scrollTo({ type: "line", id: path, lineNumber: line, side, align: "start", offset: y - sticky });
+  let done = false;
+  const events = ["wheel", "pointerdown", "keydown"] as const;
+  const stop = () => {
+    done = true;
+    for (const ev of events) window.removeEventListener(ev, stop, { capture: true });
+    if (release === stop) release = null;
+  };
+  release = stop;
+  for (const ev of events) window.addEventListener(ev, stop, { capture: true, passive: true });
+  const end = performance.now() + ms;
+  let last = NaN;
+  let still = 0;
+  const tick = () => {
+    if (done) return;
+    const el = rowElement(view, path, side, line);
+    const top = el ? el.getBoundingClientRect().top - scroller.getBoundingClientRect().top : NaN;
+    still = top === last ? still + 1 : 0;
+    last = top;
+    if (el && still >= 6) {
+      if (Math.abs(top - y) >= 1) scroller.scrollTop += top - y;
+      return stop();
+    }
+    if (performance.now() > end) return stop();
     requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);

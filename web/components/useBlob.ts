@@ -2,11 +2,16 @@ import { useEffect, useState } from "preact/hooks";
 import { api, type BlobDto } from "../api.ts";
 
 export function useBlob(sha: string | null, path: string | null): BlobDto | null | "loading" {
-  const [blob, setBlob] = useState<BlobDto | null | "loading">("loading");
+  const [blob, setBlob] = useState<BlobDto | null | "loading">(() => (sha && path ? (api.loadedBlob(sha, path) ?? "loading") : "loading"));
   useEffect(() => {
     let live = true;
     if (!sha || !path) {
       setBlob(null);
+      return;
+    }
+    const loaded = api.loadedBlob(sha, path);
+    if (loaded) {
+      setBlob(loaded);
       return;
     }
     setBlob("loading");

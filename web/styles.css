@@ -582,7 +582,7 @@ a.img-frame:hover, a.img-frame.hover, a.img-frame.focused { border-width: 3px; b
 .md table { border-collapse: collapse; display: block; max-width: 100%; overflow: auto; }
 .md th, .md td { border: 1px solid var(--border); padding: 4px 10px; }
 .md th { background: var(--bg-soft); font-weight: 600; }
-.md img { max-width: 100%; max-height: 70vh; vertical-align: middle; }
+.md img { max-width: 100%; max-height: 70vh; height: auto; object-fit: contain; vertical-align: middle; }
 .md a { color: var(--accent); }
 .md a.md-file { cursor: pointer; }
 .md a.md-file:hover { text-decoration: underline; }
@@ -620,6 +620,10 @@ a.img-frame:hover, a.img-frame.hover, a.img-frame.focused { border-width: 3px; b
 .md .md-changed.md-thread.md-words { background: var(--md-mark); }
 .md .md-gap { display: block; list-style: none; background: repeating-linear-gradient(-45deg, transparent 0 7px, color-mix(in srgb, var(--border) 60%, transparent) 7px 8px); border-radius: 3px; }
 .md tr.md-gap { display: table-row; }
+.md .md-slot { display: flow-root; }
+.md .md-slot:empty { background: repeating-linear-gradient(-45deg, transparent 0 7px, color-mix(in srgb, var(--border) 60%, transparent) 7px 8px); border-radius: 3px; }
+.md :is(ul, ol, table):has(+ .md-slot) { margin-bottom: 0; }
+.md .md-again th { color: var(--fg-soft); font-weight: 500; }
 .md tr.md-gap td { border-style: dashed; }
 .md img.md-target-new { outline: 2px dashed var(--warn); outline-offset: 2px; }
 .md a.md-target-new { text-decoration: underline wavy var(--warn); text-underline-offset: 3px; }
