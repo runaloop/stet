@@ -94,6 +94,7 @@ All commands print JSON when piped or with `--json`, except `stet export`, which
 | `stet serve [--open] [--stop]` | the web UI; `--open` runs it in the background and opens the browser |
 | `stet version create [--label] [--at <commit>]` | snapshot the working tree (or the index) as the next version, or make a commit one |
 | `stet versions diff <a> <b>` | files and thread placements between two refs (`base`, `N`, `latest`, `now`, `empty`, sha) |
+| `stet blame <path>:<a>-<b> [--at N\|now]` | where each line came from: the version that brought it (or `base`, or `now`), the round of review it answered and the threads the agent replied `fixed` to there, e.g. `40-44  v3 (round 2) · fixed #12 "cache invalidation on logout"`; at the latest version by default |
 | `stet threads list [--needs-reply] [--unread] [--state changed,outdated] [--new-since N] [--file glob]` | threads |
 | `stet thread show <id>` | conversation, timeline, code then / now, interdiff; for an image, the paths of the PNGs with the area framed |
 | `stet comment add --file <p> --range a-b --body <t> [--at <ref>] [--draft]` | new thread; `--region x,y,w,h` in place of `--range` for an area of an image |
