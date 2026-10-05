@@ -1,7 +1,7 @@
 import type { ComponentChild } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { compareNav, cursorSpace, fileRows, setCursor, type FileRow } from "../compare.ts";
-import { BINDINGS, contexts, nextKeys, picker, tokens, whichKey, type Binding, type Where } from "../keys.ts";
+import { BINDINGS, bindingsHere, contexts, nextKeys, picker, tokens, whichKey, type Binding, type Where } from "../keys.ts";
 import { fuzzyFilter, wordFilter } from "../lib/fuzzy.ts";
 import type { VersionDto } from "../../src/core/types.ts";
 import { onlyVersion, withEnd, type Round } from "../lib/versions.ts";
@@ -15,7 +15,7 @@ export function keyLabel(keys: string): string {
   return tokens(keys).map(shown).join(" ");
 }
 
-const WHERE: Record<Where, string> = { compare: "changes", thread: "thread", drafts: "drafts", everywhere: "everywhere" };
+const WHERE: Record<Where, string> = { compare: "changes", thread: "thread", code: "thread's code", drafts: "drafts", everywhere: "everywhere" };
 
 export function WhichKey() {
   const prefix = whichKey.value;
@@ -140,15 +140,12 @@ export function keysHere(): { b: Binding; here: boolean }[] {
   const where = contexts();
   const seen = new Set<string>();
   const here: { b: Binding; here: boolean }[] = [];
-  const elsewhere: { b: Binding; here: boolean }[] = [];
-  for (const b of BINDINGS) {
-    if (where.includes(b.where)) {
-      if (seen.has(b.keys)) continue;
-      seen.add(b.keys);
-      here.push({ b, here: true });
-    } else elsewhere.push({ b, here: false });
+  for (const b of bindingsHere()) {
+    if (seen.has(b.keys)) continue;
+    seen.add(b.keys);
+    here.push({ b, here: true });
   }
-  return [...here, ...elsewhere];
+  return [...here, ...BINDINGS.filter((b) => !where.includes(b.where)).map((b) => ({ b, here: false }))];
 }
 
 const keyText = (b: Binding) => `${b.desc} ${keyLabel(b.keys)} ${b.keys} ${WHERE[b.where]}`;
@@ -170,7 +167,7 @@ function KeyPicker() {
       )}
       pick={({ b, here }) => {
         if (here) b.run(1);
-        else notify(`${keyLabel(b.keys)} works on the ${WHERE[b.where]} page`);
+        else notify(b.where === "code" ? `${keyLabel(b.keys)} works in a thread's code: click into it, or press V or i there` : `${keyLabel(b.keys)} works on the ${WHERE[b.where]} page`);
       }}
     />
   );
@@ -256,6 +253,7 @@ export function Pickers() {
 const SECTIONS: [Where, string][] = [
   ["compare", "Changes (the diff)"],
   ["thread", "Thread"],
+  ["code", "Thread: in its code (after a click into it, V or i)"],
   ["drafts", "Drafts"],
   ["everywhere", "Everywhere"],
 ];

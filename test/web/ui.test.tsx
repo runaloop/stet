@@ -578,3 +578,101 @@ describe("restore as in a version", () => {
     }
   });
 });
+
+describe("comments from a thread's code", () => {
+  const detail: ThreadDetail = {
+    thread: thread({ id: 7, path: "src/a.kt", range: { start: 2, end: 2 }, title: "Why?" }),
+    comments: [{ id: 1, threadId: 7, parentId: null, role: "reviewer", author: "alice", body: "Why `B`?", intent: null, draft: false, snapshot: "s0", version: 1, createdAt: "2026-09-23T00:00:00Z", updatedAt: null, step: 0, unread: false }],
+    events: [],
+    timeline: [
+      { index: 0, kind: "anchor", label: "v1", sha: "s0", version: 1, state: "ok", method: "identity", path: "src/a.kt", range: { start: 2, end: 2 }, excerpt: null, commentIds: [1] },
+      { index: 1, kind: "version", label: "v2", sha: "s1", version: 2, state: "changed", method: "boundary", path: "src/a.kt", range: { start: 2, end: 2 }, excerpt: null, commentIds: [] },
+    ],
+    code: { then: { sha: "s0", path: "src/a.kt", start: 2, end: 2, firstLine: 1, lines: ["a", "b", "c"] }, now: null, interdiff: null },
+  };
+  const others = [detail.thread, thread({ id: 8, path: "src/b.kt" })];
+  const added: Record<string, unknown>[] = [];
+  const host = document.createElement("div");
+  let compare: typeof import("../../web/compare.ts");
+
+  beforeAll(async () => {
+    compare = await import("../../web/compare.ts");
+    document.body.appendChild(host);
+    respond = (url, init) => {
+      if (url.startsWith("/api/threads?") && init?.method === "POST") {
+        added.push(JSON.parse(String(init.body)));
+        return Response.json(thread({ id: 20, path: "src/a.kt", draft: true }));
+      }
+      if (url.startsWith("/api/threads/7")) return Response.json(detail);
+      if (url.startsWith("/api/threads?")) return Response.json(others);
+      if (url.startsWith("/api/drafts")) return Response.json([]);
+      if (url.startsWith("/api/cursors")) return Response.json({ reviewed: null, viewed: [] });
+      return null;
+    };
+  });
+
+  afterAll(() => {
+    render(null, host);
+    respond = null;
+    state.route.value = { name: "home" };
+  });
+
+  const open = async (mode: "diff" | "then") => {
+    state.route.value = { name: "thread", id: 7 };
+    state.threads.value = others;
+    state.detail.value = detail;
+    state.selectedStep.value = 1;
+    state.codeMode.value = mode;
+    render(<ThreadDetailView id={7} />, host);
+    await tick(300);
+  };
+  const box = () => host.querySelector(".code-area .new-thread .note")?.textContent ?? null;
+  const at = () => compare.cursorSpace.value.position(compare.cursor.value!);
+
+  test("the thread's keys work until V or i takes them into the code, where the cursor moves and comments; Esc leaves", async () => {
+    await open("diff");
+    expect(compare.codeFocus.value).toBe(false);
+    expect(key("V")).toBe(true);
+    expect(compare.codeFocus.value).toBe(true);
+    await tick();
+    expect(host.querySelector(".code-area")!.classList.contains("code-focus")).toBe(true);
+    expect(at()).toEqual({ side: "additions", line: 2 });
+    expect(key("j")).toBe(true);
+    expect(location.hash).not.toBe("#/thread/8");
+    expect(at()).toEqual({ side: "additions", line: 3 });
+    expect(key("i")).toBe(true);
+    await tick(50);
+    expect(compare.visualAnchor.value).toBeNull();
+    expect(box()).toBe("New thread on src/a.kt (v2) · lines 2–3 · or ❝ Quote in replyCopy link");
+
+    const ta = host.querySelector<HTMLTextAreaElement>(".code-area .new-thread textarea")!;
+    ta.value = "and these two";
+    ta.dispatchEvent(new Event("input"));
+    await tick();
+    host.querySelector<HTMLButtonElement>(".code-area .new-thread .btn.primary")!.click();
+    await tick(50);
+    expect(added.pop()).toEqual({ path: "src/a.kt", start: 2, end: 3, side: "new", at: "s1", body: "and these two", draft: true });
+    expect(state.toast.value?.text).toStartWith("draft #20 saved on src/a.kt:2–3");
+    expect(box()).toBeNull();
+
+    expect(key("k")).toBe(true);
+    expect(at()).toEqual({ side: "additions", line: 2 });
+    expect(key("Escape")).toBe(true);
+    expect(compare.codeFocus.value).toBe(false);
+    expect(key("j")).toBe(true);
+    expect(location.hash).toBe("#/thread/8");
+  });
+
+  test("lines of an older version: the box quotes them into the reply, or offers to restore them in this thread", async () => {
+    await open("then");
+    compare.leaveCode();
+    compare.cursor.value = null;
+    expect(key("c")).toBe(true);
+    await tick(50);
+    expect(box()).toBe("New thread on src/a.kt (v1) · lines 2 · or ❝ Quote in replyCopy link↺ Restore as in v1");
+    host.querySelector<HTMLButtonElement>(".code-area .new-thread .quote-lines")!.click();
+    await tick(50);
+    expect(state.replyQuote.value?.text).toBe("`src/a.kt:2` at v1:\n```kt\nb\n```\n");
+    expect(box()).toBeNull();
+  });
+});

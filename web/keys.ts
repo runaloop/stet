@@ -1,5 +1,6 @@
 import { signal } from "@preact/signals";
 import {
+  codeFocus,
   compareData,
   compareNav,
   copyLinesUrl,
@@ -10,13 +11,17 @@ import {
   grepHits,
   groupsOpen,
   isCollapsed,
+  leaveCode,
+  linesNav,
   openSearch,
   peek,
+  pendingLines,
   searchHits,
   searchScope,
   setCursor,
   sideTab,
   stepHit,
+  threadCode,
   visualAnchor,
 } from "./compare.ts";
 import type { Cursor, Span } from "./lib/cursor.ts";
@@ -60,7 +65,8 @@ import { question } from "./components/Choice.tsx";
 import { approveReview, submitReview } from "./views/Drafts.tsx";
 import { openExternal, reopenCurrent, resolveCurrent } from "./views/ThreadDetail.tsx";
 
-export type Where = "compare" | "thread" | "drafts" | "everywhere";
+/** `code`: a thread's code while it has the focus; there these come before the thread's own keys. */
+export type Where = "compare" | "thread" | "code" | "drafts" | "everywhere";
 
 export interface Binding {
   keys: string;
@@ -101,6 +107,20 @@ function go(id: number | null): void {
 
 const onCompare = () => route.value.name === "compare";
 const onThread = () => route.value.name === "thread";
+const inCode = () => onThread() && codeFocus.value;
+
+/** From a thread's page into its code, with the cursor where it was or on the thread's first line. */
+function intoCode(then: () => boolean): () => boolean {
+  return () => {
+    if (!threadCode.value) {
+      notify("this thread has no lines of code to comment on here");
+      return true;
+    }
+    codeFocus.value = true;
+    if (!cursor.value) setCursor(startCursor());
+    return then();
+  };
+}
 
 function move(to: Cursor | null): boolean {
   if (to) setCursor(to);
@@ -109,6 +129,8 @@ function move(to: Cursor | null): boolean {
 
 function startCursor(): Cursor | null {
   const space = cursorSpace.value;
+  const code = onThread() ? threadCode.value : null;
+  if (code) return space.locate(code.file.fd.name, "additions", code.start) ?? space.normalize(null);
   const focus = compareHandle.current?.order.find((p) => p.threadId === compareFocus.value);
   if (focus) {
     const at = space.locate(focus.path, focus.side, focus.range.start);
@@ -124,8 +146,8 @@ function moveBy(delta: number): boolean {
 
 function page(dir: 1 | -1): boolean {
   const c = cursor.value;
-  const to = c ? compareNav.current?.pageFrom(c, dir) : null;
-  return to ? move(to) : moveBy(dir * (compareNav.current?.pageRows() ?? 15));
+  const to = c ? linesNav()?.pageFrom(c, dir) : null;
+  return to ? move(to) : moveBy(dir * (linesNav()?.pageRows() ?? 15));
 }
 
 function repeat(n: number, step: (c: Cursor | null) => Cursor | null): boolean {
@@ -157,14 +179,14 @@ function threadUnderCursor(): number | null {
 }
 
 function focusPendingBox(): boolean {
-  const box = document.querySelector<HTMLTextAreaElement>(".codeview-host .new-thread textarea");
+  const box = document.querySelector<HTMLTextAreaElement>(":is(.codeview-host, .code-area) .new-thread textarea");
   if (!box) return false;
   box.focus();
   return true;
 }
 
 function comment(): boolean {
-  const nav = compareNav.current;
+  const nav = linesNav();
   const c = cursor.value ?? startCursor();
   if (!nav || !c) return true;
   if (!visualAnchor.value && focusPendingBox()) return true;
@@ -420,6 +442,45 @@ export const BINDINGS: Binding[] = [
     if (peek.value) peek.value = null;
     else navigate(lastCompare.value ? { name: "compare", ...lastCompare.value } : { name: "home" });
   }) },
+  { keys: "V", desc: "into the code: select lines from the cursor, at first on the thread's lines", where: "thread", run: intoCode(visual) },
+  { keys: "i", desc: "into the code: comment on the cursor line, at first the thread's first line", where: "thread", run: intoCode(comment) },
+  { keys: "a", desc: "into the code: comment (same as i)", where: "thread", run: intoCode(comment) },
+  { keys: "c", desc: "into the code: comment (same as i)", where: "thread", run: intoCode(comment) },
+  { keys: "gcc", desc: "into the code: comment on the cursor line", where: "thread", run: intoCode(comment) },
+
+  { keys: "j", desc: "cursor down (5j: five lines)", where: "code", visual: true, run: (n) => moveBy(n) },
+  { keys: "k", desc: "cursor up", where: "code", visual: true, run: (n) => moveBy(-n) },
+  { keys: "<Down>", desc: "cursor down", where: "code", visual: true, run: (n) => moveBy(n) },
+  { keys: "<Up>", desc: "cursor up", where: "code", visual: true, run: (n) => moveBy(-n) },
+  { keys: "gg", desc: "first line of the code shown", where: "code", visual: true, run: () => move(cursorSpace.value.at(0)) },
+  { keys: "G", desc: "last line of the code shown", where: "code", visual: true, run: () => move(cursorSpace.value.at(cursorSpace.value.total - 1)) },
+  { keys: "<C-d>", desc: "half a page down", where: "code", visual: true, run: () => page(1) },
+  { keys: "<C-u>", desc: "half a page up", where: "code", visual: true, run: () => page(-1) },
+  { keys: "]c", desc: "next change", where: "code", visual: true, run: (n) => repeat(n, (c) => cursorSpace.value.nextChange(c, 1)) },
+  { keys: "[c", desc: "previous change", where: "code", visual: true, run: (n) => repeat(n, (c) => cursorSpace.value.nextChange(c, -1)) },
+  { keys: "]h", desc: "next hunk", where: "code", visual: true, run: (n) => repeat(n, (c) => cursorSpace.value.nextHunk(c, 1)) },
+  { keys: "[h", desc: "previous hunk", where: "code", visual: true, run: (n) => repeat(n, (c) => cursorSpace.value.nextHunk(c, -1)) },
+  { keys: "zz", desc: "center the cursor line", where: "code", run: toggle(() => cursor.value && linesNav()?.revealCursor(cursor.value, "center")) },
+  { keys: "V", desc: "select lines (visual mode)", where: "code", run: visual },
+  { keys: "v", desc: "select lines (visual mode)", where: "code", run: visual },
+  { keys: "o", desc: "other end of the selection", where: "code", visual: true, run: () => {
+    const a = visualAnchor.value;
+    if (!a) return false;
+    visualAnchor.value = cursor.value;
+    return move(a);
+  } },
+  { keys: "i", desc: "comment on the cursor line or the selection: a new thread, or quote it in the reply", where: "code", visual: true, run: comment },
+  { keys: "a", desc: "comment (same as i)", where: "code", visual: true, run: comment },
+  { keys: "c", desc: "comment (same as i)", where: "code", visual: true, run: comment },
+  { keys: "gc", desc: "comment on the selection", where: "code", visual: true, run: comment },
+  { keys: "gcc", desc: "comment on the cursor line", where: "code", run: comment },
+  { keys: "<Space>gY", desc: "copy a link to the cursor line or the selection, on the Changes page of the versions shown", where: "code", visual: true, run: copyLink },
+  { keys: "<Esc>", desc: "close the preview, the selection, the comment box, then leave the code: the thread's keys again", where: "code", visual: true, run: toggle(() => {
+    if (peek.value) peek.value = null;
+    else if (visualAnchor.value) visualAnchor.value = null;
+    else if (pendingLines.value) linesNav()?.cancelComment();
+    else leaveCode();
+  }) },
 
   { keys: "S", desc: "request changes: send the drafts (no drafts: approve)", where: "drafts", run: reviewAction },
 
@@ -507,15 +568,20 @@ export function keyToken(e: KeyboardEvent): string | null {
 
 export function contexts(): Where[] {
   const r = route.value.name;
-  return r === "compare" ? ["compare", "everywhere"] : r === "thread" ? ["thread", "everywhere"] : r === "drafts" ? ["drafts", "everywhere"] : ["everywhere"];
+  return r === "compare" ? ["compare", "everywhere"] : r === "thread" ? [...(codeFocus.value ? (["code"] as Where[]) : []), "thread", "everywhere"] : r === "drafts" ? ["drafts", "everywhere"] : ["everywhere"];
+}
+
+/** The bindings of this page, the first context's first: a key bound twice does what the first one says. */
+export function bindingsHere(): Binding[] {
+  const where = contexts();
+  return BINDINGS.filter((b) => where.includes(b.where)).sort((a, b) => where.indexOf(a.where) - where.indexOf(b.where));
 }
 
 function candidates(prefix: string[]): Binding[] {
-  const where = contexts();
-  const visualMode = !!visualAnchor.value && onCompare();
+  const visualMode = !!visualAnchor.value && (onCompare() || inCode());
   const seen = new Set<string>();
-  return BINDINGS.filter((b) => {
-    if (!where.includes(b.where) || (visualMode && !b.visual) || seen.has(b.keys)) return false;
+  return bindingsHere().filter((b) => {
+    if ((visualMode && !b.visual) || seen.has(b.keys)) return false;
     const t = tokens(b.keys);
     if (t.length < prefix.length || prefix.some((k, i) => t[i] !== k)) return false;
     seen.add(b.keys);
@@ -569,7 +635,7 @@ export function handleKey(e: KeyboardEvent): boolean {
     reset();
     return true;
   }
-  if (buffer.length === 0 && onCompare() && /^[0-9]$/.test(t) && (t !== "0" || count)) {
+  if (buffer.length === 0 && (onCompare() || inCode()) && /^[0-9]$/.test(t) && (t !== "0" || count)) {
     count += t;
     return true;
   }
