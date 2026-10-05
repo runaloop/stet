@@ -676,6 +676,17 @@ header.top .gitchip:hover, header.top .gitchip.on { background: var(--bg-hover);
 .git-panel li { font: 12px/1.6 var(--mono); overflow-wrap: anywhere; }
 .git-panel p { margin: 4px 0; }
 .git-panel .gp-foot { margin-top: 10px; font-size: 12px; }
+.blame-pop { position: fixed; z-index: 60; width: max-content; max-width: min(560px, calc(100vw - 16px)); max-height: min(50vh, 420px); overflow: auto; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18); padding: 8px 12px; font-size: 13px; }
+.blame-pop .blame-head { font: 12px var(--mono); overflow-wrap: anywhere; }
+.blame-pop .blame-head b { font-weight: 600; }
+.blame-pop ul { list-style: none; margin: 6px 0; padding: 0; }
+.blame-pop li { display: flex; gap: 10px; align-items: baseline; line-height: 1.7; }
+.blame-pop .blame-lines { flex: none; min-width: 5ch; text-align: right; font: 12px var(--mono); color: var(--fg-soft); }
+.blame-pop .blame-what { min-width: 0; }
+.blame-pop a { border-radius: 3px; padding: 0 2px; }
+.blame-pop a.on { outline: 2px solid var(--accent); outline-offset: 0; }
+.blame-pop .blame-ver { font: 600 12px var(--mono); }
+.blame-pop .blame-title { display: inline-block; max-width: 34ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 header.top .refresh.moved { font: 12px var(--mono); padding: 1px 6px; border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 header.top .refresh.moved:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
 header.top .offline { flex: none; font-size: 12px; padding: 1px 8px; border: 1px solid color-mix(in srgb, var(--bad) 50%, transparent); border-radius: 4px; color: var(--bad); white-space: nowrap; }

@@ -645,6 +645,16 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     view.current?.scrollTo({ type: "line", id: c.path, lineNumber: line, side, align });
   };
 
+  const cursorElement = (c: Cursor): Element | null => {
+    const block = c.row >= 0 ? cursorSpace.peek().block(c) : null;
+    if (block) return stopElement(c.path, c.row, block.new ? "additions" : "deletions");
+    const r = cursorSpace.peek().row(c);
+    const v = view.current as CodeView<never> | null;
+    if (!r || !v) return null;
+    const { side, line } = rowPosition(r);
+    return rowElement(v, c.path, side, line);
+  };
+
   const startComment = (range: LineRange) => {
     const fd = files?.find((x) => x.name === range.path);
     setPending({ path: range.path, oldPath: fd?.prevName ?? range.path, range: { start: range.start, end: range.end, side: range.side } });
@@ -733,8 +743,8 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     else place();
   };
 
-  const latest = useRef({ data, pending, from, to, rid, order, visible, startThread, createThread, cancelPending, scrollToThread, scrollToLine, showHit, scrollToFile, revealCursor, startComment, pageRows, pageFrom, openTarget, switchView, wholeFile });
-  latest.current = { data, pending, from, to, rid, order, visible, startThread, createThread, cancelPending, scrollToThread, scrollToLine, showHit, scrollToFile, revealCursor, startComment, pageRows, pageFrom, openTarget, switchView, wholeFile };
+  const latest = useRef({ data, pending, from, to, rid, order, visible, startThread, createThread, cancelPending, scrollToThread, scrollToLine, showHit, scrollToFile, revealCursor, cursorElement, startComment, pageRows, pageFrom, openTarget, switchView, wholeFile });
+  latest.current = { data, pending, from, to, rid, order, visible, startThread, createThread, cancelPending, scrollToThread, scrollToLine, showHit, scrollToFile, revealCursor, cursorElement, startComment, pageRows, pageFrom, openTarget, switchView, wholeFile };
 
   const firstRange = useRef(`${from}..${to}`);
   useEffect(() => {
@@ -776,6 +786,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
       openLine: (path: string, side: Side, line: number) => latest.current.openTarget(path, line, side),
       showCode: (path: string, stop: number, side: "old" | "new") => latest.current.switchView(path, "code", { stop, side }),
       revealCursor: (c: Cursor, align?: "nearest" | "center") => latest.current.revealCursor(c, align),
+      cursorElement: (c: Cursor) => latest.current.cursorElement(c),
       startComment: (range: LineRange) => latest.current.startComment(range),
       submitComment: (body: string, mode: "draft" | "now") => latest.current.createThread(body, mode),
       cancelComment: () => latest.current.cancelPending(),

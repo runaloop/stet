@@ -317,6 +317,8 @@ export interface CompareHandle {
   /** A rendered Markdown file as code, the block `stop` becoming its lines at the same height, with the cursor on them. */
   showCode(path: string, stop: number, side: "old" | "new"): void;
   revealCursor(c: Cursor, align?: "nearest" | "center"): void;
+  /** The drawn line or rendered block under the cursor, when it is drawn. */
+  cursorElement(c: Cursor): Element | null;
   startComment(range: LineRange): void;
   submitComment(body: string, mode: "draft" | "now"): Promise<boolean | void>;
   cancelComment(): void;

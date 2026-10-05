@@ -3,6 +3,7 @@ import { useLayoutEffect, useRef } from "preact/hooks";
 import { setToken } from "./api.ts";
 import { ago, Badge, Kbd, roundTitle } from "./components/Bits.tsx";
 import { ChoiceDialog } from "./components/Choice.tsx";
+import { BlamePop } from "./components/Blame.tsx";
 import { GitChip, GitPanel } from "./components/GitState.tsx";
 import { Help, Pickers, WhichKey } from "./components/KeyUi.tsx";
 import { Splitter, widthOf } from "./components/Splitter.tsx";
@@ -367,6 +368,7 @@ function App() {
         </section>
       </main>
       <GitPanel />
+      <BlamePop />
       <Help />
       <WhichKey />
       <Pickers />

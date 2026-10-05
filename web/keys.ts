@@ -1,5 +1,6 @@
 import { signal } from "@preact/signals";
 import {
+  compareData,
   compareNav,
   copyLinesUrl,
   cursor,
@@ -23,7 +24,8 @@ import { stepFile, stepThread, stepUnread } from "./lib/nav.ts";
 import { commitPicker } from "./commits.ts";
 import { gitOpen } from "./components/GitState.tsx";
 import { edgeMsg, foldAllMsgs, foldMsg, halfPage, replyAtCursor, stepMsg } from "./msgs.ts";
-import { clampStep } from "./lib/timeline.ts";
+import { clampStep, diffPair } from "./lib/timeline.ts";
+import { openBlame } from "./components/Blame.tsx";
 import {
   banner,
   codeMode,
@@ -47,6 +49,7 @@ import {
   setFilters,
   shiftRef,
   showResolved,
+  status,
   wrap,
 } from "./state.ts";
 import { compareHandle, openFocusedCompareThread, stepCompareThread } from "./views/Compare.tsx";
@@ -182,6 +185,53 @@ function copyLink(): boolean {
   visualAnchor.value = null;
   if (!range) notify("put the cursor on a line of code or a rendered block (a collapsed file or a picture has none)");
   else void copyLinesUrl(range);
+  return true;
+}
+
+function blameHere(): boolean {
+  const c = cursor.value ?? startCursor();
+  const d = compareData.value;
+  if (!c || !d) return true;
+  const range = cursorSpace.value.range(visualAnchor.value ?? c, c);
+  visualAnchor.value = null;
+  if (!range) {
+    notify("put the cursor on a line of code or a rendered block (a collapsed file or a picture has none)");
+    return true;
+  }
+  const old = range.side === "deletions";
+  const fd = fileRows.value.find((r) => r.fd.name === range.path)?.fd;
+  const end = old ? d.from : d.to;
+  openBlame({
+    path: old ? (fd?.prevName ?? range.path) : range.path,
+    start: range.start,
+    end: range.end,
+    at: end.ref,
+    label: end.label,
+    place: () => compareNav.current?.cursorElement(c)?.getBoundingClientRect() ?? null,
+  });
+  return true;
+}
+
+/** The thread's lines in the code shown on its page: at the step on the right of the diff, or at "then" / the step. */
+function blameThread(): boolean {
+  const d = detail.value;
+  if (!d || d.thread.region) return true;
+  const sel = clampStep(d, selectedStep.value);
+  const pair = diffPair(d, sel, diffBase.value);
+  const step = codeMode.value === "diff" && pair ? pair.to : codeMode.value === "now" ? d.timeline[sel]! : d.timeline[0]!;
+  const exact = step.version !== null && step.label === `v${step.version}`;
+  const at = step.kind === "now" || step.sha === status.value?.pinnedNow ? "now" : exact ? String(step.version) : null;
+  if (!step.path || !step.range) notify(`the thread's code is gone at ${step.label}`);
+  else if (!at) notify(`the thread was written on code between versions (${step.label}): blame goes over versions, pick a later step`);
+  else
+    openBlame({
+      path: step.path,
+      start: step.range.start,
+      end: step.range.end,
+      at,
+      label: step.label,
+      place: () => document.querySelector(".thread-code .code-label")?.getBoundingClientRect() ?? null,
+    });
   return true;
 }
 
@@ -327,6 +377,8 @@ export const BINDINGS: Binding[] = [
   { keys: "<S-F3>", desc: "previous search match", where: "compare", run: () => stepHit(-1) || true },
   { keys: "<Space>gc", desc: "commits: pick the two ends of the compare", where: "compare", run: toggle(() => (commitPicker.value = !commitPicker.value)) },
   { keys: "<Space>gY", desc: "copy a link to the cursor line or the selection", where: "compare", visual: true, run: copyLink },
+  { keys: "<Space>gb", desc: "blame: the version, round and threads that brought the cursor line or the selection", where: "compare", visual: true, run: blameHere },
+  { keys: "<Space>gb", desc: "blame: the version, round and threads that brought the thread's lines in the code shown", where: "thread", run: blameThread },
   { keys: "<Esc>", desc: "close the commits or the preview, the selection, then the comment box", where: "compare", visual: true, run: toggle(() => {
     if (commitPicker.value) commitPicker.value = false;
     else if (peek.value) peek.value = null;

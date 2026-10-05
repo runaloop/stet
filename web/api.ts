@@ -1,5 +1,6 @@
 import type {
   AnchorState,
+  BlameDto,
   CommentDto,
   CommitsDto,
   CompareDto,
@@ -116,6 +117,7 @@ export const api = {
   cursors: (review: number) => call<CursorsDto>("GET", "/api/cursors", { query: { review } }),
   markReviewed: (review: number, ref: string) => call<ReviewedDto>("POST", "/api/reviewed", { query: { review }, body: { ref } }),
   setViewed: (review: number, keys: string[], on: boolean) => call("POST", "/api/viewed", { query: { review }, body: { keys, on } }),
+  blame: (review: number, q: { path: string; from: number; to: number; at: string }) => call<BlameDto>("GET", "/api/blame", { query: { review, ...q } }),
   grep: (sha: string, q: string, regex: boolean) => call<GrepResultDto>("GET", "/api/grep", { query: { sha, q, regex: regex ? 1 : 0 } }),
   async patch(from: string, to: string): Promise<string> {
     const res = await fetch(`/api/patch?from=${from}&to=${to}`, { headers: { "x-stet-token": token } });
