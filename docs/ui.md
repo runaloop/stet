@@ -49,12 +49,19 @@ gets the image with the area framed and the area at full size as PNG files (`ste
 
 ## Markdown
 
-A Markdown file shows rendered. The button on its header (**‹/› code** / **¶ rendered**) switches that file to its
-code and back while the page is open, and keeps the first text you see where it is on the screen: the topmost block
-becomes its line at the point you scrolled to (halfway through a ten-line paragraph: its fifth line, or the nearest
-line the diff shows), and the topmost line becomes the block that holds it, placed so that the line's share of the
-block stays where the line was. The cursor goes there too when it was on screen; otherwise it keeps its place in the
-file. `stet config set compare.markdown code` makes code the default.
+A Markdown file shows rendered. Like its code, it shows what changed with the text around it (the blocks the code's
+hunks touch) and folds the rest into bars: whole blocks, and in a long list or table the items or rows, with the
+table's header again below a bar. **show above** and **show below** on a bar open about 20 more lines of it, in whole
+blocks, from its top or its bottom, and **show all N** opens all of it. The bars of the code open lines the same way,
+and the two views share what is open: lines opened in one show in the other. **full file** on the file's header shows
+the whole file, rendered and as code, while the page is open.
+
+The button on its header (**‹/› code** / **¶ rendered**) switches that file to its code and back while the page is
+open, and keeps the first text you see where it is on the screen: the topmost block becomes its line at the point you
+scrolled to (halfway through a ten-line paragraph: its fifth line), and the topmost line becomes the block that holds
+it, placed so that the line's share of the block stays where the line was. Text the code had folded opens there, with
+a screen of lines around it, and stays open when you switch again. The cursor goes there too when it was on screen;
+otherwise it keeps its place in the file. `stet config set compare.markdown code` makes code the default.
 
 In split view the old and the new version stand side by side, block facing block: unchanged blocks are level, and
 inside a changed list or table the items and rows face each other too (nested items as well), with an empty slot
@@ -158,9 +165,10 @@ A thread page shows the code around the thread the same way in Diff, Then and At
 lines with a few lines around them, the ⋯ bars expand more, and "whole file" / "all changes in this
 file" switch the scope; a line above the code says what is shown. Selecting lines there starts a new
 thread or quotes them into the reply. A Markdown file shows rendered here too (by `compare.markdown`), with the same
-**‹/› code** / **¶ rendered** button, which stays as you pick steps in the timeline: the blocks the code would show,
-the rest folded, the thread's blocks marked, and two versions old beside new (or one column in unified view) with the
-changed words marked, as on the Changes page. A strip under the header says whose turn it is ("the agent asked
+**‹/› code** / **¶ rendered** button, which stays as you pick steps in the timeline: the blocks the code shows for
+the scope picked ("around the thread", "all changes in this file", "whole file"), the rest folded into the same bars as
+on the Changes page, shared with the thread's code; the thread's blocks marked; and two versions old beside new (or
+one column in unified view) with the changed words marked. A strip under the header says whose turn it is ("the agent asked
 you a question", "the agent says it fixed this", with a warning when the commented lines did not change),
 or that the thread is resolved, by whom and when; `#12` or "thread 12" in a message links to that thread
 with a preview on hover. The agent's and your messages have their own colours.
