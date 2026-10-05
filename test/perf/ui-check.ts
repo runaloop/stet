@@ -229,6 +229,31 @@ try {
     const after = await b.eval(`({ hash: location.hash, bar: !!document.querySelector(".draft-bar") })`);
     check("S on the drafts page submits and returns to the compare", after.hash === "#/compare/1..2" && after.bar === false, after);
 
+    await keys("S");
+    await waitFor(`location.hash === "#/drafts" && document.querySelector(".drafts .submit-actions")`, 3000);
+    const actions = await b.eval(`[...document.querySelectorAll(".drafts .submit-actions button")].map(x => [x.textContent, x.disabled])`);
+    await keys("S");
+    const asked = await waitFor(`document.querySelector(".choice h3")?.textContent ?? null`, 3000);
+    await sleep(200);
+    const offered = await b.eval(`({ options: [...document.querySelectorAll(".choice button")].map(x => x.textContent), focused: document.activeElement?.textContent ?? null })`);
+    await b.screenshot(join(OUT, "shots", "ui-check-approve.png"));
+    await keys("");
+    const cancelled = await waitFor(`!document.querySelector(".choice") && !document.querySelector("header .verdict")`, 2000);
+    await keys("S");
+    await waitFor(`document.querySelector(".choice")`, 3000);
+    await sleep(200);
+    await keys("");
+    const approved = await waitFor(`document.querySelector("header .verdict")?.textContent ?? null`, 5000);
+    const approvedAt = await b.eval(`({ hash: location.hash, toast: document.querySelector(".toast")?.textContent ?? null })`);
+    await b.screenshot(join(OUT, "shots", "ui-check-approved.png"));
+    check(
+      "with no drafts, S on the drafts page approves: open threads ask first (Esc cancels), Enter on “Approve anyway” approves, the header says so",
+      actions[0]?.[1] === true && /Approve v2/.test(actions[1]?.[0] ?? "") && /threads still open/.test(asked ?? "") && offered.focused === "Approve anyway" &&
+        offered.options.join("|") === "Approve anyway|Resolve all and approve|Cancel" && cancelled === true && approved === "✓ approved at v2" &&
+        approvedAt.hash === "#/compare/1..2" && /^approved v2/.test(approvedAt.toast ?? ""),
+      { actions, asked, offered, cancelled, approved, approvedAt },
+    );
+
     await b.eval(`location.hash = "#/thread/${t10}"; true`);
     await waitFor(`document.querySelector(".detail-head .tid")?.textContent === "#${t10}"`, 8000);
     await keys("x");
@@ -521,6 +546,8 @@ try {
     run(repo, ["git", "add", "-A"]);
     run(repo, ["bun", CLI, "version", "create", "--label", "round three", "--json"]);
     await waitFor(`document.querySelectorAll("header .versions a.ver").length === 3`, 8000);
+    const stale = await waitFor(`document.querySelector("header a.verdict.changed")?.textContent ?? null`, 5000);
+    check("once a newer version is handed over, the header says the approval is of an older one", stale === "✓ approved at v2 · changed after", stale);
     await sleep(400);
     await keys(" ", "r", "v");
     await sleep(900);

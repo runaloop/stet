@@ -32,6 +32,7 @@ import {
   detail,
   diffBase,
   diffStyle,
+  drafts,
   groups,
   helpOpen,
   lastCompare,
@@ -49,7 +50,8 @@ import {
 import { compareHandle, openFocusedCompareThread, stepCompareThread } from "./views/Compare.tsx";
 import { jumpBack, jumpForward } from "./jumps.ts";
 import { findUsages } from "./usages.ts";
-import { submitReview } from "./views/Drafts.tsx";
+import { question } from "./components/Choice.tsx";
+import { approveReview, submitReview } from "./views/Drafts.tsx";
 import { openExternal, reopenCurrent, resolveCurrent } from "./views/ThreadDetail.tsx";
 
 export type Where = "compare" | "thread" | "drafts" | "everywhere";
@@ -204,8 +206,9 @@ function toThread(dir: 1 | -1): boolean {
 }
 
 function reviewAction(): boolean {
-  if (route.value.name === "drafts") void submitReview();
-  else navigate({ name: "drafts" });
+  if (route.value.name !== "drafts") navigate({ name: "drafts" });
+  else if (drafts.value.length > 0) void submitReview();
+  else void approveReview();
   return true;
 }
 
@@ -332,14 +335,14 @@ export const BINDINGS: Binding[] = [
     else navigate(lastCompare.value ? { name: "compare", ...lastCompare.value } : { name: "home" });
   }) },
 
-  { keys: "S", desc: "submit the review", where: "drafts", run: reviewAction },
+  { keys: "S", desc: "request changes: send the drafts (no drafts: approve)", where: "drafts", run: reviewAction },
 
   { keys: "?", desc: "all keys", where: "everywhere", run: toggle(() => (helpOpen.value = !helpOpen.value)) },
   { keys: "<C-o>", desc: "jump back (page, search hit, file jump)", where: "everywhere", run: jumpBack },
   { keys: "<C-i>", desc: "jump forward", where: "everywhere", run: jumpForward },
   { keys: "v", desc: "changes since you last looked", where: "everywhere", run: toggle(() => navigate({ name: "compare", ...defaultCompare() })) },
   { keys: "s", desc: "your drafts", where: "everywhere", run: toggle(() => navigate({ name: "drafts" })) },
-  { keys: "S", desc: "drafts, then S again submits", where: "everywhere", run: reviewAction },
+  { keys: "S", desc: "drafts, then S again submits (approves when there are no drafts)", where: "everywhere", run: reviewAction },
   { keys: "w", desc: "wrap long lines", where: "everywhere", run: toggle(() => (wrap.value = !wrap.value)) },
   { keys: "R", desc: "re-read “now” from the working tree", where: "everywhere", run: toggle(() => ((banner.value = null), void refreshNow())) },
   { keys: "/", desc: "filter threads by file", where: "everywhere", run: toggle(() => {
@@ -371,7 +374,7 @@ export const BINDINGS: Binding[] = [
   { keys: "<Space>ur", desc: "show / hide resolved threads", where: "everywhere", run: toggle(() => (showResolved.value = !showResolved.value)) },
   { keys: "<Space>ut", desc: "show / hide test files that only add code", where: "compare", run: toggle(() => (groupsOpen.value = { ...groupsOpen.value, tests: !groupsOpen.value.tests })) },
   { keys: "<Space>rd", desc: "drafts", where: "everywhere", run: toggle(() => navigate({ name: "drafts" })) },
-  { keys: "<Space>rs", desc: "submit the review (from the drafts page)", where: "everywhere", run: reviewAction },
+  { keys: "<Space>rs", desc: "submit the review from the drafts page (approve when there are no drafts)", where: "everywhere", run: reviewAction },
   { keys: "<Space>rv", desc: "changes since you last looked", where: "everywhere", run: toggle(() => navigate({ name: "compare", ...defaultCompare() })) },
   { keys: "<Space>rr", desc: "re-read “now”", where: "everywhere", run: toggle(() => ((banner.value = null), void refreshNow())) },
   { keys: "<Space>?", desc: "all keys", where: "everywhere", run: toggle(() => (helpOpen.value = true)) },
@@ -466,7 +469,7 @@ export function handleKey(e: KeyboardEvent): boolean {
     return true;
   }
   if ((onCompare() || onThread()) && e.code === "KeyF" && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) return search(onThread() ? "files" : "diff");
-  if (typing(target) || picker.value) return false;
+  if (typing(target) || picker.value || question.value) return false;
   const t = keyToken(e);
   if (t === null) return false;
   if (t === "<Esc>" && helpOpen.value) {

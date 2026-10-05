@@ -1,21 +1,26 @@
+import type { Verdict } from "../../src/core/types.ts";
+
 export interface Round {
   /** 0: the versions before the first review; k: the agent's answer to review k. */
   index: number;
   /** When review `index` was submitted; null for round 0. */
   at: string | null;
+  /** What review `index` said: changes requested, or approved (its versions then fix the nits). */
+  verdict: Verdict | null;
   first: number;
   last: number;
 }
 
 /** Versions grouped by the review they answer. Rounds without versions are left out. */
-export function rounds(versions: readonly { number: number; createdAt: string }[], submissions: readonly { at: string }[]): Round[] {
+export function rounds(versions: readonly { number: number; createdAt: string }[], submissions: readonly { at: string; verdict: Verdict }[]): Round[] {
   const out: Round[] = [];
   let k = 0;
   for (const v of versions) {
     while (k < submissions.length && submissions[k]!.at <= v.createdAt) k++;
     const last = out[out.length - 1];
+    const review = k ? submissions[k - 1]! : null;
     if (last && last.index === k) last.last = v.number;
-    else out.push({ index: k, at: k ? submissions[k - 1]!.at : null, first: v.number, last: v.number });
+    else out.push({ index: k, at: review?.at ?? null, verdict: review?.verdict ?? null, first: v.number, last: v.number });
   }
   return out;
 }

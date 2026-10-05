@@ -131,5 +131,5 @@ export function revealRange(list: HTMLElement | null, first: string, last: strin
 }
 
 export function roundTitle(r: Round): string {
-  return r.index === 0 ? "before your first review" : `after your review ${r.index} · ${ago(r.at!)}`;
+  return r.index === 0 ? "before your first review" : `after your review ${r.index} · ${r.verdict === "approved" ? "approved" : "changes requested"} · ${ago(r.at!)}`;
 }

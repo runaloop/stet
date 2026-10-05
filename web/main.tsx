@@ -1,7 +1,8 @@
 import { render } from "preact";
 import { useLayoutEffect, useRef } from "preact/hooks";
 import { setToken } from "./api.ts";
-import { Badge, Kbd, roundTitle } from "./components/Bits.tsx";
+import { ago, Badge, Kbd, roundTitle } from "./components/Bits.tsx";
+import { ChoiceDialog } from "./components/Choice.tsx";
 import { GitChip, GitPanel } from "./components/GitState.tsx";
 import { Help, Pickers, WhichKey } from "./components/KeyUi.tsx";
 import { Splitter, widthOf } from "./components/Splitter.tsx";
@@ -36,6 +37,7 @@ import {
   status,
   switchReview,
   threads,
+  tipRef,
   toast,
   versionRounds,
   versions,
@@ -117,6 +119,18 @@ function roundSteps(): RoundStep[] {
 
 const SHOWN_VERSIONS = 6;
 
+function Approved() {
+  const last = status.value?.lastSubmission;
+  if (last?.verdict !== "approved" || last.version === null) return null;
+  const when = `you approved v${last.version} ${ago(last.at)}`;
+  if (!last.changedAfter) return <span class="verdict" title={`${when}; the agent sees it in stet status`}>✓ approved at v{last.version}</span>;
+  return (
+    <a class="verdict changed" title={`${when}; the code changed after it. Click: what changed since`} {...link({ name: "compare", from: String(last.version), to: tipRef() })}>
+      ✓ approved at v{last.version} · changed after
+    </a>
+  );
+}
+
 function Header() {
   const s = status.value;
   const r = route.value;
@@ -191,6 +205,7 @@ function Header() {
           </button>
         )}
       </span>
+      <Approved />
       {online.value ? null : (
         <span class="offline" title="the stet server does not answer. The page keeps trying and catches up when it is back; if it stays away, start it again with stet serve --open">
           ● offline · retrying
@@ -291,7 +306,7 @@ function Round() {
       <h3>Loop</h3>
       <ol class="loop">
         <li>Open the changes (<Kbd>v</Kbd>), select lines, write drafts.</li>
-        <li>Submit the review (<Kbd>S</Kbd>), then tell the agent to answer it.</li>
+        <li>Submit the review (<Kbd>S</Kbd>), then tell the agent to answer it. Or approve when all is fine; drafts then go as nits.</li>
         <li>The agent replies in each thread and hands over the next version.</li>
         <li>Step through new replies with <Kbd>n</Kbd>, check each thread's timeline with <Kbd>[</Kbd> <Kbd>]</Kbd>, resolve with <Kbd>x</Kbd>, then go through the new code.</li>
       </ol>
@@ -345,6 +360,7 @@ function App() {
       <Help />
       <WhichKey />
       <Pickers />
+      <ChoiceDialog />
       {toast.value ? (
         <div class={`toast ${toast.value.tone}`}>
           {toast.value.text}

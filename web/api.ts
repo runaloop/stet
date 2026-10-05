@@ -13,8 +13,10 @@ import type {
   ReviewedDto,
   StatusDto,
   SubmissionDto,
+  SubmittedDto,
   ThreadDetail,
   ThreadSummary,
+  Verdict,
   VersionDto,
 } from "../src/core/types.ts";
 
@@ -99,7 +101,8 @@ export const api = {
   resolve: (review: number, id: number, reason: ResolveReason | null) => call("POST", `/api/threads/${id}/resolve`, { query: { review }, body: { reason } }),
   reopen: (review: number, id: number) => call("POST", `/api/threads/${id}/reopen`, { query: { review }, body: {} }),
   drafts: (review: number) => call<CommentDto[]>("GET", "/api/drafts", { query: { review } }),
-  submit: (review: number, body: string) => call<{ submission: number; threads: number[]; comments: number }>("POST", "/api/review/submit", { query: { review }, body: { body } }),
+  submit: (review: number, body: string, how: { verdict?: Verdict; open?: "keep" | "resolve" } = {}) =>
+    call<SubmittedDto>("POST", "/api/review/submit", { query: { review }, body: { body, ...how } }),
   compare: (review: number, from: string, to: string) => call<CompareDto>("GET", "/api/compare", { query: { review, from, to } }),
   commits: (review: number) => call<CommitsDto>("GET", "/api/commits", { query: { review } }),
   read: (review: number, threadId: number) => call("POST", "/api/read", { query: { review }, body: { threadId } }),

@@ -7,9 +7,12 @@ const realFetch = globalThis.fetch;
 GlobalRegistrator.register({ url: "http://127.0.0.1:4000/" });
 (globalThis as { __STET_NO_WORKERS?: boolean }).__STET_NO_WORKERS = true;
 const calls: string[] = [];
+let respond: ((url: string, init?: RequestInit) => Response | null) | null = null;
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
   calls.push(`${init?.method ?? "GET"} ${url}`);
+  const own = respond?.(url, init);
+  if (own) return own;
   if (url.includes("/resolve")) return new Promise<Response>(() => {});
   if (url.startsWith("/api/blob")) {
     const sha = new URL(url, "http://x").searchParams.get("sha");
@@ -294,5 +297,118 @@ describe("which range opens by default", () => {
     expect(state.defaultCompare()).toEqual({ from: "2", to: "3" });
     expect(state.presets().map((p) => p.id)).toEqual(["round", "branch"]);
     state.reviewedCursor.value = null;
+  });
+});
+
+describe("request changes or approve", () => {
+  const submits: { body: string; verdict?: string; open?: string }[] = [];
+  let serverDrafts: unknown[] = [];
+  const review = {
+    versions: 2,
+    versionsList: [1, 2].map((number) => ({ number, snapshot: `s${number}`, createdAt: "2026-09-24T10:00:00Z", author: "claude", role: "agent" })),
+    now: { sha: "s2", changedSinceLatest: false },
+    lastSubmission: null,
+  };
+  const draft = (threadId: number) => ({ id: 50 + threadId, threadId, parentId: threadId * 10, role: "reviewer", author: "alice", body: "nit", intent: null, draft: true, snapshot: "s2", version: 2, createdAt: "2026-09-24T11:00:00Z", updatedAt: null, step: 1, unread: false });
+  const host = document.createElement("div");
+  let views: typeof import("../../web/views/Drafts.tsx");
+  let choice: typeof import("../../web/components/Choice.tsx");
+
+  beforeAll(async () => {
+    views = await import("../../web/views/Drafts.tsx");
+    choice = await import("../../web/components/Choice.tsx");
+    document.body.appendChild(host);
+    respond = (url, init) => {
+      if (url.startsWith("/api/review/submit")) {
+        const b = JSON.parse(String(init?.body));
+        submits.push(b);
+        serverDrafts = [];
+        return Response.json({ submission: submits.length, verdict: b.verdict ?? "changes", version: 2, threads: [], comments: 0, resolved: b.open === "resolve" ? [4] : [] });
+      }
+      if (url.startsWith("/api/review?")) return Response.json(review);
+      if (url.startsWith("/api/threads?")) return Response.json(state.threads.value);
+      if (url.startsWith("/api/drafts")) return Response.json(serverDrafts);
+      if (url.startsWith("/api/cursors")) return Response.json({ reviewed: null, viewed: [] });
+      return null;
+    };
+  });
+
+  afterAll(() => {
+    render(null, host);
+    respond = null;
+  });
+
+  const show = async (open: ReturnType<typeof thread>[], mine: ReturnType<typeof draft>[]) => {
+    serverDrafts = mine;
+    state.status.value = review as never;
+    state.threads.value = open;
+    state.drafts.value = mine as never;
+    state.route.value = { name: "drafts" };
+    submits.length = 0;
+    render(<><views.DraftsView /><choice.ChoiceDialog /></>, host);
+    await tick();
+  };
+  const dialog = () => host.querySelector(".choice h3")?.textContent ?? null;
+  const pick = async (label: string) => {
+    [...host.querySelectorAll<HTMLButtonElement>(".choice button")].find((b) => b.textContent === label)!.click();
+    await tick(60);
+  };
+
+  test("with no drafts only Approve is on, and S approves; open threads ask first, Esc cancels", async () => {
+    await show([thread({ id: 4, path: "src/a.kt", title: "Still open" })], []);
+    const [changes, approve] = [...host.querySelectorAll<HTMLButtonElement>(".submit-actions button")];
+    expect(changes!.disabled).toBe(true);
+    expect(approve!.textContent).toContain("Approve v2");
+    expect(approve!.querySelector("kbd")?.textContent).toBe("S");
+
+    expect(key("S")).toBe(true);
+    await tick();
+    expect(dialog()).toBe("1 thread still open");
+    expect(host.querySelector(".choice-body")!.textContent).toContain("#4 Still open");
+    expect(key("S")).toBe(false);
+    host.querySelector(".choice")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await tick();
+    expect(dialog()).toBeNull();
+    expect(submits).toEqual([]);
+
+    expect(key("S")).toBe(true);
+    await tick(60);
+    const options = () => [...host.querySelectorAll<HTMLButtonElement>(".choice button")].map((b) => b.textContent);
+    expect(options()).toEqual(["Approve anyway", "Resolve all and approve", "Cancel"]);
+    expect(document.activeElement?.textContent).toBe("Approve anyway");
+    host.querySelector(".choice")!.dispatchEvent(new KeyboardEvent("keydown", { key: "j", code: "KeyJ", bubbles: true }));
+    await tick();
+    expect(document.activeElement?.textContent).toBe("Resolve all and approve");
+    expect(host.querySelector(".choice .btn.on")?.textContent).toBe("Resolve all and approve");
+    host.querySelector(".choice")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await tick(60);
+    expect(submits).toEqual([{ body: "", verdict: "approved", open: "resolve" }]);
+    expect(dialog()).toBeNull();
+  });
+
+  test("with drafts S requests changes; Approve asks whether the drafts go as nits", async () => {
+    await show([thread({ id: 5, path: "src/a.kt", needsReply: "reviewer" })], [draft(5)]);
+    const [changes, approve] = [...host.querySelectorAll<HTMLButtonElement>(".submit-actions button")];
+    expect(changes!.disabled).toBe(false);
+    expect(changes!.querySelector("kbd")?.textContent).toBe("S");
+    expect(approve!.querySelector("kbd")).toBeNull();
+
+    approve!.click();
+    await tick();
+    expect(dialog()).toBe("Approve with 1 draft?");
+    await pick("Approve; drafts go as nits (the agent fixes them without a new round)");
+    expect(submits).toEqual([{ body: "", verdict: "approved" }]);
+
+    await show([thread({ id: 5, path: "src/a.kt", needsReply: "reviewer" })], [draft(5)]);
+    (host.querySelectorAll<HTMLButtonElement>(".submit-actions button")[1]!).click();
+    await tick();
+    await pick("Send as Request changes");
+    expect(submits).toEqual([{ body: "" }]);
+
+    await show([], [draft(5)]);
+    expect(key("S")).toBe(true);
+    await tick(60);
+    expect(dialog()).toBeNull();
+    expect(submits).toEqual([{ body: "" }]);
   });
 });

@@ -4,16 +4,21 @@ import { foldRuns, keptSteps, keptTimeline, onlyVersion, rounds, withEnd } from 
 const v = (number: number, createdAt: string) => ({ number, createdAt });
 
 describe("versions", () => {
-  test("rounds: the versions after a review are the answer to it; empty rounds are left out", () => {
+  test("rounds: the versions after a review are the answer to it, with its verdict; empty rounds are left out", () => {
     const vs = [v(1, "2026-09-23T10:00Z"), v(2, "2026-09-23T11:00Z"), v(3, "2026-09-23T13:00Z"), v(4, "2026-09-23T14:00Z"), v(5, "2026-09-24T09:00Z")];
-    const subs = [{ at: "2026-09-23T10:30Z" }, { at: "2026-09-23T12:00Z" }, { at: "2026-09-23T12:30Z" }, { at: "2026-09-24T08:00Z" }];
+    const subs = [
+      { at: "2026-09-23T10:30Z", verdict: "changes" as const },
+      { at: "2026-09-23T12:00Z", verdict: "changes" as const },
+      { at: "2026-09-23T12:30Z", verdict: "changes" as const },
+      { at: "2026-09-24T08:00Z", verdict: "approved" as const },
+    ];
     expect(rounds(vs, subs)).toEqual([
-      { index: 0, at: null, first: 1, last: 1 },
-      { index: 1, at: "2026-09-23T10:30Z", first: 2, last: 2 },
-      { index: 3, at: "2026-09-23T12:30Z", first: 3, last: 4 },
-      { index: 4, at: "2026-09-24T08:00Z", first: 5, last: 5 },
+      { index: 0, at: null, verdict: null, first: 1, last: 1 },
+      { index: 1, at: "2026-09-23T10:30Z", verdict: "changes", first: 2, last: 2 },
+      { index: 3, at: "2026-09-23T12:30Z", verdict: "changes", first: 3, last: 4 },
+      { index: 4, at: "2026-09-24T08:00Z", verdict: "approved", first: 5, last: 5 },
     ]);
-    expect(rounds(vs, [])).toEqual([{ index: 0, at: null, first: 1, last: 5 }]);
+    expect(rounds(vs, [])).toEqual([{ index: 0, at: null, verdict: null, first: 1, last: 5 }]);
   });
 
   test("foldRuns folds runs of three or more, shorter runs stay", () => {
