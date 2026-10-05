@@ -28,7 +28,7 @@ stet is merge-request review on your machine, on the working tree, with the agen
   since, and what changed between them.
 - **Drafts and rounds.** Your comments stay drafts until you submit the review. Then the agent replies in
   every thread (`fixed`, `answered`, `disagree`, `question`), fixes the code and hands over the
-  next version.
+  next version. When all is fine, you approve the version instead.
 - **An API for the agent.** A JSON CLI, and a skill for Claude Code, Codex, Gemini CLI, Cursor, OpenCode and
   Copilot that teaches the agent the loop.
 - **Local.** One binary; one process bound to 127.0.0.1; data in `.git/stet` (SQLite). No service, no
@@ -73,6 +73,10 @@ one and prints how to serve it.
 5. The agent replies in every thread, fixes the code and creates the next version.
 6. You press `n` to step through new replies, `[` / `]` to walk a thread's timeline, and `x` to resolve.
    The **Round** page lists what is left: threads waiting for you, new code, unsent drafts.
+7. When all is fine, approve: **Approve** on the drafts page, or `S` there when you have no drafts. Drafts
+   sent with an approval are nits the agent fixes without a new round. The header says `approved at vN`,
+   and `· changed after` once newer code arrives; the agent sees the verdict in `stet status` when you
+   call it back. Approving does not close the review (`stet review close` does).
 
 To review only what is staged (`git add`) against HEAD, start with `stet init --staged`: versions are
 then snapshots of the index, unstaged and untracked files stay out, and the agent stages the files it
@@ -93,7 +97,7 @@ All commands print JSON when piped or with `--json`. Run `stet --help` for the f
 | `stet thread show <id>` | conversation, timeline, code then / now, interdiff; for an image, the paths of the PNGs with the area framed |
 | `stet comment add --file <p> --range a-b --body <t> [--at <ref>] [--draft]` | new thread; `--region x,y,w,h` in place of `--range` for an area of an image |
 | `stet reply <id> --body <t\|-> [--intent fixed\|answered\|disagree\|question]` | reply |
-| `stet review submit` | publish your drafts as one review |
+| `stet review submit [--approve]` | publish your drafts as one review (request changes); `--approve` approves the latest version, drafts going as nits (with other threads open, add `--force` to leave them open or `--resolve-all` to resolve them) |
 | `stet resolve <id> [--reason fixed\|wontfix\|answered]` / `stet reopen <id>` | reviewer only |
 | `stet wait --for review\|reply\|version\|any [--timeout 30m]` | block until there is something to do (exit 5 on timeout) |
 | `stet open <id>` | open the editor at the thread |
@@ -132,7 +136,7 @@ The web UI is keyboard-first, vim-style, with `Space` as the leader. The ones to
 | `v` | changes since you last looked |
 | `j` / `k`, `]c` / `[c`, `]b` / `[b` | next line, change, file |
 | `V`, then `i` | select lines, comment on them |
-| `S` | your drafts; `S` again submits the review |
+| `S` | your drafts; `S` again submits the review (approves when there are no drafts) |
 | `n` | next new reply |
 | `[` / `]` | a thread's timeline: the previous or next version |
 | `x` | resolve the thread |

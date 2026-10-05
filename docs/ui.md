@@ -82,7 +82,7 @@ On the Changes page a cursor moves over the diff (a click on a line puts it ther
 | `Space s k` | search the keys by what they do, `Enter` runs the key |
 | `Space e` · `Space st` · `Space n` | Files tab · Threads tab · threads with news |
 | `Space uw` · `Space ud` · `Space ur` · `Space ut` | wrap · split/unified · resolved threads · folded tests |
-| `Space rd` · `Space rs` · `Space rv` · `Space rr` | drafts · submit · changes since you last looked · re-read "now" |
+| `Space rd` · `Space rs` · `Space rv` · `Space rr` | drafts · submit or approve · changes since you last looked · re-read "now" |
 | `Esc` | close the preview, the selection, then the comment box |
 
 In a thread: `j` / `k` next / previous thread, `n` / `N` unread, `[` / `]` timeline step, `t` diff / then /
@@ -91,7 +91,7 @@ files at the step shown, `*` find the selected word, `Esc` close the preview, th
 In its messages: `}` / `{` next / previous message, `gg` / `G` first / last, `Ctrl+d` / `Ctrl+u` half a
 page, `za` fold or unfold the message under the cursor (`zR` / `zM` all of them), and `r` replies to the
 message under the cursor once you moved it there (with these keys or a click), otherwise to the thread.
-Everywhere: `v` changes since you last looked, `s` drafts, `S` drafts then submit, `w` wrap, `R` re-read
+Everywhere: `v` changes since you last looked, `s` drafts, `S` drafts then submit (or approve), `w` wrap, `R` re-read
 "now", `Space g s` git state (pushed, staged, not staged, new), `Ctrl+O` / `Ctrl+I` jump back / forward (pages, search hits, file jumps). Only text fields take
 keys: after a click on a checkbox, a select or a button the keys keep working.
 
@@ -137,6 +137,23 @@ A thread opens at the first message you have not read, under a "new" line, or at
 the reply box when nothing is new; the header of the messages counts them ("7 messages · 2 new", a click
 goes to the first new one). Long messages you have already read fold to a few lines
 ([screenshots](guide/README.md#long-conversations)).
+
+## Drafts and approval
+
+The **Drafts** page lists your unsent comments, a box for a summary of the whole review, and two actions.
+**Request changes** sends the drafts to the agent in one go, like a GitLab review; the agent answers each
+thread and hands over the next version. **Approve** says the latest version is done, and needs no drafts.
+With drafts it asks whether they go along as nits (the agent fixes them without a new round) or as a
+request for changes; with other threads still open, whether to leave them open or resolve them all first
+(`j` / `k` and `Enter` pick, `Esc` cancels). `S` on the page does what its key mark shows: it requests changes
+when there are drafts and approves when there are none.
+
+After an approval the header says **approved at v3**, and **approved at v3 · changed after** once a newer
+version exists or the working tree differs from v3 (a click shows what changed since). The agent sees the
+verdict in `stet status`. Approving does not close the review; `stet review close` does. The Round page and
+`Space f v` group versions by the review they answer, with its verdict ("changes requested", "approved").
+From the terminal: `stet review submit --approve` (with other threads open, `--force` leaves them open and
+`--resolve-all` resolves them).
 
 ## Links
 
