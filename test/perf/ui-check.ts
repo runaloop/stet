@@ -1512,7 +1512,7 @@ try {
     const linkedBlocks = `[...(${rd}?.querySelectorAll(".md-linked") ?? [])].map(e => e.closest(".md-cell").dataset.side + ":" + e.dataset.start).sort()`;
     await waitFor(`${linkedBlocks}.length > 0`, 15000);
     await sleep(1500);
-    const mdLink = await b.eval(`({ linked: ${linkedBlocks}, cursor: [...${rd}.querySelectorAll(".md-cursor")].map(e => e.dataset.start), top: Math.round(${rd}.querySelector(".md-linked").getBoundingClientRect().top - document.querySelector(".codeview-host").getBoundingClientRect().top), text: ${rd}.querySelector('.md-linked[data-start="132"]')?.textContent.slice(0, 26) ?? null, bars: ${rd}.querySelectorAll(".md-fold").length })`);
+    const mdLink = await b.eval(`({ linked: ${linkedBlocks}, cursor: [...(${rd}?.querySelectorAll(".md-cursor") ?? [])].map(e => e.dataset.start), top: Math.round((${rd}?.querySelector(".md-linked")?.getBoundingClientRect().top ?? NaN) - document.querySelector(".codeview-host").getBoundingClientRect().top), text: ${rd}?.querySelector('.md-linked[data-start="132"]')?.textContent.slice(0, 26) ?? null, bars: ${rd}?.querySelectorAll(".md-fold").length ?? -1 })`);
     await b.screenshot(join(OUT, "shots", "ui-check-markdown-link.png"));
     await keys("j");
     await sleep(200);

@@ -386,17 +386,23 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     else view.current?.scrollTo(target);
   };
 
-  // Images, rendered Markdown and the thread cards under lines measure their height only when drawn, and the ones
-  // drawn around a jump move it: jump again once they are measured, unless the reader scrolls, clicks or types meanwhile.
-  const settle = (target: CodeViewScrollTarget) => {
+  /** Whether the reader scrolled, clicked or typed since this was called, for `ms`. */
+  const readerMoved = (ms: number) => {
     let moved = false;
     const stop = () => (moved = true);
     const events = ["wheel", "pointerdown", "keydown"] as const;
     for (const ev of events) window.addEventListener(ev, stop, { capture: true, passive: true });
-    for (const ms of [250, 700, 1400]) setTimeout(() => moved || view.current?.scrollTo(target), ms);
     setTimeout(() => {
       for (const ev of events) window.removeEventListener(ev, stop, { capture: true });
-    }, 1500);
+    }, ms);
+    return () => moved;
+  };
+
+  // Images, rendered Markdown and the thread cards under lines measure their height only when drawn, and the ones
+  // drawn around a jump move it: jump again once they are measured, unless the reader scrolls, clicks or types meanwhile.
+  const settle = (target: CodeViewScrollTarget) => {
+    const moved = readerMoved(1500);
+    for (const ms of [250, 700, 1400]) setTimeout(() => moved() || view.current?.scrollTo(target), ms);
   };
 
   const settleOn = (path: string) => {
@@ -699,7 +705,14 @@ export function CompareView({ from, to }: { from: string; to: string }) {
         const c = cursorSpace.peek().locate(path, side, line);
         if (c) cursor.value = c;
         linkedLines.value = lines;
-        if (c) revealBlock(path, c.row, align, side);
+        if (!c) return;
+        revealBlock(path, c.row, align, side);
+        // rendered files above it may grow only after it is placed, and push it out of the drawn window
+        const moved = readerMoved(3000);
+        for (const ms of [800, 1600, 2800])
+          setTimeout(() => {
+            if (!moved() && host.current && !onScreen(host.current, stopElement(path, c.row, side))) revealBlock(path, c.row, align, side);
+          }, ms);
       });
       return;
     }
