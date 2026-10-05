@@ -145,7 +145,7 @@ function Step({ d, from, to, s }: { d: CompareDto; from: string; to: string; s: 
         <div class="md" dangerouslySetInnerHTML={{ __html: html }} />
       </div>
       {s.refs.map((r) => (
-        <RefBlock d={d} from={from} to={to} r={r} />
+        <RefBlock key={refLabel(r)} d={d} from={from} to={to} r={r} />
       ))}
     </section>
   );
@@ -235,7 +235,7 @@ export function GuideView({ from, to }: { from: string; to: string }) {
           {g.title ? <h2 class="guide-title">{g.title}</h2> : null}
           {g.intro ? <div class="md guide-intro" dangerouslySetInnerHTML={{ __html: guideHtml(g.intro, threadHref) }} /> : null}
           {g.steps.map((s) => (
-            <Step d={d} from={from} to={to} s={s} />
+            <Step key={`${d.from.sha}:${d.to.sha}:${s.index}`} d={d} from={from} to={to} s={s} />
           ))}
           <Rest d={d} from={from} to={to} g={g} />
         </>
