@@ -19,7 +19,7 @@ import * as svc from "../core/service.ts";
 import type { Intent, ResolveReason, Role } from "../core/store/db.ts";
 import type { SubmittedDto } from "../core/types.ts";
 import { bool, duration, int, list, parse, range, readBody, region, str, type Options, type Parsed } from "./args.ts";
-import { formatCompare, formatStatus, formatThreadDetail, formatThreadList, formatVersions, regionText } from "./format.ts";
+import { formatBlame, formatCompare, formatStatus, formatThreadDetail, formatThreadList, formatVersions, regionText } from "./format.ts";
 
 export const HELP = `stet — thread-first local code review between a human reviewer and a coding agent
 
@@ -44,6 +44,9 @@ Versions
                                                 a version of the working tree (or the index), or of a commit
   versions list
   versions diff <a> <b> [--patch]               refs: base, 1..N, latest, now, empty, <sha>
+  blame <path>[:<a>[-<b>]] [--at N|latest|now]  where each line came from: the version that brought it (or
+                                                base, or now), the round it answered and the threads its
+                                                agent replied fixed to; at the latest version by default
 
 Threads
   threads list [--status open|resolved|all] [--state ok,moved,changed,outdated]
@@ -198,6 +201,21 @@ const commands: Record<string, { options: Options; run: (p: Parsed) => Promise<n
         return;
       }
       emit(p, d, () => formatCompare(d));
+    },
+  },
+
+  blame: {
+    options: { at: { type: "string" } },
+    async run(p) {
+      const arg = p.positionals[0];
+      if (!arg) throw usage("usage: stet blame <path>[:<a>[-<b>]] [--at N|latest|now]");
+      const m = /^(.*):(\d+(?:-\d+)?)$/.exec(arg);
+      const lines = m ? range(m[2]) : null;
+      const ctx = await context(p);
+      const review = await requireReview(ctx, str(p, "branch"));
+      const { blame } = await import("../core/blame.ts");
+      const d = await blame(ctx, review, { path: await svc.normalizePath(ctx, m ? m[1]! : arg), start: lines?.start, end: lines?.end, at: str(p, "at") });
+      emit(p, d, () => formatBlame(d));
     },
   },
 

@@ -1,5 +1,5 @@
 import { regionText } from "../core/image.ts";
-import type { CommentDto, CompareDto, StatusDto, ThreadDetail, ThreadSummary, VersionDto } from "../core/types.ts";
+import type { BlameDto, CommentDto, CompareDto, StatusDto, ThreadDetail, ThreadSummary, VersionDto } from "../core/types.ts";
 
 export { regionText };
 
@@ -119,6 +119,19 @@ export function formatVersions(vs: VersionDto[]): string {
   if (vs.length === 0) return dim("no versions");
   return vs
     .map((v) => `${bold(`v${v.number}`)} ${dim(v.snapshot.slice(0, 10))} ${v.createdAt.replace("T", " ").slice(0, 16)} ${v.role}/${v.author}${v.label ? ` "${v.label}"` : ""}`)
+    .join("\n");
+}
+
+export function formatBlame(d: BlameDto): string {
+  if (!d.runs.length) return dim(`${d.path} is empty at ${d.at.label}`);
+  const width = Math.max(...d.runs.map((r) => range(r).length));
+  return d.runs
+    .map((r) => {
+      const o = r.origin;
+      const from = o.kind === "version" ? bold(`v${o.version}`) + (r.round ? ` (round ${r.round.index})` : "") : o.kind === "now" ? yellow("now") : dim("base");
+      const threads = r.threads.map((t) => ` · fixed ${cyan(`#${t.id}`)} "${t.title}"`).join("");
+      return `${range(r).padEnd(width)}  ${from}${threads}`;
+    })
     .join("\n");
 }
 

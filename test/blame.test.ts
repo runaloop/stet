@@ -5,6 +5,8 @@ import { addReply, addThread, createVersion, submitReview } from "../src/core/se
 import { clearNowCache } from "../src/core/snapshot.ts";
 import type { ReviewRow } from "../src/core/store/db.ts";
 import type { BlameDto } from "../src/core/types.ts";
+import { formatBlame } from "../src/cli/format.ts";
+import { ok, stet } from "./helpers/cli.ts";
 import { Fixture, edit, lines } from "./helpers/fixture.ts";
 
 const brief = (d: BlameDto) =>
@@ -106,6 +108,25 @@ describe("blame across versions and rounds", () => {
     expect(brief(await blame(agent, review, { path: "a.kt", start: 25, end: 25 }))).toEqual(["25-25 v4 r2"]);
     expect(refs()).toHaveLength(1);
     expect(refs()[0]).not.toBe(before);
+  });
+
+  test("stet blame <path>:<a>-<b> prints the runs, and one compact line per run for a person", async () => {
+    const d = await ok(stet(["blame", "a.kt:4-6"], { cwd: f.root }));
+    expect(brief(d)).toEqual(["4-4 base", `5-5 v3 r2 #${second}`, "6-6 base"]);
+    expect((await ok(stet(["blame", "./a.kt:15", "--at", "2"], { cwd: f.root }))).runs[0].origin.version).toBe(2);
+    expect((await ok(stet(["blame", "a.kt"], { cwd: f.root }))).range).toEqual({ start: 1, end: 30 });
+    expect(formatBlame(d)).toBe(["4  base", `5  v3 (round 2) · fixed #${second} "cache invalidation on logout"`, "6  base"].join("\n"));
+    const wide = await blame(agent, review, { path: "a.kt", start: 9, end: 16 });
+    expect(formatBlame(wide)).toBe(["9-14  base", `15    v2 (round 1) · fixed #${question} "Why line 15?"`, "16    base"].join("\n"));
+  });
+
+  test("stet blame refuses what it cannot answer", async () => {
+    expect((await stet(["blame"], { cwd: f.root })).code).toBe(1);
+    expect((await stet(["blame", "a.kt:0"], { cwd: f.root })).code).toBe(1);
+    expect((await stet(["blame", "a.kt:1", "--at", "base"], { cwd: f.root })).code).toBe(1);
+    const gone = await stet(["blame", "gone.kt:1"], { cwd: f.root });
+    expect(gone.code).toBe(2);
+    expect(gone.stderr).toContain("text file 'gone.kt' at v4 not found");
   });
 
   test("a whole file without a range, and bad requests", async () => {
