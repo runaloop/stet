@@ -1835,6 +1835,53 @@ try {
       { thenOffer, thenDraft, restoreSent, asAgent },
     );
 
+    const guideKt = Array.from({ length: 80 }, (_, i) => (i === 9 ? "val g10 = TEN" : i === 10 ? "val g11 = ELEVEN" : `val g${i + 1} = ${i + 1}`)).join("\n") + "\n";
+    writeFileSync(join(repo, "src/Guide.kt"), guideKt);
+    writeFileSync(join(repo, "src/GuideUtil.kt"), "fun util() = 1\nfun util2() = 2\n");
+    writeFileSync(join(repo, "src/GuideOther.kt"), "val other = 1\n");
+    run(repo, ["git", "add", "-A"]);
+    const guideMd = join(OUT, "ui-check-guide.md");
+    writeFileSync(guideMd, "# Guide check\n\n1. The cache keeps its size.\n   src/Guide.kt:10-12\n2. A helper for it, as #1 asked.\n   src/GuideUtil.kt\n");
+    const guideV = JSON.parse(run(repo, ["bun", CLI, "version", "create", "--label", "guide", "--guide", guideMd, "--json"])).version.number as number;
+    const guideThread = JSON.parse(run(repo, ["bun", CLI, "comment", "add", "--file", "src/Guide.kt", "--range", "11-11", "--at", String(guideV), "--body", "why eleven?", "--as", "reviewer", "--json"])).id as number;
+    await b.eval(`location.hash = "#/compare/${blameB}..${guideV}"; true`);
+    await waitFor(`document.querySelector(".guide-tabs") && [...document.querySelectorAll(".codeview-host diffs-container")].some(c => c.shadowRoot.querySelector("[data-title]")?.textContent === "src/Guide.kt")`, 10000);
+    await sleep(800);
+    await keys("j", "j", "j", "j", "j");
+    await b.eval(`document.querySelector(".codeview-host").scrollTop = 240; true`);
+    await sleep(600);
+    const diffState = `(() => { const h = document.querySelector(".codeview-host"); const at = [...document.querySelectorAll(".codeview-host diffs-container")].flatMap(c => [...c.shadowRoot.querySelectorAll('[data-content] > [data-stet-mark~="cursor"]')].map(r => c.shadowRoot.querySelector("[data-title]")?.textContent + ":" + r.getAttribute("data-line"))); return JSON.stringify({ top: h.scrollTop, cursor: at, hash: location.hash }); })()`;
+    const diffBefore = await b.eval(diffState);
+    await keys(" ", "u", "g");
+    await waitFor(`document.querySelectorAll(".guide .guide-ref diffs-container").length === 2 && document.querySelector(".guide .guide-ref .thread-mini")`, 10000);
+    await sleep(600);
+    const guideShown = await b.eval(`(() => { const g = document.querySelector(".guide"); return { title: g.querySelector(".guide-title")?.textContent, steps: [...g.querySelectorAll(".guide-step")].map(s => s.querySelector(".md").textContent.trim()), lines: [...g.querySelectorAll(".guide-ref diffs-container")].map(c => [...c.shadowRoot.querySelectorAll("code[data-additions] [data-column-number]")].map(e => +e.getAttribute("data-column-number")).join()), cards: [...g.querySelectorAll(".guide-ref .thread-mini")].map(m => +m.getAttribute("data-thread")), links: [...g.querySelectorAll("a.guide-thread")].map(a => a.getAttribute("href")), rest: [...g.querySelectorAll(".guide-rest li")].map(l => l.textContent) }; })()`);
+    await b.screenshot(join(OUT, "shots", "ui-check-guide.png"));
+    check(
+      "a version with a guide gets a Guide tab (Space u g): the title, each step's text over only its lines with three around them and the threads on them, and the files no step names",
+      guideShown.title === "Guide check" && guideShown.steps[1] === "A helper for it, as #1 asked." && guideShown.lines.join("|") === "7,8,9,10,11,12,13,14,15|1,2" &&
+        JSON.stringify(guideShown.cards) === JSON.stringify([guideThread]) && JSON.stringify(guideShown.links) === JSON.stringify(["#/thread/1"]) &&
+        JSON.stringify(guideShown.rest) === JSON.stringify(["A src/GuideOther.kt +1 −0"]),
+      guideShown,
+    );
+    await keys("j", "j", "}");
+    await b.eval(`document.querySelector(".guide .guide-ref diffs-container").shadowRoot.querySelector("[data-expand-up], [data-expand-both], [data-expand-down]")?.click(); true`);
+    const moreLines = await waitFor(`(() => { const n = document.querySelector(".guide .guide-ref diffs-container").shadowRoot.querySelectorAll("code[data-additions] [data-column-number]").length; return n > 9 ? n : null; })()`, 3000);
+    await keys("");
+    await waitFor(`!document.querySelector(".guide")`, 2000);
+    await sleep(400);
+    const diffAfter = await b.eval(diffState);
+    check("a bar above a step's lines shows more of them; Esc goes back to the diff, which kept its scroll, cursor and address", !!moreLines && diffAfter === diffBefore, { moreLines, diffBefore, diffAfter });
+    await keys(" ", "u", "g");
+    await waitFor(`document.querySelector(".guide .guide-step")`, 3000);
+    await click(".guide .guide-step[data-step='1'] a.guide-open");
+    const landed = await waitFor(`(() => { const c = [...document.querySelectorAll(".codeview-host diffs-container")].find(x => x.shadowRoot.querySelector("[data-title]")?.textContent === "src/Guide.kt"); const rows = (tag) => [...(c?.shadowRoot.querySelectorAll('code[data-additions] [data-content] > [data-stet-mark~="' + tag + '"]') ?? [])].map(r => r.getAttribute("data-line")).join(); return !document.querySelector(".guide") && rows("cursor") === "10" ? { hash: location.hash, linked: rows("linked") } : null; })()`, 5000);
+    check(
+      "open in Diff goes to exactly the step's lines in the normal diff",
+      landed?.hash === `#/compare/${blameB}..${guideV}?file=src%2FGuide.kt&line=10-12` && landed.linked === "10,11,12",
+      landed,
+    );
+
     await b.eval(`location.hash = "#/compare/${imgV - 1}..${imgV}"; true`);
     await waitFor(`[...document.querySelectorAll(".imgdiff img")].length >= 5`, 10000);
     await sleep(800);
