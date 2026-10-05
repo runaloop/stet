@@ -3,7 +3,7 @@ import type { ThreadDetail } from "../../src/core/types.ts";
 import { thread } from "../helpers/threads.ts";
 import { applyFilters, DEFAULT_FILTERS, matchesFile } from "../../web/lib/filters.ts";
 import { compareOrder, stepFile, stepThread, stepUnread } from "../../web/lib/nav.ts";
-import { regionDiff, regionPatch } from "../../web/lib/region.ts";
+import { filePatch, regionDiff, regionPatch } from "../../web/lib/region.ts";
 import { parseHash, routeHash, takeToken } from "../../web/lib/route.ts";
 import { diffPair } from "../../web/lib/timeline.ts";
 import { flatten, groupByFile } from "../../web/lib/tree.ts";
@@ -163,6 +163,15 @@ describe("the thread's code block", () => {
     const edited = file(200, { 100: "line 100 edited" });
     expect(regionPatch({ path: "a.kt", text: before, range: { start: 100, end: 100 } }, { path: "a.kt", text: edited, range: { start: 100, end: 100 } }).kind).toBe("changed");
     expect(regionPatch({ path: "a.kt", text: before, range: { start: 97, end: 97 } }, { path: "a.kt", text: edited, range: { start: 97, end: 97 } }).kind).toBe("nearby");
+  });
+
+  test("the whole file's changes, for a rendered Markdown file, hold every hunk", async () => {
+    const edited = file(200, { 20: "line 20 edited", 180: "line 180 edited" });
+    expect(filePatch({ path: "a.md", text: before }, { path: "a.md", text: before })).toBeNull();
+    const patch = filePatch({ path: "old.md", text: before }, { path: "a.md", text: edited })!;
+    const { parsePatchFiles } = await import("@pierre/diffs");
+    const fd = parsePatchFiles(patch).flatMap((p) => p.files)[0]!;
+    expect(fd.hunks.map((h) => [h.additionStart, h.additionCount])).toEqual([[17, 7], [177, 7]]);
   });
 });
 

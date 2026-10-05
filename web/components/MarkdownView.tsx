@@ -1,7 +1,6 @@
-import { DEFAULT_THEMES, getSharedHighlighter, type DiffsHighlighter } from "@pierre/diffs";
-import { render } from "preact";
+import { DEFAULT_THEMES, getSharedHighlighter, type DiffsHighlighter, type FileDiffMetadata } from "@pierre/diffs";
+import { render, type VNode } from "preact";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
-import type { ComparePlacement } from "../../src/core/types.ts";
 import { rawUrl, type BlobDto } from "../api.ts";
 import {
   compareData,
@@ -24,9 +23,10 @@ import {
   visualAnchor,
 } from "../compare.ts";
 import { paintTextHits } from "../lib/marks.ts";
-import { changesOf, pairsOf, renderMarkdown, rowsOf, slotsOf, stopsOf, stopsOn, subtree, type MdSide, type RowKind, type SideChanges, type Stop } from "../lib/markdown.ts";
+import { changesOf, pairsOf, renderMarkdown, rowsOf, slotsOf, stopsOf, stopsOn, subtree, type MdSide, type Row, type RowKind, type SideBlocks, type SideChanges, type Stop } from "../lib/markdown.ts";
 import { isSimple, markInline, markPairs, markWords, textOf as blockText, unitsOf } from "../lib/richdiff.ts";
 import { breakAfter, unitOf } from "../lib/breaks.ts";
+import type { NavBlock, Span } from "../lib/cursor.ts";
 import { compileQuery, type Side } from "../lib/search.ts";
 import { compareFocus, diffStyle } from "../state.ts";
 import { rangeText } from "./Bits.tsx";
@@ -85,6 +85,31 @@ interface Cell {
   side: MdSide;
   kind: RowKind;
   html: string;
+}
+
+type Skip = { key: string; skip: number };
+
+/** The rows with a block on lines `shown` holds, and a fold for each run of rows between them. */
+function foldRows(cells: Cell[], rows: readonly Row[], sides: { old: SideBlocks | null; new: SideBlocks | null }, shown: MdShown): (Cell | Skip)[] {
+  const meets = (s: SideBlocks | null, list: number[], spans: readonly Span[]) =>
+    !!s && list.some((i) => spans.some((r) => s.blocks[i]!.start <= r.end && r.start <= s.blocks[i]!.end));
+  const keep = rows.map((r) => meets(sides.old, r.old, shown.old) || meets(sides.new, r.new, shown.new));
+  const out: (Cell | Skip)[] = [];
+  let folded = 0;
+  const fold = (at: number) => {
+    if (folded) out.push({ key: `skip${at}`, skip: folded });
+    folded = 0;
+  };
+  rows.forEach((_, i) => {
+    if (!keep[i]) {
+      folded++;
+      return;
+    }
+    fold(i);
+    out.push(...cells.filter((c) => c.row === i));
+  });
+  fold(rows.length);
+  return out;
 }
 
 /** The element a stop is drawn as, for a thread or a comment on `side`: in split view an unchanged block's old twin stands for the old side. */
@@ -202,32 +227,88 @@ function slotFor(el: HTMLElement): ((_: HTMLElement, box: HTMLElement) => void) 
   return slot ? (_, box) => slot.append(box) : null;
 }
 
-function ThreadCards({ items }: { items: { p: ComparePlacement; partial: boolean }[] }) {
+/** A version of the file a side of the view shows. */
+export interface MdSource {
+  sha: string;
+  path: string;
+  label: string;
+}
+
+/** A thread on lines of one side. */
+export interface MdThread {
+  threadId: number;
+  side: Side;
+  range: Span;
+  state: string;
+}
+
+const miniCard = (p: MdThread) => <ThreadMini id={p.threadId} state={p.state} />;
+
+function ThreadCards({ items, cardOf }: { items: { p: MdThread; partial: boolean }[]; cardOf: (p: MdThread) => VNode | null }) {
   return (
     <>
       {items.map(({ p, partial }) => (
         <div class="md-thread-card" key={p.threadId}>
           {partial ? <span class="md-thread-lines">lines {rangeText(p.range)}</span> : null}
-          <ThreadMini id={p.threadId} state={p.state} />
+          {cardOf(p)}
         </div>
       ))}
     </>
   );
 }
 
-/**
- * A Markdown file of the diff rendered: in split view the old and the new side next to each other, block facing block
- * and item facing item, the changed words marked; in unified view one column where a block with a few words changed
- * shows once with the changes in it, and another changed block's old version stands above its new one. Threads show
- * on the blocks their lines are in, a block can be commented on like lines of code, and search hits are highlighted
- * in the text.
- */
+/** A Markdown file of the Changes page, rendered. */
 export function MarkdownView({ file }: { file: string }) {
   const d = compareData.value;
-  const fd = compareFiles.value?.find((f) => f.name === file);
-  const oldPath = fd?.prevName ?? file;
-  const oldSha = d && fd && fd.type !== "new" ? d.from.sha : null;
-  const newSha = d && fd && fd.type !== "deleted" ? d.to.sha : null;
+  const fd = compareFiles.value?.find((f) => f.name === file) ?? null;
+  const at = (side: "from" | "to", path: string) => (d ? { sha: d[side].sha, path, label: d[side].label } : null);
+  return (
+    <RenderedMarkdown
+      file={file}
+      fd={fd}
+      old={fd && fd.type !== "new" ? at("from", fd.prevName ?? file) : null}
+      now={fd && fd.type !== "deleted" ? at("to", file) : null}
+      split={diffStyle.value === "split"}
+      threads={shownPlacements.value.filter((p) => p.path === file)}
+      live
+      onStops={(navs) => fd && setFileBlocks(fd, navs)}
+    />
+  );
+}
+
+/** Lines of each side to show, the rest folded; all of them when absent. */
+export interface MdShown {
+  old: readonly Span[];
+  new: readonly Span[];
+}
+
+interface RenderedProps {
+  file: string;
+  /** The diff from `old` to `now`, for its hunks. */
+  fd: Pick<FileDiffMetadata, "hunks"> | null;
+  old: MdSource | null;
+  now: MdSource | null;
+  split: boolean;
+  threads: readonly MdThread[];
+  shown?: MdShown | null;
+  /** What stands under a thread's blocks; null for a mark on its blocks only. */
+  cardOf?: (p: MdThread) => VNode | null;
+  /** On the Changes page: the cursor, comments, search and the gutter beside a block. */
+  live?: boolean;
+  onStops?: (navs: NavBlock[]) => void;
+}
+
+/**
+ * A Markdown file rendered, two versions compared: in split view the old and the new side next to each other, block
+ * facing block and item facing item, the changed words marked; in unified view one column where a block with a few
+ * words changed shows once with the changes in it, and another changed block's old version stands above its new one.
+ * Threads show on the blocks their lines are in; on the Changes page a block can be commented on like lines of code,
+ * and search hits are highlighted in the text.
+ */
+export function RenderedMarkdown({ file, fd, old, now, split: splitWanted, threads: placed, shown = null, cardOf = miniCard, live = false, onStops }: RenderedProps) {
+  const oldPath = old?.path ?? file;
+  const oldSha = fd && old ? old.sha : null;
+  const newSha = fd && now ? now.sha : null;
   const oldBlob = useBlob(oldSha, oldPath);
   const newBlob = useBlob(newSha, file);
   const oldText = textOf(oldBlob);
@@ -239,11 +320,11 @@ export function MarkdownView({ file }: { file: string }) {
       text !== null && sha ? renderMarkdown(text, { path, imageUrl: (p) => rawUrl(sha, p), changes: ch, highlight }) : null;
     return { old: side(oldText, oldSha, oldPath, changes?.old ?? null), new: side(newText, newSha, file, changes?.new ?? null) };
   }, [oldText, newText, oldSha, newSha, oldPath, file, changes, highlight]);
-  const split = diffStyle.value === "split" && !!sides.old && !!sides.new;
-  const placed = shownPlacements.value.filter((p) => p.path === file);
+  const split = splitWanted && !!sides.old && !!sides.new;
   const placedKey = JSON.stringify(placed.map((p) => [p.threadId, p.side, p.range.start, p.range.end, p.state]));
-  const pending = pendingLines.value;
+  const pending = live ? pendingLines.value : null;
   const mine = pending?.path === file ? pending : null;
+  const shownKey = shown ? JSON.stringify(shown) : "";
   const pendingKey = mine ? `${mine.range.side}:${lo(mine.range)}-${hi(mine.range)}` : "";
   const layout = useMemo(() => {
     if (!fd || !(sides.old || sides.new)) return null;
@@ -298,7 +379,7 @@ export function MarkdownView({ file }: { file: string }) {
     });
     const root = (row: number, side: MdSide) => frags.find((f) => f.row === row && f.side === side)?.t.content ?? null;
     const ranges = [
-      ...placed.map((p) => ({ side: (p.side === "deletions" ? "old" : "new") as MdSide, start: p.range.start, end: p.range.end })),
+      ...placed.filter((p) => cardOf(p) !== null).map((p) => ({ side: (p.side === "deletions" ? "old" : "new") as MdSide, start: p.range.start, end: p.range.end })),
       ...(mine ? [{ side: (mine.range.side === "deletions" ? "old" : "new") as MdSide, start: lo(mine.range), end: hi(mine.range) }] : []),
     ];
     const broken = new Set<Element>();
@@ -325,8 +406,8 @@ export function MarkdownView({ file }: { file: string }) {
       }
     }
     const cells: Cell[] = frags.map((f) => ({ key: f.key, row: f.row, side: f.side, kind: f.kind, html: sized(f.t.innerHTML) }));
-    return { rows, pairs, cells, merged, stops };
-  }, [fd, sides, split, placedKey, pendingKey]);
+    return { rows, pairs, cells: shown ? foldRows(cells, rows, sides, shown) : cells, merged, stops };
+  }, [fd, sides, split, placedKey, pendingKey, shownKey]);
   const cells = layout?.cells ?? [];
   const seen = (e: Event) => {
     const img = e.target;
@@ -347,7 +428,7 @@ export function MarkdownView({ file }: { file: string }) {
   }, [langs]);
 
   useEffect(() => {
-    if (fd && layout) setFileBlocks(fd, layout.stops.map((s) => s.nav));
+    if (fd && layout && onStops) onStops(layout.stops.map((s) => s.nav));
   }, [fd, layout]);
 
   const grid = useRef<HTMLDivElement>(null);
@@ -365,7 +446,7 @@ export function MarkdownView({ file }: { file: string }) {
     const g = grid.current;
     if (!g) return;
     for (const el of g.querySelectorAll(".md-cursor, .md-visual")) el.classList.remove("md-cursor", "md-visual");
-    if (!layout || c?.path !== file || c.row < 0) return;
+    if (!layout || !live || c?.path !== file || c.row < 0) return;
     const mark = (k: number, cls: string) => g.querySelectorAll(`[data-stop="${k}"]`).forEach((el) => el.classList.add(cls));
     if (anchor?.path === file && anchor.row >= 0) for (let k = Math.min(anchor.row, c.row); k <= Math.max(anchor.row, c.row); k++) mark(k, "md-visual");
     mark(c.row, "md-cursor");
@@ -375,7 +456,7 @@ export function MarkdownView({ file }: { file: string }) {
     const g = grid.current;
     if (!g || !layout) return;
     const marked: HTMLElement[] = [];
-    const under = new Map<HTMLElement, { p: ComparePlacement; partial: boolean }[]>();
+    const under = new Map<HTMLElement, { p: MdThread; partial: boolean }[]>();
     for (const p of placed) {
       const side: MdSide = p.side === "deletions" ? "old" : "new";
       const { stops, partial } = stopsOn(layout.stops, side, p.range.start, p.range.end);
@@ -386,14 +467,14 @@ export function MarkdownView({ file }: { file: string }) {
         marked.push(el);
       }
       const at = els[els.length - 1] ?? g;
-      under.set(at, [...(under.get(at) ?? []), { p, partial }]);
+      if (cardOf(p)) under.set(at, [...(under.get(at) ?? []), { p, partial }]);
     }
     const boxes = [...under].map(([el, items]) => {
       const box = document.createElement("div");
       box.className = "md-threads";
       if (el === g) g.append(box);
       else (slotFor(el) ?? placeUnder)(el, box);
-      render(<ThreadCards items={items} />, box);
+      render(<ThreadCards items={items} cardOf={cardOf} />, box);
       return box;
     });
     return () => {
@@ -436,7 +517,7 @@ export function MarkdownView({ file }: { file: string }) {
   }, [layout, pendingKey]);
 
   // Search hits in the rendered text: each block that holds a line with a hit, and the hit the search is at.
-  const hits = searchScope.value === "files" ? grepHits.value.filter((h) => h.path === file && h.inDiff).map((h) => ({ side: "additions" as Side, line: h.line })) : (searchResult.value.files.find((f) => f.path === file)?.hits ?? []);
+  const hits = !live ? [] : searchScope.value === "files" ? grepHits.value.filter((h) => h.path === file && h.inDiff).map((h) => ({ side: "additions" as Side, line: h.line })) : (searchResult.value.files.find((f) => f.path === file)?.hits ?? []);
   const current = searchScope.value === "files" ? currentGrepHit.value : currentHit.value;
   const query = compileQuery(searchQuery.value, searchRegex.value);
   const hitsKey = JSON.stringify([hits.map((h) => [h.side, h.line]), current?.path === file ? [current.line, "side" in current ? current.side : "additions"] : null, String(query)]);
@@ -496,11 +577,13 @@ export function MarkdownView({ file }: { file: string }) {
 
   const [hover, setHover] = useState<{ stop: number; side: MdSide; top: number; left: number } | null>(null);
 
-  if (!d || !fd) return null;
+  if (!fd || !(old || now)) return null;
   if ((oldSha && oldBlob === "loading") || (newSha && newBlob === "loading")) return <div class="note" data-file={file}>loading…</div>;
   if (!layout) return <div class="note" data-file={file}>{file} is not a text file here.</div>;
 
-  const at = (side: MdSide) => (side === "old" ? { sha: d.from.sha, label: d.from.label } : { sha: d.to.sha, label: d.to.label });
+  const from = old ?? now!;
+  const to = now ?? old!;
+  const at = (side: MdSide) => (side === "old" ? from : to);
   const sideOf = (el: Element): MdSide => ((el.closest(".md-cell") as HTMLElement | null)?.dataset.side === "old" ? "old" : "new");
 
   const comment = (k: number, side: MdSide) => {
@@ -519,16 +602,18 @@ export function MarkdownView({ file }: { file: string }) {
     if (link) {
       e.preventDefault();
       const path = link.getAttribute("data-path");
-      if (path) peek.value = { path, ...at(sideOf(link)), line: Number(link.getAttribute("data-line")) || 1 };
+      const { sha, label } = at(sideOf(link));
+      if (path) peek.value = { path, sha, label, line: Number(link.getAttribute("data-line")) || 1 };
       return;
     }
-    if (!(window.getSelection()?.isCollapsed ?? true)) return;
+    if (!live || !(window.getSelection()?.isCollapsed ?? true)) return;
     const block = el.closest<HTMLElement>("[data-stop]");
     if (block) setCursor({ path: file, row: Number(block.dataset.stop) }, false);
   };
 
   // The innermost block level with the pointer, so the gutter beside a block stays while the pointer moves to it.
   const move = (e: MouseEvent) => {
+    if (!live) return;
     const t = e.target as Element;
     if (t.closest(".md-gutter")) return;
     const cell = t.closest<HTMLElement>(".md-cell");
@@ -560,34 +645,43 @@ export function MarkdownView({ file }: { file: string }) {
   const caption = split
     ? `${oldPath === file ? "" : `${oldPath} → ${file} · `}old and new side by side; unchanged blocks are level`
     : sides.old && sides.new
-      ? `${d.from.label} → ${d.to.label} · changed words are marked in the text; a rewritten block shows what was there above what is there now`
+      ? `${from.label} → ${to.label} · changed words are marked in the text; a rewritten block shows what was there above what is there now`
       : sides.new
-        ? `added at ${d.to.label}`
-        : `deleted after ${d.from.label}`;
+        ? `added at ${to.label}`
+        : `deleted after ${from.label}`;
+  const one = old && now && old.sha === now.sha && old.path === now.path;
 
   return (
     <div class={`md-view${split ? " md-split" : " md-one"}`} data-file={file}>
-      <div class="md-bar">
-        <span class="md-caption">{caption}</span>
-        <span class="hint">click a block for the cursor · + or i comments on it · ‹/› shows its lines in the code</span>
-      </div>
+      {one ? null : (
+        <div class="md-bar">
+          <span class="md-caption">{caption}</span>
+          {live ? <span class="hint">click a block for the cursor · + or i comments on it · ‹/› shows its lines in the code</span> : null}
+        </div>
+      )}
       <div class="md-grid" ref={grid} onClick={click} onMouseMove={move} onMouseLeave={() => setHover(null)} onErrorCapture={missing} onLoadCapture={seen}>
         {split ? (
           <>
-            <div class="md-head" data-side="old">{d.from.label}</div>
-            <div class="md-head" data-side="new">{d.to.label}</div>
+            <div class="md-head" data-side="old">{from.label}</div>
+            <div class="md-head" data-side="new">{to.label}</div>
           </>
         ) : null}
-        {cells.map((cell) => (
-          <div
-            key={cell.key}
-            class={`md md-cell md-${cell.kind}${cell.html ? "" : " md-empty"}`}
-            data-row={cell.row}
-            data-side={cell.side}
-            data-label={at(cell.side).label}
-            dangerouslySetInnerHTML={{ __html: cell.html }}
-          />
-        ))}
+        {cells.map((cell) =>
+          "skip" in cell ? (
+            <div key={cell.key} class="md-skip">
+              ⋯ {cell.skip} block{cell.skip === 1 ? "" : "s"} not shown
+            </div>
+          ) : (
+            <div
+              key={cell.key}
+              class={`md md-cell md-${cell.kind}${cell.html ? "" : " md-empty"}`}
+              data-row={cell.row}
+              data-side={cell.side}
+              data-label={at(cell.side).label}
+              dangerouslySetInnerHTML={{ __html: cell.html }}
+            />
+          ),
+        )}
         {hover ? (
           <div class="md-gutter" style={{ top: `${hover.top}px`, left: `${hover.left}px` }}>
             <button class="md-plus" title="comment on this block (i)" onClick={() => comment(hover.stop, hover.side)}>
