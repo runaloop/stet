@@ -1,4 +1,4 @@
-import { CodeView, parsePatchFiles, type CodeViewItem, type CodeViewScrollTarget, type DiffLineAnnotation, type FileDiffMetadata, type SelectedLineRange } from "@pierre/diffs";
+import { CodeView, parsePatchFiles, type CodeViewItem, type CodeViewScrollTarget, type DiffLineAnnotation, type FileDiffMetadata, type LineAnnotation, type SelectedLineRange } from "@pierre/diffs";
 import { effect } from "@preact/signals";
 import { render, type ComponentChild } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
@@ -54,7 +54,7 @@ import { isMarkdown } from "../lib/markdown.ts";
 import { rowPosition, type Cursor, type LineRange } from "../lib/cursor.ts";
 import { compareOrder } from "../lib/nav.ts";
 import { PeekView } from "./Peek.tsx";
-import { codeAnchor, holdAt, renderedAnchor, rowElement, stopElement } from "./anchor.ts";
+import { codeAnchor, lineAt, placeAt, renderedAnchor, stopElement } from "./anchor.ts";
 import { Presets, rangeTitle, ReviewedButton, VersionStrip } from "../components/VersionStrip.tsx";
 import { takeSpot } from "../jumps.ts";
 import { compileQuery, diffRows } from "../lib/search.ts";
@@ -167,7 +167,7 @@ function FoldSummary() {
 }
 
 type Viewer = "image" | "markdown";
-type Anno = { kind: "thread"; placement: ComparePlacement } | { kind: "new" } | { kind: Viewer; path: string };
+type Anno = { kind: "thread"; placement: ComparePlacement } | { kind: "new" } | { kind: Viewer; path: string; version: number };
 type SelectionContext = { item: { id: string; fileDiff?: FileDiffMetadata } };
 
 /**
@@ -443,7 +443,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     let y = centered;
     if (align === "nearest" && box && now !== null) y = now < head ? head : now + box.height + 24 > height ? Math.max(head, height - box.height - 24) : now;
     if (!el) view.current?.scrollTo({ type: "item", id: path, align: "start" });
-    holdAt(h, find, y, 1200);
+    placeAt(h, find, y, 1200);
   };
 
   /** The line of `span` on `side` that the diff shows, or the nearest one it shows. */
@@ -477,9 +477,8 @@ export function CompareView({ from, to }: { from: string; to: string }) {
           if (moved) cursor.value = moved;
         }
         requestAnimationFrame(() => {
-          view.current?.scrollTo({ type: "line", id: path, lineNumber: line, side, align: "start" });
           const cv = view.current as CodeView<never> | null;
-          if (cv) holdAt(h, () => rowElement(cv, path, side, line), a.y);
+          if (cv) lineAt(h, cv, path, side, line, a.y);
         });
       });
       return;
@@ -499,7 +498,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
             const s = cursorSpace.peek().locate(path, a.side, a.line);
             if (!s) return;
             if (here) cursor.value = s;
-            holdAt(h, () => stopElement(path, s.row, a.side), a.y, 2500);
+            placeAt(h, () => stopElement(path, s.row, a.side), a.y, 2500);
           },
           true,
         ),
@@ -635,14 +634,16 @@ export function CompareView({ from, to }: { from: string; to: string }) {
       return h;
     };
     const footer = mount(<FoldFooter />, "codeview-footer");
-    // pierre drops a file's viewer when the file scrolls away and asks for a new one when it comes back: unmount the
-    // old one, or every pass leaves a live copy behind
-    const viewers = new Map<string, HTMLElement>();
-    const viewer = (path: string, child: ComponentChild, className: string) => {
+    // pierre drops a file's viewer when the file scrolls away and asks for one again when it comes back: hand back the
+    // same one while the file is the same, so it keeps its height (a new one would start small and grow, and move
+    // everything below it), and unmount it once the file changes
+    const viewers = new Map<string, { version: number; el: HTMLElement }>();
+    const viewer = (path: string, version: number, child: ComponentChild, className: string) => {
       const was = viewers.get(path);
-      if (was) render(null, was);
+      if (was?.version === version) return was.el;
+      if (was) render(null, was.el);
       const el = mount(child, className);
-      viewers.set(path, el);
+      viewers.set(path, { version, el });
       return el;
     };
     const options = {
@@ -673,8 +674,8 @@ export function CompareView({ from, to }: { from: string; to: string }) {
         paintMarks(node, marksFor(ctx.item.id));
       },
       renderAnnotation: (a: DiffLineAnnotation<Anno>) => {
-        if (a.metadata.kind === "image") return viewer(a.metadata.path, <ImageDiff file={a.metadata.path} />, "anno image-anno");
-        if (a.metadata.kind === "markdown") return viewer(a.metadata.path, <MarkdownView file={a.metadata.path} />, "anno md-anno");
+        if (a.metadata.kind === "image") return viewer(a.metadata.path, a.metadata.version, <ImageDiff file={a.metadata.path} />, "anno image-anno");
+        if (a.metadata.kind === "markdown") return viewer(a.metadata.path, a.metadata.version, <MarkdownView file={a.metadata.path} />, "anno md-anno");
         if (a.metadata.kind === "thread") return mount(<ThreadMini id={a.metadata.placement.threadId} state={a.metadata.placement.state} />, "anno");
         const p = pendingLines.peek();
         return p ? mount(<PendingBox p={p} />, "anno") : undefined;
@@ -737,12 +738,12 @@ export function CompareView({ from, to }: { from: string; to: string }) {
       unsubscribe();
       cancelAnimationFrame(frame);
       cv.cleanUp();
-      for (const el of viewers.values()) render(null, el);
+      for (const { el } of viewers.values()) render(null, el);
       view.current = null;
     };
   }, [diffStyle.value, wrap.value]);
 
-  const versions = useRef({ gen: 0, byItem: new Map<string, { sig: string; version: number; file?: ReturnType<typeof viewerFile> }>(), files: null as FileDiffMetadata[] | null, scrolled: false, ids: [] as string[] });
+  const versions = useRef({ gen: 0, byItem: new Map<string, { sig: string; version: number; viewer?: { file: ReturnType<typeof viewerFile>; annotations: LineAnnotation<Anno>[] } }>(), files: null as FileDiffMetadata[] | null, scrolled: false, ids: [] as string[] });
   useEffect(() => {
     const cv = view.current;
     if (!cv || !files) return;
@@ -761,10 +762,11 @@ export function CompareView({ from, to }: { from: string; to: string }) {
         const collapsed = isCollapsed(fd);
         let entry = v.byItem.get(fd.name);
         if (!entry || entry.sig !== String(collapsed)) {
-          entry = { sig: String(collapsed), version: ++v.gen, file: viewerFile(fd.name) };
+          const version = ++v.gen;
+          entry = { sig: String(collapsed), version, viewer: { file: viewerFile(fd.name), annotations: [{ lineNumber: 1, metadata: { kind: viewer, path: fd.name, version } }] } };
           v.byItem.set(fd.name, entry);
         }
-        return { id: fd.name, type: "file", file: entry.file!, annotations: [{ lineNumber: 1, metadata: { kind: viewer, path: fd.name } }], version: entry.version, collapsed };
+        return { id: fd.name, type: "file", file: entry.viewer!.file, annotations: entry.viewer!.annotations, version: entry.version, collapsed };
       }
       const annotations = annotationsFor(byPath.get(fd.name), pending, fd.name);
       const collapsed = isCollapsed(fd);

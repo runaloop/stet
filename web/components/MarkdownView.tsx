@@ -24,8 +24,9 @@ import {
   visualAnchor,
 } from "../compare.ts";
 import { paintTextHits } from "../lib/marks.ts";
-import { changesOf, pairsOf, renderMarkdown, rowsOf, slotsOf, stopsOf, stopsOn, type MdSide, type RowKind, type SideChanges, type Stop } from "../lib/markdown.ts";
+import { changesOf, pairsOf, renderMarkdown, rowsOf, slotsOf, stopsOf, stopsOn, subtree, type MdSide, type RowKind, type SideChanges, type Stop } from "../lib/markdown.ts";
 import { isSimple, markInline, markPairs, markWords, textOf as blockText, unitsOf } from "../lib/richdiff.ts";
+import { breakAfter, unitOf } from "../lib/breaks.ts";
 import { compileQuery, type Side } from "../lib/search.ts";
 import { compareFocus, diffStyle } from "../state.ts";
 import { rangeText } from "./Bits.tsx";
@@ -35,12 +36,19 @@ import { useBlob } from "./useBlob.ts";
 
 type Highlight = (code: string, lang: string) => string | null;
 
+// What a view drawn again needs at once to come out as tall as before: the highlighter with the languages loaded so
+// far, and the sizes of the pictures it showed.
+let lit: Highlight | null = null;
+const litLangs = new Set<string>();
+const pictureSizes = new Map<string, [number, number]>();
+
 /** Code blocks in the colors of the diff, for the languages shiki knows. */
 async function highlighter(langs: string[]): Promise<Highlight> {
   const themes = [DEFAULT_THEMES.light, DEFAULT_THEMES.dark];
   let h: DiffsHighlighter = await getSharedHighlighter({ themes, langs: [] });
   for (const lang of langs) h = await getSharedHighlighter({ themes, langs: [lang] }).catch(() => h);
-  return (code, lang) => {
+  for (const lang of langs) litLangs.add(lang);
+  return (lit = (code, lang) => {
     try {
       return h.codeToHtml(code, {
         lang,
@@ -57,8 +65,15 @@ async function highlighter(langs: string[]): Promise<Highlight> {
     } catch {
       return null;
     }
-  };
+  });
 }
+
+/** Pictures the page has shown keep their size when drawn again, so the text around them does not move. */
+const sized = (html: string) =>
+  html.replace(/<img src="([^"]*)"/g, (m, src: string) => {
+    const s = pictureSizes.get(src.replaceAll("&amp;", "&"));
+    return s ? `${m} width="${s[0]}" height="${s[1]}"` : m;
+  });
 
 const textOf = (b: BlobDto | null | "loading") => (b && b !== "loading" ? b.contents : null);
 const lineCount = (t: string | null) => (t === null ? 0 : t.split("\n").length);
@@ -138,6 +153,25 @@ function level(a: HTMLElement, b: HTMLElement): void {
 }
 
 /** Lines up the pairs of each changed row of a split view (`data-pair`), top to bottom, and sizes the empty slots. */
+/** A table broken under its threads keeps one set of column widths across its parts, the widest of each column. */
+function alignColumns(g: HTMLElement): void {
+  for (const first of g.querySelectorAll<HTMLTableElement>(".md-cell table:not(.md-more)")) {
+    const parts = [first];
+    for (let at: Element | null = first.nextElementSibling; at?.classList.contains("md-slot"); ) {
+      const more = at.nextElementSibling;
+      if (!(more instanceof HTMLTableElement) || !more.classList.contains("md-more")) break;
+      parts.push(more);
+      at = more.nextElementSibling;
+    }
+    if (parts.length < 2) continue;
+    const heads = parts.map((t) => [...(t.rows[0]?.cells ?? [])]);
+    for (const c of heads.flat()) c.style.width = "";
+    if (heads.flat().some((c) => !c.getBoundingClientRect().width)) continue;
+    const widths = heads[0]!.map((_, i) => Math.max(...heads.map((r) => r[i]?.getBoundingClientRect().width ?? 0)));
+    for (const r of heads) r.forEach((c, i) => (c.style.width = `${widths[i]}px`));
+  }
+}
+
 function lineUp(g: HTMLElement): void {
   for (const el of g.querySelectorAll<HTMLElement>("[data-pair]")) {
     el.style.marginTop = "";
@@ -150,13 +184,22 @@ function lineUp(g: HTMLElement): void {
     for (const a of oldCell.querySelectorAll<HTMLElement>("[data-pair]")) {
       const b = facing.get(a.dataset.pair!);
       if (!b) continue;
-      const gap = a.classList.contains("md-gap") ? a : b.classList.contains("md-gap") ? b : null;
+      const empty = (x: HTMLElement) => x.classList.contains("md-gap") || (x.classList.contains("md-slot") && !x.childElementCount);
+      const gap = empty(a) ? a : empty(b) ? b : null;
       const real = gap === a ? b : a;
       if (a.tagName !== "TR") level(a, b);
       if (gap) gap.style.height = `${real.getBoundingClientRect().height}px`;
       else if (a.tagName === "TR") a.style.height = b.style.height = `${Math.max(a.getBoundingClientRect().height, b.getBoundingClientRect().height)}px`;
     }
   }
+}
+
+/** The slot a broken table or list keeps right under the row or item of `el`, as a way to put a box there. */
+function slotFor(el: HTMLElement): ((_: HTMLElement, box: HTMLElement) => void) | null {
+  const unit = unitOf(el);
+  const b = unit?.getAttribute("data-b");
+  const slot = b ? el.closest(".md-cell")?.querySelector(`.md-slot[data-after="${b}"]`) : null;
+  return slot ? (_, box) => slot.append(box) : null;
 }
 
 function ThreadCards({ items }: { items: { p: ComparePlacement; partial: boolean }[] }) {
@@ -189,7 +232,7 @@ export function MarkdownView({ file }: { file: string }) {
   const newBlob = useBlob(newSha, file);
   const oldText = textOf(oldBlob);
   const newText = textOf(newBlob);
-  const [highlight, setHighlight] = useState<Highlight | null>(null);
+  const [highlight, setHighlight] = useState<Highlight | null>(() => lit);
   const changes = useMemo(() => (fd ? changesOf(fd) : null), [fd]);
   const sides = useMemo(() => {
     const side = (text: string | null, sha: string | null, path: string, ch: SideChanges | null) =>
@@ -197,6 +240,11 @@ export function MarkdownView({ file }: { file: string }) {
     return { old: side(oldText, oldSha, oldPath, changes?.old ?? null), new: side(newText, newSha, file, changes?.new ?? null) };
   }, [oldText, newText, oldSha, newSha, oldPath, file, changes, highlight]);
   const split = diffStyle.value === "split" && !!sides.old && !!sides.new;
+  const placed = shownPlacements.value.filter((p) => p.path === file);
+  const placedKey = JSON.stringify(placed.map((p) => [p.threadId, p.side, p.range.start, p.range.end, p.state]));
+  const pending = pendingLines.value;
+  const mine = pending?.path === file ? pending : null;
+  const pendingKey = mine ? `${mine.range.side}:${lo(mine.range)}-${hi(mine.range)}` : "";
   const layout = useMemo(() => {
     if (!fd || !(sides.old || sides.new)) return null;
     const slots = slotsOf(fd, lineCount(oldText), lineCount(newText));
@@ -210,10 +258,10 @@ export function MarkdownView({ file }: { file: string }) {
       return t;
     };
     const tagOf = (side: MdSide, i: number) => (side === "old" ? sides.old : sides.new)!.blocks[i]!.tag;
-    const cells: Cell[] = [];
+    const frags: { key: string; row: number; side: MdSide; kind: RowKind; t: HTMLTemplateElement }[] = [];
     const merged = new Set<number>();
     rows.forEach((r, i) => {
-      const cell = (side: MdSide, h: string) => cells.push({ key: `${i}${side}`, row: i, side, kind: r.kind, html: h });
+      const cell = (side: MdSide, t: HTMLTemplateElement) => frags.push({ key: `${i}${side}`, row: i, side, kind: r.kind, t });
       if (r.kind === "changed" && r.old.length && r.new.length) {
         const a = parse(html("old", r.old));
         const b = parse(html("new", r.new));
@@ -221,25 +269,73 @@ export function MarkdownView({ file }: { file: string }) {
         if (!split && isSimple(pairs[i]!, units, tagOf)) {
           merged.add(i);
           markInline(b.content, pairs[i]!, units);
-          cell("new", b.innerHTML);
+          cell("new", b);
           return;
         }
         markWords(units);
         if (split) markPairs(a.content, b.content, pairs[i]!);
-        cell("old", a.innerHTML);
-        cell("new", b.innerHTML);
+        cell("old", a);
+        cell("new", b);
         return;
       }
-      if (split || (r.old.length && r.kind !== "same")) cell("old", html("old", r.old));
-      if (split || r.new.length) cell("new", html("new", r.new));
+      if (split || (r.old.length && r.kind !== "same")) cell("old", parse(html("old", r.old)));
+      if (split || r.new.length) cell("new", parse(html("new", r.new)));
     });
-    return { rows, pairs, cells, merged, stops: stopsOf(rows, pairs, sides.old, sides.new, split, merged) };
-  }, [fd, sides, split]);
+    const stops = stopsOf(rows, pairs, sides.old, sides.new, split, merged);
+
+    // A thread (or the comment being written) on a table row or a list item breaks the table or the list after it,
+    // so its card stands right under its row; in split view the other side breaks at the facing row.
+    const twins = new Map<string, number>();
+    rows.forEach((r) => {
+      if (r.kind !== "same" || !sides.old || !sides.new) return;
+      const a = subtree(sides.old.blocks, r.old[0]!);
+      const b = subtree(sides.new.blocks, r.new[0]!);
+      if (a.length !== b.length) return;
+      a.forEach((o, k) => {
+        twins.set(`old:${o}`, b[k]!);
+        twins.set(`new:${b[k]}`, o);
+      });
+    });
+    const root = (row: number, side: MdSide) => frags.find((f) => f.row === row && f.side === side)?.t.content ?? null;
+    const ranges = [
+      ...placed.map((p) => ({ side: (p.side === "deletions" ? "old" : "new") as MdSide, start: p.range.start, end: p.range.end })),
+      ...(mine ? [{ side: (mine.range.side === "deletions" ? "old" : "new") as MdSide, start: lo(mine.range), end: hi(mine.range) }] : []),
+    ];
+    const broken = new Set<Element>();
+    for (const range of ranges) {
+      const k = stopsOn(stops, range.side, range.start, range.end).stops.at(-1);
+      const s = k === undefined ? null : stops[k]!;
+      if (!s) continue;
+      const side: MdSide = split && range.side === "old" && s.twin !== null ? "old" : s.side;
+      const b = side === "old" && s.side === "new" ? s.twin! : s.block;
+      const el = root(s.row, side)?.querySelector(`[data-b="${b}"]`);
+      const unit = el ? unitOf(el) : null;
+      if (!unit || broken.has(unit)) continue;
+      const id = String(broken.size);
+      breakAfter(unit, id);
+      broken.add(unit);
+      if (!split) continue;
+      const there: MdSide = side === "old" ? "new" : "old";
+      const pair = unit.getAttribute("data-pair");
+      const twin = twins.get(`${side}:${unit.getAttribute("data-b")}`);
+      const facing = pair !== null ? root(s.row, there)?.querySelector(`[data-pair="${pair}"]`) : twin !== undefined ? root(s.row, there)?.querySelector(`[data-b="${twin}"]`) : null;
+      if (facing && /^(TR|LI)$/.test(facing.tagName) && !broken.has(facing)) {
+        breakAfter(facing, id);
+        broken.add(facing);
+      }
+    }
+    const cells: Cell[] = frags.map((f) => ({ key: f.key, row: f.row, side: f.side, kind: f.kind, html: sized(f.t.innerHTML) }));
+    return { rows, pairs, cells, merged, stops };
+  }, [fd, sides, split, placedKey, pendingKey]);
   const cells = layout?.cells ?? [];
+  const seen = (e: Event) => {
+    const img = e.target;
+    if (img instanceof HTMLImageElement && img.naturalWidth) pictureSizes.set(img.getAttribute("src") ?? "", [img.naturalWidth, img.naturalHeight]);
+  };
 
   const langs = [...new Set([...(sides.old?.langs ?? []), ...(sides.new?.langs ?? [])])].join(" ");
   useEffect(() => {
-    if (!langs) return;
+    if (!langs || (highlight && langs.split(" ").every((l) => litLangs.has(l)))) return;
     let live = true;
     highlighter(langs.split(" ")).then(
       (h) => live && setHighlight(() => h),
@@ -275,8 +371,6 @@ export function MarkdownView({ file }: { file: string }) {
     mark(c.row, "md-cursor");
   }, [c, anchor, layout]);
 
-  const placed = shownPlacements.value.filter((p) => p.path === file);
-  const placedKey = JSON.stringify(placed.map((p) => [p.threadId, p.side, p.range.start, p.range.end, p.state]));
   useLayoutEffect(() => {
     const g = grid.current;
     if (!g || !layout) return;
@@ -298,7 +392,7 @@ export function MarkdownView({ file }: { file: string }) {
       const box = document.createElement("div");
       box.className = "md-threads";
       if (el === g) g.append(box);
-      else placeUnder(el, box);
+      else (slotFor(el) ?? placeUnder)(el, box);
       render(<ThreadCards items={items} />, box);
       return box;
     });
@@ -322,9 +416,6 @@ export function MarkdownView({ file }: { file: string }) {
     if (focus !== null) for (const el of g.querySelectorAll(`[data-threads~="${focus}"]`)) el.classList.add("md-thread-focus");
   }, [focus, layout, placedKey]);
 
-  const pending = pendingLines.value;
-  const mine = pending?.path === file ? pending : null;
-  const pendingKey = mine ? `${mine.range.side}:${lo(mine.range)}-${hi(mine.range)}` : "";
   useLayoutEffect(() => {
     const g = grid.current;
     if (!g || !layout || !mine) return;
@@ -334,7 +425,7 @@ export function MarkdownView({ file }: { file: string }) {
     const box = document.createElement("div");
     box.className = "md-threads md-pending";
     const at = els[els.length - 1];
-    if (at) placeUnder(at, box, true);
+    if (at) (slotFor(at) ?? ((el: HTMLElement, b: HTMLElement) => placeUnder(el, b, true)))(at, box);
     else g.append(box);
     render(<PendingBox p={mine} />, box);
     return () => {
@@ -367,16 +458,23 @@ export function MarkdownView({ file }: { file: string }) {
     return () => paintTextHits(g, []);
   }, [layout, hitsKey]);
 
-  // In split view the blocks of a changed row are lined up pair by pair, and empty slots get the height of what faces them.
+  // A table broken under threads keeps its column widths; in split view the blocks of a changed row are lined up pair
+  // by pair, and empty slots get the height of what faces them.
   useLayoutEffect(() => {
     const g = grid.current;
-    if (!g || !split) return;
+    if (!g) return;
+    // the view is drawn before pierre puts it on the page: measure only once it is there and has a width
+    const measure = () => {
+      if (!g.isConnected || !g.clientWidth) return;
+      alignColumns(g);
+      if (split) lineUp(g);
+    };
     let frame = 0;
     const again = () => {
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => lineUp(g));
+      frame = requestAnimationFrame(measure);
     };
-    lineUp(g);
+    measure();
     let width = g.clientWidth;
     const resized = new ResizeObserver(() => {
       if (g.clientWidth === width) return;
@@ -384,10 +482,14 @@ export function MarkdownView({ file }: { file: string }) {
       again();
     });
     resized.observe(g);
+    // a card or a comment box under a row grows (a reply, typing): the slot facing it grows with it
+    const filled = new ResizeObserver(again);
+    for (const box of g.querySelectorAll(".md-slot > .md-threads")) filled.observe(box);
     g.addEventListener("load", again, true);
     return () => {
       cancelAnimationFrame(frame);
       resized.disconnect();
+      filled.disconnect();
       g.removeEventListener("load", again, true);
     };
   }, [layout, split, placedKey, pendingKey]);
@@ -469,7 +571,7 @@ export function MarkdownView({ file }: { file: string }) {
         <span class="md-caption">{caption}</span>
         <span class="hint">click a block for the cursor · + or i comments on it · ‹/› shows its lines in the code</span>
       </div>
-      <div class="md-grid" ref={grid} onClick={click} onMouseMove={move} onMouseLeave={() => setHover(null)} onErrorCapture={missing}>
+      <div class="md-grid" ref={grid} onClick={click} onMouseMove={move} onMouseLeave={() => setHover(null)} onErrorCapture={missing} onLoadCapture={seen}>
         {split ? (
           <>
             <div class="md-head" data-side="old">{d.from.label}</div>

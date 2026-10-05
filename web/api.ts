@@ -81,6 +81,7 @@ async function call<T>(method: string, path: string, opts: { body?: unknown; que
 }
 
 const blobCache = new Map<string, Promise<BlobDto>>();
+const blobValues = new Map<string, BlobDto>();
 
 export const api = {
   reviews: () => call<{ reviews: ReviewDto[]; default: number | null }>("GET", "/api/reviews"),
@@ -126,11 +127,16 @@ export const api = {
     let hit = blobCache.get(key);
     if (!hit) {
       hit = call<BlobDto>("GET", "/api/blob", { query: { sha, path } });
-      hit.catch(() => blobCache.delete(key));
+      hit.then(
+        (b) => blobValues.set(key, b),
+        () => blobCache.delete(key),
+      );
       blobCache.set(key, hit);
     }
     return hit;
   },
+  /** A blob already fetched, at once: a view drawn again shows it without a frame of "loading". */
+  loadedBlob: (sha: string, path: string): BlobDto | undefined => blobValues.get(`${sha}:${path}`),
 };
 
 export interface Live {

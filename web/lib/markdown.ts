@@ -339,7 +339,7 @@ export interface SideBlocks {
 const topsOf = (s: SideBlocks | null) => (s ? s.blocks.flatMap((b, i) => (b.parent === -1 ? [i] : [])) : []);
 
 /** A block and all blocks inside it. */
-function subtree(blocks: readonly Block[], i: number): number[] {
+export function subtree(blocks: readonly Block[], i: number): number[] {
   const out = [i];
   const inside = new Set([i]);
   for (let k = i + 1; k < blocks.length && inside.has(blocks[k]!.parent); k++) {
