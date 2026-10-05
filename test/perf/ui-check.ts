@@ -1061,7 +1061,19 @@ try {
     check("stet config set compare.markdown code opens Markdown files as code; unset, they open rendered", asCode.views === 0 && (asCode.toggle?.includes("rendered") ?? false) && (asRendered?.includes("code") ?? false), { asCode, asRendered });
 
     const longMd = (v: number) =>
-      Array.from({ length: 40 }, (_, i) => [`## Part ${i + 1}`, "", `Paragraph ${i + 1} of the long page, version ${v}${i % 6 === 2 ? ", with a tail long enough to wrap onto a second line in a narrow column of the split view" : ""}.`, ""].join("\n")).join("\n");
+      Array.from({ length: 40 }, (_, i) => {
+        const part = [`## Part ${i + 1}`, "", `Paragraph ${i + 1} of the long page, version ${v}${i % 6 === 2 ? ", with a tail long enough to wrap onto a second line in a narrow column of the split view" : ""}.`, ""];
+        if (i === 12) part.push(...Array.from({ length: 12 }, (_, k) => `Tall line ${k + 1} of the tall paragraph${k % 2 ? `, version ${v}` : ""} that goes on`), "");
+        if (i === 18) part.push("| Key | Value | Note |", "|---|---|---|", ...Array.from({ length: 10 }, (_, k) => `| key${k + 1} | value ${k % 3 ? v : 1} | note ${k + 1} |`), "");
+        return part.join("\n");
+      }).join("\n");
+    // the real UI reference against an older wording of a few of its paragraphs
+    const uiNow = readFileSync(join(ROOT, "docs/ui.md"), "utf8");
+    const uiThen = uiNow
+      .replace("## Markdown\n\n", "## Markdown\n\nRendered Markdown, in short.\n\n")
+      .replace("block facing block", "next to each other")
+      .replace("Threads are on lines here too.", "Threads are on lines.")
+      .replace(/\nSearch reads the rendered text[^]*?\n\n/, "\n");
     const listMd = (v: number) =>
       (v === 1
         ? ["- Cart with items", "- Pay by card", "- Order history", "", "| Setting | Default |", "|---|---|", "| port | 8080 |", "| cache | off |", ""]
@@ -1069,10 +1081,12 @@ try {
       ).join("\n");
     writeFileSync(join(repo, "docs/long.md"), longMd(1));
     writeFileSync(join(repo, "docs/list.md"), listMd(1));
+    writeFileSync(join(repo, "docs/ui.md"), uiThen);
     run(repo, ["git", "add", "-A"]);
     run(repo, ["bun", CLI, "version", "create", "--label", "long page", "--json"]);
     writeFileSync(join(repo, "docs/long.md"), longMd(2));
     writeFileSync(join(repo, "docs/list.md"), listMd(2));
+    writeFileSync(join(repo, "docs/ui.md"), uiNow);
     run(repo, ["git", "add", "-A"]);
     run(repo, ["bun", CLI, "version", "create", "--label", "long page changed", "--json"]);
     const longV = JSON.parse(run(repo, ["bun", CLI, "status", "--json"])).versions as number;
@@ -1125,57 +1139,96 @@ try {
       { inSplit, inUnified },
     );
 
-    const long = `document.querySelector('.md-view[data-file="docs/long.md"]')`;
-    const longToggle = toggleOf("docs/long.md");
-    await b.eval(`location.hash = "#/compare/${longV - 1}..${longV}?file=docs/long.md"; true`);
-    await waitFor(`${long}?.querySelector("[data-stop]")`, 10000);
-    await sleep(1800);
-    await b.eval(`(() => { const el = [...${long}.querySelectorAll('.md-cell[data-side="new"] p')].find(p => p.textContent.startsWith("Paragraph 27 ")); const h = document.querySelector(".codeview-host"); h.scrollTop += el.getBoundingClientRect().top - h.getBoundingClientRect().top - 360; return true; })()`);
-    await sleep(500);
-    await click(`.md-view[data-file="docs/long.md"] .md-cell[data-side="new"] p[data-start="${27 * 4 - 1}"]`);
-    await sleep(200);
-    const hostTop = `document.querySelector(".codeview-host").getBoundingClientRect().top`;
-    const blockY = await b.eval(`Math.round(${long}.querySelector('.md-cell[data-side="new"] p[data-start="${27 * 4 - 1}"]').getBoundingClientRect().top - ${hostTop})`);
-    // every frame for 2 s after the click: the scroll position and where the point you were at is on the screen
-    const traced = (anchor: string) =>
+    // The first text in view stays where it was when a file switches between rendered and code: in the page, the same
+    // rules the switch follows, to know which line or block it should be and where.
+    await b.eval(`
+      window.__h = () => document.querySelector(".codeview-host");
+      window.__band = () => __h().getBoundingClientRect().top + 48;
+      window.__md = (f) => document.querySelector('.md-view[data-file="' + f + '"]');
+      window.__item = (f) => [...document.querySelectorAll(".codeview-host diffs-container")].find(c => c.shadowRoot?.querySelector("[data-title]")?.textContent === f);
+      window.__rtop = (f) => { const band = __band(); const hb = __h().getBoundingClientRect(); let best = null; for (const e of __md(f).querySelectorAll("[data-stop]")) { const r = e.getBoundingClientRect(); if (!r.height || r.bottom <= band || r.top >= hb.bottom) continue; const isNew = e.closest(".md-cell").dataset.side !== "old"; if (!best || r.top < best.r.top - 0.5 || (Math.abs(r.top - best.r.top) <= 0.5 && !best.isNew && isNew)) best = { e, r, isNew }; } if (!best) return null; const start = +best.e.dataset.start, n = +best.e.dataset.end - start + 1; const k = Math.min(n - 1, Math.floor(Math.min(1, Math.max(0, (band - best.r.top) / best.r.height)) * n)); return { side: best.isNew ? "additions" : "deletions", line: start + k, y: best.r.top - hb.top + (k / n) * best.r.height }; };
+      window.__row = (f, side, line) => { const c = __item(f); if (!c) return null; let best = null; for (const col of c.shadowRoot.querySelectorAll(side === "additions" ? "code[data-additions]" : "code[data-deletions]")) for (const r of col.querySelectorAll(":scope > [data-content] > [data-line]")) { const n = +r.getAttribute("data-line"); if (!best || Math.abs(n - line) < Math.abs(best.n - line)) best = { r, n }; } return best?.r ?? null; };
+      window.__ctop = (f) => { const c = __item(f); const band = __band(); const hb = __h().getBoundingClientRect(); let best = null; for (const col of c.shadowRoot.querySelectorAll("code[data-code]")) { const add = !col.hasAttribute("data-deletions"); for (const r of col.querySelectorAll(":scope > [data-content] > [data-line]")) { const b = r.getBoundingClientRect(); if (!b.height || b.bottom <= band || b.top >= hb.bottom) continue; if (!best || b.top < best.b.top - 0.5 || (Math.abs(b.top - best.b.top) <= 0.5 && !best.add && add)) best = { r, b, add }; } } return best ? { side: best.add ? "additions" : "deletions", line: +best.r.getAttribute("data-line"), y: best.b.top - hb.top } : null; };
+      window.__block = (f, side, line) => { const cell = side === "deletions" ? "old" : "new"; let best = null; for (const e of __md(f)?.querySelectorAll('.md-cell[data-side="' + cell + '"] [data-stop]') ?? []) { const s = +e.dataset.start, en = +e.dataset.end; if (s <= line && line <= en && (!best || en - s < best.en - best.s)) best = { e, s, en }; } if (!best) for (const e of __md(f)?.querySelectorAll('.md-cell[data-side="' + cell + '"] [data-stop]') ?? []) if (+e.dataset.start <= line) best = { e, s: +e.dataset.start, en: +e.dataset.end }; return best; };
+      window.__share = (f, side, line) => { const b = __block(f, side, line); if (!b) return null; const r = b.e.getBoundingClientRect(); return r.top - __h().getBoundingClientRect().top + Math.min(1, (line - b.s) / (b.en - b.s + 1)) * r.height; };
+      window.__cursorAt = (f) => { const e = __md(f)?.querySelector(".md-cursor"); if (e) return "block " + e.dataset.start; const r = __item(f)?.shadowRoot?.querySelector('[data-content] > [data-stet-mark~="cursor"]'); return r ? "line " + r.getAttribute("data-line") : null; };
+      true`);
+    // every frame for 2 s after the click: the scroll position and where the anchored text is
+    const traced = (file: string, anchor: string) =>
       b.eval(`new Promise(done => {
-        const h = document.querySelector(".codeview-host");
         const t0 = performance.now();
         const rec = [];
-        const at = () => { const e = (() => { ${anchor} })(); return e ? Math.round(e.getBoundingClientRect().top - h.getBoundingClientRect().top) : null; };
-        const f = () => { rec.push([Math.round(h.scrollTop), at()]); if (performance.now() - t0 < 2000) requestAnimationFrame(f); else done(rec); };
-        ${longToggle}.click();
+        const f = () => { const y = (() => { ${anchor} })(); rec.push([Math.round(__h().scrollTop), y === null || y === undefined ? null : Math.round(y)]); if (performance.now() - t0 < 2000) requestAnimationFrame(f); else done(rec); };
+        ${toggleOf(file)}.click();
         requestAnimationFrame(f);
       })`) as Promise<[number, number | null][]>;
-    // after the frame that first shows the point where it was, the page may still settle a little, but not shake
+    // after the frame that first shows the text where it was, the page may settle a little, but not shake
     const steady = (rec: [number, number | null][], y: number) => {
       const first = rec.findIndex((r) => r[1] !== null && Math.abs(r[1] - y) <= 4);
       const later = rec.slice(Math.max(first, 0)).flatMap((r, i, a) => (i > 0 && r[0] !== a[i - 1]![0] ? [Math.abs(r[0] - a[i - 1]![0])] : []));
       const end = rec[rec.length - 1]![1];
-      return { ok: first !== -1 && later.length <= 2 && later.every((d) => d <= 16) && end !== null && Math.abs(end - y) <= 4, first, later, end };
+      return { drift: end === null ? null : Math.round(end - y), ok: first !== -1 && later.length <= 2 && later.every((d) => d <= 16) && end !== null && Math.abs(end - y) <= 4, moves: later.length };
     };
-    const line = 27 * 4 - 1;
-    const longToCode = steady(await traced(`const c = [...document.querySelectorAll(".codeview-host diffs-container")].find(c => c.shadowRoot?.querySelector("[data-title]")?.textContent === "docs/long.md"); return c ? c.shadowRoot.querySelector('code[data-additions] > [data-content] > [data-line="${line}"]') : null;`), blockY);
-    await sleep(300);
-    const codeCursor = await b.eval(`(() => { const c = [...document.querySelectorAll(".codeview-host diffs-container")].find(c => c.shadowRoot?.querySelector("[data-title]")?.textContent === "docs/long.md"); return c?.shadowRoot.querySelector('code[data-additions] > [data-content] > [data-line="${line}"]')?.getAttribute("data-stet-mark") ?? ""; })()`);
-    const toRendered = steady(await traced(`return ${long}?.querySelector('.md-cell[data-side="new"] p[data-start="${line}"]');`), blockY);
-    await sleep(300);
-    const blockCursor = await b.eval(`!!${long}?.querySelector('.md-cell[data-side="new"] p[data-start="${line}"]')?.classList.contains("md-cursor")`);
+    const places: [string, string, string, number, boolean][] = [
+      ["docs/long.md", "the top of a block", "Paragraph 8 ", 0, false],
+      ["docs/long.md", "the middle of a tall paragraph", "Tall line 1 ", 0.5, false],
+      ["docs/long.md", "a table row", "key5", 0.3, false],
+      ["docs/long.md", "the cursor far above", "Paragraph 22 ", 0.05, true],
+      ["docs/ui.md", "docs/ui.md: a heading", "Markdown", 0, false],
+      ["docs/ui.md", "docs/ui.md: the middle of a paragraph", "In split view the old and the new version", 0.5, false],
+      ["docs/ui.md", "docs/ui.md: the cursor far above", "Threads are on lines here too", 0.2, true],
+    ];
+    const drifts: Record<string, unknown> = {};
+    let held = true;
+    for (const [file, name, text, frac, far] of places) {
+      await b.eval(`[...document.querySelectorAll(".side-tabs button")].find(x => x.textContent.startsWith("Files")).click(); true`);
+      await sleep(150);
+      await b.eval(`[...document.querySelectorAll(".file-row")].find(r => r.querySelector(".file-name")?.textContent === ${JSON.stringify(file.split("/").pop())}).querySelector(".file-link").click(); true`);
+      await waitFor(`__md(${JSON.stringify(file)})?.querySelector("[data-stop]")`, 10000);
+      await sleep(1200);
+      if (far) {
+        await b.eval(`(() => { const e = __md(${JSON.stringify(file)}).querySelector('.md-cell[data-side="new"] [data-stop]'); e.scrollIntoView({ block: "center" }); return true; })()`);
+        await sleep(300);
+        await clickIn(`.md-view[data-file="${file}"] .md-cell[data-side="new"] [data-stop="0"]`);
+        await sleep(200);
+      }
+      const cursorBefore = await b.eval(`__cursorAt(${JSON.stringify(file)})`);
+      await b.eval(`(() => { const e = [...__md(${JSON.stringify(file)}).querySelectorAll('.md-cell[data-side="new"] [data-stop]')].find(x => x.textContent.trim().startsWith(${JSON.stringify(text)})); const r = e.getBoundingClientRect(); __h().scrollTop += r.top - __band() + ${frac} * r.height; return true; })()`);
+      await sleep(600);
+      const a = await b.eval(`__rtop(${JSON.stringify(file)})`);
+      const toCode = steady(await traced(file, `const r = __row(${JSON.stringify(file)}, "${a.side}", ${a.line}); return r ? r.getBoundingClientRect().top - __h().getBoundingClientRect().top : null;`), a.y);
+      await sleep(200);
+      const cursorCode = await b.eval(`__cursorAt(${JSON.stringify(file)})`);
+      const c = await b.eval(`__ctop(${JSON.stringify(file)})`);
+      const toRendered = steady(await traced(file, `return __share(${JSON.stringify(file)}, "${c.side}", ${c.line});`), c.y);
+      await sleep(300);
+      const cursorAfter = await b.eval(`__cursorAt(${JSON.stringify(file)})`);
+      drifts[name] = { toCode, toRendered, ...(far ? { cursor: [cursorBefore, cursorCode, cursorAfter] } : {}) };
+      console.log(`drift ${name}: ${JSON.stringify(drifts[name])}`);
+      held &&= toCode.ok && toRendered.ok && (!far || (cursorBefore === "block 1" && cursorAfter === "block 1" && cursorCode !== null));
+    }
     check(
-      "switching a long Markdown file between rendered and code keeps the point you were at, at the same height, without the page shaking, and the cursor on it",
-      longToCode.ok && toRendered.ok && codeCursor.includes("cursor") && blockCursor,
-      { blockY, longToCode, toRendered, codeCursor, blockCursor },
+      "switching a long Markdown file between rendered and code keeps the first text in view where it was (a block's top, the middle of a tall paragraph, a table row), without shaking; a cursor far away stays where it is",
+      held,
+      drifts,
     );
+    const long = `document.querySelector('.md-view[data-file="docs/long.md"]')`;
+    await b.eval(`[...document.querySelectorAll(".file-row")].find(r => r.querySelector(".file-name")?.textContent === "long.md").querySelector(".file-link").click(); true`);
+    await waitFor(`${long}?.querySelector("[data-stop]")`, 10000);
+    await sleep(1200);
+    await clickIn(`.md-view[data-file="docs/long.md"] .md-cell[data-side="new"] [data-stop="40"]`);
+    await sleep(200);
     await b.eval(`document.activeElement?.blur(); true`);
     const docTop = (e: string) => `Math.round(${e}.getBoundingClientRect().top + document.querySelector(".codeview-host").scrollTop)`;
     const halfFrom = await b.eval(`(() => { const e = ${long}.querySelector(".md-cursor"); return e ? ${docTop("e")} : null; })()`);
+    const halfStart = await b.eval(`+(${long}.querySelector(".md-cursor")?.dataset.start ?? 0)`);
     await chord([CTRL], "d");
     await sleep(600);
     const halfTo = await b.eval(`(() => { const e = ${long}.querySelector(".md-cursor"); return e ? { top: ${docTop("e")}, start: +e.dataset.start } : null; })()`);
     const screen = await b.eval(`document.querySelector(".codeview-host").clientHeight`);
     check(
       "Ctrl+d in a rendered file moves the cursor about half a screen down, not a fixed number of blocks",
-      halfFrom !== null && !!halfTo && halfTo.start > 27 * 4 - 1 && halfTo.top - halfFrom >= screen / 2 - 10 && halfTo.top - halfFrom <= screen / 2 + 250,
+      halfFrom !== null && !!halfTo && halfTo.start > halfStart && halfTo.top - halfFrom >= screen / 2 - 10 && halfTo.top - halfFrom <= screen / 2 + 250,
       { halfFrom, halfTo, screen },
     );
 

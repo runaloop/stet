@@ -50,9 +50,11 @@ gets the image with the area framed and the area at full size as PNG files (`ste
 ## Markdown
 
 A Markdown file shows rendered. The button on its header (**‹/› code** / **¶ rendered**) switches that file to its
-code and back while the page is open, and keeps your place at the same height on the screen: the block at the cursor
-(or the topmost block in view) becomes its first line in the diff, a line becomes the block that holds it, and the
-cursor follows. `stet config set compare.markdown code` makes code the default.
+code and back while the page is open, and keeps the first text you see where it is on the screen: the topmost block
+becomes its line at the point you scrolled to (halfway through a ten-line paragraph: its fifth line, or the nearest
+line the diff shows), and the topmost line becomes the block that holds it, placed so that the line's share of the
+block stays where the line was. The cursor goes there too when it was on screen; otherwise it keeps its place in the
+file. `stet config set compare.markdown code` makes code the default.
 
 In split view the old and the new version stand side by side, block facing block: unchanged blocks are level, and
 inside a changed list or table the items and rows face each other too (nested items as well), with an empty slot

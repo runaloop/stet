@@ -8,11 +8,12 @@ const HEADER = 48;
 let release: (() => void) | null = null;
 
 /**
- * Puts a rendered block `y` px below the top of the scroller: once as soon as it is drawn, and once more when the
- * pictures above it have loaded (they push it down), within `ms` and unless the reader scrolls, clicks or types first.
- * Between the two pierre keeps the place itself; a correction on every frame would fight its own and shake the page.
+ * Puts a rendered block where `want` says (px from the top of the scroller, given the block, as its height may count):
+ * once as soon as it is drawn, and once more when the pictures above it have loaded (they push it down), within `ms`
+ * and unless the reader scrolls, clicks or types first. Between the two pierre keeps the place itself; a correction on
+ * every frame would fight its own and shake the page.
  */
-export function placeAt(scroller: HTMLElement, find: () => Element | null, y: number, ms = 1500): void {
+export function placeAt(scroller: HTMLElement, find: () => Element | null, want: number | ((el: Element) => number), ms = 1500): void {
   release?.();
   let done = false;
   const events = ["wheel", "pointerdown", "keydown"] as const;
@@ -25,6 +26,7 @@ export function placeAt(scroller: HTMLElement, find: () => Element | null, y: nu
   for (const ev of events) window.addEventListener(ev, stop, { capture: true, passive: true });
   const end = performance.now() + ms;
   const fix = (el: Element) => {
+    const y = typeof want === "number" ? want : want(el);
     const off = el.getBoundingClientRect().top - scroller.getBoundingClientRect().top - y;
     if (Math.abs(off) >= 1) scroller.scrollTop += off;
   };
@@ -105,15 +107,15 @@ function visibleBand(scroller: HTMLElement): { top: number; bottom: number } {
   return { top: r.top + HEADER, bottom: r.bottom };
 }
 
-/** The topmost of `els` in view: the first whose bottom is below the file header, if its top is above the bottom. */
-function topmost<T extends Element>(scroller: HTMLElement, els: Iterable<T>): T | null {
+/** The topmost of `els` in view: the one whose top is highest among those reaching below the file header; on a tie the first that `prefer` likes. */
+function topmost<T extends Element>(scroller: HTMLElement, els: Iterable<T>, prefer: (el: T) => boolean = () => false): T | null {
   const band = visibleBand(scroller);
   let best: T | null = null;
   let bestTop = Infinity;
   for (const el of els) {
     const r = el.getBoundingClientRect();
     if (r.height === 0 || r.bottom <= band.top || r.top >= band.bottom) continue;
-    if (r.top < bestTop) {
+    if (r.top < bestTop - 0.5 || (Math.abs(r.top - bestTop) <= 0.5 && best && !prefer(best) && prefer(el))) {
       best = el;
       bestTop = r.top;
     }
@@ -121,22 +123,29 @@ function topmost<T extends Element>(scroller: HTMLElement, els: Iterable<T>): T 
   return best;
 }
 
-const inView = (scroller: HTMLElement, el: Element) => {
+/** Whether an element is in the part of the view the reader sees, under the file header. */
+export const onScreen = (scroller: HTMLElement, el: Element | null): boolean => {
+  if (!el) return false;
   const band = visibleBand(scroller);
   const r = el.getBoundingClientRect();
-  return r.bottom > band.top && r.top < band.bottom;
+  return r.height > 0 && r.bottom > band.top && r.top < band.bottom;
 };
 
 const offsetOf = (scroller: HTMLElement, el: Element) => el.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
 
-/** Where a rendered file is on screen: the given block if it is in view, else the topmost block in view. */
-export function renderedAnchor(scroller: HTMLElement, path: string, prefer: number | null): { stop: number; side: "old" | "new"; y: number } | null {
+/**
+ * The first text the reader sees in a rendered file: the topmost block under the file header, where it is (px from
+ * the top of the scroller), how tall, and how much of it is scrolled past the header (0 to 1).
+ */
+export function renderedTop(scroller: HTMLElement, path: string): { stop: number; side: "old" | "new"; y: number; height: number; past: number } | null {
   const view = mdView(path);
   if (!view) return null;
-  const preferred = prefer === null ? [] : [...view.querySelectorAll<HTMLElement>(`[data-stop="${prefer}"]`)].filter((el) => inView(scroller, el));
-  const el = preferred[0] ?? topmost(scroller, view.querySelectorAll<HTMLElement>("[data-stop]"));
+  const isNew = (el: HTMLElement) => el.closest<HTMLElement>(".md-cell")?.dataset.side !== "old";
+  const el = topmost(scroller, view.querySelectorAll<HTMLElement>("[data-stop]"), isNew);
   if (!el) return null;
-  return { stop: Number(el.dataset.stop), side: el.closest<HTMLElement>(".md-cell")?.dataset.side === "old" ? "old" : "new", y: offsetOf(scroller, el) };
+  const r = el.getBoundingClientRect();
+  const past = Math.min(1, Math.max(0, (visibleBand(scroller).top - r.top) / r.height));
+  return { stop: Number(el.dataset.stop), side: isNew(el) ? "new" : "old", y: offsetOf(scroller, el), height: r.height, past };
 }
 
 function itemElement(view: CodeView<never>, path: string): HTMLElement | null {
@@ -150,15 +159,15 @@ export function rowElement(view: CodeView<never>, path: string, side: Side, line
   return drawnLines(item).find((r) => r.at.some(([s, n]) => s === side && n === line))?.el ?? null;
 }
 
-/** Where a file drawn as code is on screen: the given line if it is in view, else the topmost line in view. */
-export function codeAnchor(scroller: HTMLElement, view: CodeView<never>, path: string, prefer: { side: Side; line: number } | null): { side: Side; line: number; y: number } | null {
+/** The first line the reader sees in a file drawn as code: the topmost row under the file header, on the new side when both have one. */
+export function codeTop(scroller: HTMLElement, view: CodeView<never>, path: string): { side: Side; line: number; y: number } | null {
   const item = itemElement(view, path);
   if (!item) return null;
   const rows = drawnLines(item);
-  const wanted = prefer ? rows.find((r) => r.at.some(([s, n]) => s === prefer.side && n === prefer.line)) : undefined;
-  const top = wanted && inView(scroller, wanted.el) ? wanted.el : topmost(scroller, rows.map((x) => x.el));
+  const added = (el: Element) => rows.some((r) => r.el === el && r.at.some(([s]) => s === "additions"));
+  const top = topmost(scroller, rows.map((x) => x.el), added);
   const row = rows.find((r) => r.el === top);
   if (!row) return null;
-  const [side, line] = (wanted === row && prefer ? [prefer.side, prefer.line] : (row.at.find(([s]) => s === "additions") ?? row.at[0]!)) as [Side, number];
+  const [side, line] = row.at.find(([s]) => s === "additions") ?? row.at[0]!;
   return { side, line, y: offsetOf(scroller, row.el) };
 }

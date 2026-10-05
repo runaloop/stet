@@ -54,7 +54,7 @@ import { isMarkdown } from "../lib/markdown.ts";
 import { rowPosition, type Cursor, type LineRange } from "../lib/cursor.ts";
 import { compareOrder } from "../lib/nav.ts";
 import { PeekView } from "./Peek.tsx";
-import { codeAnchor, lineAt, placeAt, renderedAnchor, stopElement } from "./anchor.ts";
+import { codeTop, lineAt, onScreen, placeAt, renderedTop, rowElement, stopElement } from "./anchor.ts";
 import { Presets, rangeTitle, ReviewedButton, VersionStrip } from "../components/VersionStrip.tsx";
 import { takeSpot } from "../jumps.ts";
 import { compileQuery, diffRows } from "../lib/search.ts";
@@ -340,6 +340,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
   const pendingScroll = useRef<CodeViewScrollTarget | null>(null);
   // run once the next list of items is drawn, when a file switched between code and a picture or rendered text
   const afterDraw = useRef<(() => void)[]>([]);
+  const parked = useRef<{ path: string; block: number; line: Cursor } | null>(null);
   const scrollOrQueue = (target: CodeViewScrollTarget, wait: boolean) => {
     if (wait) pendingScroll.current = target;
     else view.current?.scrollTo(target);
@@ -454,9 +455,11 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     return lines.reduce((best, n) => (Math.abs(n - span.start) < Math.abs(best - span.start) ? n : best), lines[0] ?? span.start);
   };
 
-  // Switches a Markdown file between rendered and code and keeps the same point of the file at the same height: the
-  // block at the cursor (or `at`, or the topmost block in view) becomes its first line in the diff, and a line becomes
-  // the block that holds it. The cursor follows when it was in the file.
+  // Switches a Markdown file between rendered and code and keeps the first text the reader sees where it was. The
+  // topmost block in view becomes its line at the point it is scrolled to (halfway through a 10-line paragraph: its
+  // 5th line), or the nearest line the diff shows; the topmost line in view becomes the block that holds it, placed so
+  // that the line's share of the block sits where the line was. The ‹/› beside a block (`at`) anchors on that block.
+  // The cursor goes to the anchor only when it was on screen (or with `at`); else it keeps its place in the file.
   const switchView = (path: string, to: "code" | "rendered", at?: { stop: number; side: "old" | "new" }) => {
     const h = host.current;
     const v = view.current as CodeView<never> | null;
@@ -464,41 +467,69 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     const c = cursor.peek();
     const here = c?.path === path && c.row >= 0;
     if (!h || !v || !fd) return setFileView(path, to);
+    const spanOf = (side: Side, row: number) => {
+      const nav = cursorSpace.peek().block({ path, row });
+      return nav ? (side === "deletions" ? nav.old : nav.new) : null;
+    };
     if (to === "code") {
-      const a = renderedAnchor(h, path, at?.stop ?? (here ? c!.row : null));
-      const nav = a ? cursorSpace.peek().block({ path, row: a.stop }) : null;
+      const el = at ? stopElement(path, at.stop, at.side === "old" ? "deletions" : "additions") : null;
+      const top = at ? (el ? { stop: at.stop, side: at.side, y: el.getBoundingClientRect().top - h.getBoundingClientRect().top, height: 0, past: 0 } : null) : renderedTop(h, path);
+      const nav = top ? cursorSpace.peek().block({ path, row: top.stop }) : null;
+      const seen = here && onScreen(h, stopElement(path, c!.row));
+      const kept = here && !seen ? { at: cursorSpace.peek().block(c!) } : null;
       setFileView(path, "code");
-      if (!a || !nav) return;
-      const side: Side = (a.side === "old" || !nav.new) && nav.old ? "deletions" : "additions";
-      const line = shownLine(fd, side, (side === "deletions" ? nav.old : nav.new)!);
+      if (!top || !nav) return;
+      const side: Side = (top.side === "old" || !nav.new) && nav.old ? "deletions" : "additions";
+      const span = (side === "deletions" ? nav.old : nav.new)!;
+      const count = span.end - span.start + 1;
+      const k = Math.min(count - 1, Math.floor(top.past * count));
+      const line = at ? shownLine(fd, side, span) : shownLine(fd, side, { start: span.start + k, end: span.start + k });
+      const y = top.y + (k / count) * top.height;
       afterDraw.current.push(() => {
-        if (here || at) {
-          const moved = cursorSpace.peek().locate(path, side, line);
-          if (moved) cursor.value = moved;
+        const space = cursorSpace.peek();
+        if (at || seen) cursor.value = space.locate(path, side, line) ?? cursor.peek();
+        else if (kept?.at) {
+          const s: Side = kept.at.new ? "additions" : "deletions";
+          const r = (s === "additions" ? kept.at.new : kept.at.old)!;
+          const moved = space.locate(path, s, shownLine(fd, s, r));
+          if (moved) {
+            cursor.value = moved;
+            // a block the diff does not show lands on the nearest line; back in rendered it comes back to that block
+            parked.current = { path, block: c!.row, line: moved };
+          }
         }
         requestAnimationFrame(() => {
           const cv = view.current as CodeView<never> | null;
-          if (cv) lineAt(h, cv, path, side, line, a.y);
+          if (cv) lineAt(h, cv, path, side, line, y);
         });
       });
       return;
     }
+    const top = codeTop(h, v, path);
     const r = here ? cursorSpace.peek().row(c!) : null;
-    const a = codeAnchor(h, v, path, r ? rowPosition(r) : null);
+    const where = r ? rowPosition(r) : null;
+    const seen = !!where && onScreen(h, rowElement(v, path, where.side, where.line));
     const d = data;
     // with both texts at hand the rendered file lays out in the next frames, not after a round trip
     const texts = d ? Promise.all([fd.type === "new" ? null : api.blob(d.from.sha, fd.prevName ?? path), fd.type === "deleted" ? null : api.blob(d.to.sha, path)]) : Promise.resolve();
     void texts.catch(() => null).then(() => {
       setFileView(path, "rendered");
-      if (!a) return;
+      if (!top && !where) return;
       afterDraw.current.push(() =>
         whenLaidOut(
           path,
           () => {
-            const s = cursorSpace.peek().locate(path, a.side, a.line);
-            if (!s) return;
-            if (here) cursor.value = s;
-            placeAt(h, () => stopElement(path, s.row, a.side), a.y, 2500);
+            const space = cursorSpace.peek();
+            const s = top ? space.locate(path, top.side, top.line) : null;
+            const back = parked.current;
+            parked.current = null;
+            if (seen && s) cursor.value = s;
+            else if (back?.path === path && c?.row === back.line.row) cursor.value = { path, row: back.block };
+            else if (where) cursor.value = space.locate(path, where.side, where.line) ?? cursor.peek();
+            if (!top || !s) return;
+            const span = spanOf(top.side, s.row);
+            const share = span ? Math.min(1, Math.max(0, (top.line - span.start) / (span.end - span.start + 1))) : 0;
+            placeAt(h, () => stopElement(path, s.row, top.side), (el) => top.y - share * el.getBoundingClientRect().height, 2500);
           },
           true,
         ),
