@@ -164,6 +164,14 @@ export class CursorSpace {
     return r === -1 ? null : { path, row: r };
   }
 
+  /** The line under the cursor, or the first line of its rendered block (its new side when it has one). */
+  position(c: Cursor): { side: Side; line: number } | null {
+    const block = this.block(c);
+    if (block) return block.new ? { side: "additions", line: block.new.start } : block.old ? { side: "deletions", line: block.old.start } : null;
+    const r = this.row(c);
+    return r ? rowPosition(r) : null;
+  }
+
   /** Whether the cursor is on one of `lines`: a line of the range, or a rendered block with lines in it. */
   holds(c: Cursor, lines: LineRange): boolean {
     if (c.path !== lines.path) return false;

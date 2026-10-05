@@ -60,6 +60,18 @@ describe("cursor over the diff", () => {
     expect([0, 1].map((r) => md.holds(a(r), { path: "a.kt", side: "additions", start: 4, end: 6 }))).toEqual([true, true]);
     expect([0, 1].map((r) => md.holds(a(r), { path: "a.kt", side: "deletions", start: 5, end: 9 }))).toEqual([false, false]);
   });
+
+  test("position names the line under the cursor, or the first line of its block, so another layout of the file finds it again", () => {
+    const s = space();
+    expect(s.position({ path: "a.kt", row: 1 })).toEqual({ side: "deletions", line: 2 });
+    expect(s.position({ path: "a.kt", row: 7 })).toEqual({ side: "additions", line: 22 });
+    expect(s.position({ path: "a.kt", row: -1 })).toBeNull();
+    const md = new CursorSpace([
+      { fd: fs[0]!, collapsed: false, blocks: [{ old: { start: 1, end: 4 }, new: { start: 1, end: 4 }, changed: false, group: 0 }, { old: { start: 6, end: 7 }, new: null, changed: true, group: 1 }] },
+    ]);
+    expect(md.position({ path: "a.kt", row: 1 })).toEqual({ side: "deletions", line: 6 });
+    expect(s.locate("a.kt", "additions", md.position({ path: "a.kt", row: 0 })!.line)).toEqual({ path: "a.kt", row: 0 });
+  });
 });
 
 describe("fuzzy file finder", () => {
