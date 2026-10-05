@@ -1,5 +1,6 @@
 import MarkdownIt, { type Env } from "markdown-it";
 import type { CompareFile, ComparePlacement, GuideDto, GuideRefDto } from "../../src/core/types.ts";
+import type { Span } from "./cursor.ts";
 import { revealedPatch, type HunkShape } from "./reveal.ts";
 
 /** Lines shown around a step's lines at first. */
@@ -9,12 +10,21 @@ export const refLabel = (r: GuideRefDto) => (r.range ? `${r.path}:${r.range.star
 
 /**
  * A step's lines as a patch of the compare: lines `range` of the new file and `context` lines around them, with the
- * lines removed among them. Null for a whole-file reference: that is the file's own diff.
+ * lines removed among them, and the lines of the new file in `more` (opened by the reader). A whole-file reference is
+ * the file's own diff (`hunks`): null until the reader opens more of it.
  */
-export function refPatch(ref: GuideRefDto, oldFile: { path: string; text: string }, newFile: { path: string; text: string }, hunks: readonly HunkShape[], context = GUIDE_CONTEXT): string | null {
-  if (!ref.range) return null;
+export function refPatch(
+  ref: GuideRefDto,
+  oldFile: { path: string; text: string },
+  newFile: { path: string; text: string },
+  hunks: readonly HunkShape[],
+  more: readonly Span[] = [],
+  context = GUIDE_CONTEXT,
+): string | null {
+  if (!ref.range) return more.length ? revealedPatch(oldFile, newFile, hunks, { spans: more, full: false }) : null;
   const { start, end } = ref.range;
-  return revealedPatch(oldFile, newFile, hunks, { spans: [{ start: Math.max(1, start - context), end: end + context }], full: false }, { old: [], new: [ref.range] });
+  const around = { start: Math.max(1, start - context), end: end + context };
+  return revealedPatch(oldFile, newFile, hunks, { spans: [around, ...more], full: false }, { old: [], new: [ref.range] });
 }
 
 /** The changed files of the compare that no step names, in the compare's order. */

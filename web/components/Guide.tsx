@@ -4,7 +4,9 @@ import type { CompareDto, GuideDto, GuideRefDto, GuideStepDto } from "../../src/
 import { baseFiles, compareData, shownPlacements } from "../compare.ts";
 import { fetchGuide, guideOpen, guideShown, guideStep, guideVersion, openInDiff } from "../guide.ts";
 import { guideHtml, notInGuide, refLabel, refPatch, threadsOn } from "../lib/guide.ts";
+import type { Span } from "../lib/cursor.ts";
 import type { LineMark } from "../lib/marks.ts";
+import { CHUNK, expansionOf, textLines } from "../lib/reveal.ts";
 import { plainClick } from "../lib/route.ts";
 import { diffRows } from "../lib/search.ts";
 import { diffStyle, navigate, reviewId, routeHash, threads, wrap, type Route } from "../state.ts";
@@ -65,19 +67,26 @@ function RefBlock({ d, from, to, r }: { d: CompareDto; from: string; to: string;
   const newText = text(newBlob, deleted);
   // a file this compare does not change is the same on both sides
   const oldText = fd ? text(oldBlob, fd.type === "new") : newText;
+  // lines the reader opened with the bars: they keep what they are (added, removed, unchanged) in the patch
+  const [more, setMore] = useState<Span[]>([]);
   const diff = useMemo((): FileDiffMetadata | null => {
     if (typeof newText !== "string" || typeof oldText !== "string") return r.range ? null : (fd ?? null);
     const files = { oldFile: { name: oldPath, contents: oldText }, newFile: { name: fd?.name ?? r.path, contents: newText } };
     let out = fd ?? null;
-    const patch = refPatch(r, { path: oldPath, text: oldText }, { path: r.path, text: newText }, fd?.hunks ?? []);
-    if (patch) out = parsePatchFiles(patch, `guide:${d.from.sha}:${d.to.sha}:${refLabel(r)}`)[0]?.files[0] ?? null;
+    const patch = refPatch(r, { path: oldPath, text: oldText }, { path: r.path, text: newText }, fd?.hunks ?? [], more);
+    if (patch) out = parsePatchFiles(patch, `guide:${d.from.sha}:${d.to.sha}:${refLabel(r)}:${JSON.stringify(more)}`)[0]?.files[0] ?? null;
     if (!out) return null;
     try {
       return hydratePartialDiff("clone", out, files as never);
     } catch {
       return out;
     }
-  }, [fd, oldText, newText, r]);
+  }, [fd, oldText, newText, r, more]);
+  const expand = (hunk: number, direction: "up" | "down" | "both", count: number | undefined) => {
+    if (!diff || typeof newText !== "string") return;
+    const span = expansionOf(diff.hunks, textLines(newText).lines.length, hunk, direction, count ?? CHUNK);
+    if (span) setMore((m) => [...m, span]);
+  };
   const placed = shownPlacements.value;
   const annotations = useMemo((): DiffLineAnnotation<Anno>[] => {
     if (!diff) return [];
@@ -114,6 +123,7 @@ function RefBlock({ d, from, to, r }: { d: CompareDto; from: string; to: string;
           annotations={annotations}
           renderAnnotation={(a) => <ThreadMini id={a.metadata.id} state={a.metadata.state} />}
           marks={marks}
+          onExpand={expand}
         />
       ) : (
         <div class="note">loading…</div>

@@ -108,8 +108,17 @@ describe("the guide's pieces", () => {
     const hunks = compare.baseFiles.value![0]!.hunks;
     const patch = lib.refPatch({ path: "src/a.kt", range: { start: 4, end: 5 } }, a, b, hunks)!;
     expect(patch.split("\n").slice(3, -1)).toEqual(["@@ -1,8 +1,8 @@", " line 1", " line 2", " line 3", "-line 4", "+line 4, changed", " line 5", " line 6", " line 7", " line 8"]);
-    expect(lib.refPatch({ path: "src/a.kt", range: { start: 15, end: 15 } }, a, b, hunks, 1)!.split("\n").slice(3, -1)).toEqual(["@@ -14,3 +14,3 @@", " line 14", " line 15", " line 16"]);
+    expect(lib.refPatch({ path: "src/a.kt", range: { start: 15, end: 15 } }, a, b, hunks, [], 1)!.split("\n").slice(3, -1)).toEqual(["@@ -14,3 +14,3 @@", " line 14", " line 15", " line 16"]);
     expect(lib.refPatch({ path: "src/a.kt", range: null }, a, b, hunks)).toBeNull();
+    expect(lib.refPatch({ path: "src/a.kt", range: null }, a, b, hunks, [{ start: 8, end: 9 }])!.split("\n").slice(-4, -1)).toEqual([" line 7", " line 8", " line 9"]);
+  });
+
+  test("lines opened around a step's lines in a new file stay added lines", () => {
+    const hunks = compare.baseFiles.value![1]!.hunks;
+    const b = { path: "src/b.kt", text: lines(6) };
+    const body = (more: { start: number; end: number }[]) => lib.refPatch({ path: "src/b.kt", range: { start: 4, end: 4 } }, { path: "src/b.kt", text: "" }, b, [{ ...hunks[0]!, additionCount: 6, hunkContent: [{ type: "change", deletions: 0, additions: 6 }] }], more, 0)!.split("\n").slice(3, -1);
+    expect(body([])).toEqual(["@@ -0,0 +4,1 @@", "+line 4"]);
+    expect(body([{ start: 1, end: 2 }])).toEqual(["@@ -0,0 +1,2 @@", "+line 1", "+line 2", "@@ -0,0 +4,1 @@", "+line 4"]);
   });
 
   test("files no step names, by their path or their old path", () => {
