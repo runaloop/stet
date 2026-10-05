@@ -69,7 +69,7 @@ Tools
                                                 compare.tests, compare.skip_markers, compare.collapse,
                                                 compare.order, compare.markdown (rendered or code: how
                                                 Markdown files open on the Changes page; default rendered)
-  prune [--dry-run] | export
+  prune [--dry-run]
   export [--all] [--out <file> [--force]] [--review <id>]
                                                 the review as Markdown, also when piped (--json: the data):
                                                 its decisions, one line per thread, for a merge request;
