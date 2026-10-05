@@ -2,7 +2,7 @@ import { parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
 import { describe, expect, test } from "bun:test";
 import { createTwoFilesPatch } from "diff";
 import { CursorSpace } from "../../web/lib/cursor.ts";
-import { changedBlocks, changesOf, hitBlocks, isMarkdown, layoutOf, renderMarkdown, resolveRef, slotsOf, stopsOn, type Block } from "../../web/lib/markdown.ts";
+import { changedBlocks, changesOf, hitBlocks, isMarkdown, layoutOf, likeness, renderMarkdown, resolveRef, slotsOf, stopsOn, type Block } from "../../web/lib/markdown.ts";
 
 const imageUrl = (path: string) => `/raw/${path}`;
 const render = (text: string, more: Partial<Parameters<typeof renderMarkdown>[1]> = {}) => renderMarkdown(text, { path: "docs/guide.md", imageUrl, changes: null, ...more });
@@ -15,12 +15,12 @@ function diffOf(before: string, after: string): FileDiffMetadata {
 }
 
 /** Both sides rendered and laid out next to each other, as the rendered view does it. */
-function laidOut(before: string | null, after: string | null, fd = diffOf(before ?? "", after ?? "")) {
+function laidOut(before: string | null, after: string | null, fd = diffOf(before ?? "", after ?? ""), split = true, merged = new Set<number>()) {
   const ch = changesOf(fd);
   const old = before === null ? null : render(before, { changes: ch.old });
   const nw = after === null ? null : render(after, { changes: ch.new });
   const count = (t: string | null) => (t === null ? 0 : t.split("\n").length);
-  return { old, nw, fd, ...layoutOf(old, nw, slotsOf(fd, count(before), count(after))) };
+  return { old, nw, fd, ...layoutOf(old, nw, slotsOf(fd, count(before), count(after)), split, merged) };
 }
 
 describe("references in a Markdown file", () => {
@@ -47,7 +47,7 @@ describe("references in a Markdown file", () => {
 describe("images", () => {
   test("a repository image loads from the snapshot; a remote one and a non-image file are a placeholder with the link", () => {
     const out = html("![the card](../res/card.png) ![remote](https://example.com/x.png) ![doc](spec.pdf)");
-    expect(out).toContain(`<img src="/raw/res/card.png" alt="the card" data-path="res/card.png">`);
+    expect(out).toContain(`<img src="/raw/res/card.png" alt="the card" data-path="res/card.png" data-src="../res/card.png">`);
     expect(out).not.toContain("<img src=\"https://");
     expect(out).toMatch(/<span class="md-image-off"[^>]*>▧ remote · <code>https:\/\/example\.com\/x\.png<\/code><\/span>/);
     expect(out).toMatch(/<span class="md-image-off" title="not an image file">▧ doc · <code>spec\.pdf<\/code><\/span>/);
@@ -57,21 +57,21 @@ describe("images", () => {
     const out = html(`<img src=x onerror="alert(1)"> [run](javascript:alert(1)) [web](https://example.com) [code](../src/Cache.kt#L3)`);
     expect(out).toContain("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;");
     expect(out).not.toContain("javascript:alert(1)\"");
-    expect(out).not.toContain("href=");
-    expect(out).toContain(`<a class="md-outside" title="https://example.com">web</a>`);
-    expect(out).toContain(`<a class="md-file" data-path="src/Cache.kt" data-line="3" title="src/Cache.kt: open it in the preview">code</a>`);
+    expect(out).not.toMatch(/\shref=/);
+    expect(out).toContain(`<a class="md-outside" data-href="https://example.com" title="https://example.com">web</a>`);
+    expect(out).toContain(`<a class="md-file" data-path="src/Cache.kt" data-line="3" data-href="../src/Cache.kt#L3" title="src/Cache.kt: open it in the preview">code</a>`);
   });
 });
 
 describe("changed blocks", () => {
   const blocks: Block[] = [
-    { start: 1, end: 1, parent: -1 },
-    { start: 3, end: 4, parent: -1 },
-    { start: 6, end: 9, parent: -1 },
-    { start: 6, end: 6, parent: 2 },
-    { start: 7, end: 9, parent: 2 },
-    { start: 8, end: 9, parent: 4 },
-    { start: 8, end: 9, parent: 5 },
+    { start: 1, end: 1, parent: -1, tag: "p" },
+    { start: 3, end: 4, parent: -1, tag: "p" },
+    { start: 6, end: 9, parent: -1, tag: "p" },
+    { start: 6, end: 6, parent: 2, tag: "p" },
+    { start: 7, end: 9, parent: 2, tag: "p" },
+    { start: 8, end: 9, parent: 4, tag: "p" },
+    { start: 8, end: 9, parent: 5, tag: "p" },
   ];
   const changed = (lines: number[], gaps: number[] = []) => [...changedBlocks(blocks, hitBlocks(blocks, { lines: new Set(lines), gaps }))];
 
@@ -158,17 +158,64 @@ describe("old and new side by side", () => {
     ]);
   });
 
-  test("a list with one item changed is one changed row; its items are the stops, the changed one marked", () => {
-    const { rows, stops } = laidOut(lines("- a", "- b", "- c", "", "End."), lines("- a", "- B", "- c", "", "End."));
+  test("a list with one item changed is one changed row; its items face each other and stop once unless they changed", () => {
+    const { rows, pairs, stops } = laidOut(lines("- a", "- b", "- c", "", "End."), lines("- a", "- B", "- c", "", "End."));
     expect(rows.map((r) => r.kind)).toEqual(["changed", "same"]);
+    expect(pairs[0]).toEqual([{ old: [0], new: [0], children: [{ old: [1], new: [1], children: null }, { old: [2], new: [2], children: null }, { old: [3], new: [3], children: null }] }]);
     expect(stops.map((s) => [s.side, s.nav.old, s.nav.new, s.nav.changed, s.nav.group])).toEqual([
-      ["old", { start: 1, end: 1 }, null, false, 0],
+      ["new", { start: 1, end: 1 }, { start: 1, end: 1 }, false, 0],
       ["old", { start: 2, end: 2 }, null, true, 0],
-      ["old", { start: 3, end: 3 }, null, false, 0],
-      ["new", null, { start: 1, end: 1 }, false, 0],
       ["new", null, { start: 2, end: 2 }, true, 0],
-      ["new", null, { start: 3, end: 3 }, false, 0],
+      ["new", { start: 3, end: 3 }, { start: 3, end: 3 }, false, 0],
       ["new", { start: 5, end: 5 }, { start: 5, end: 5 }, false, 1],
+    ]);
+  });
+
+  test("in unified view a changed row stops on its old blocks, then its new ones; drawn once, it stops pair by pair", () => {
+    const before = lines("- a", "- b", "- c");
+    const after = lines("- a", "- B", "- c");
+    const fd = diffOf(before, after);
+    const unified = laidOut(before, after, fd, false);
+    expect(unified.stops.map((s) => s.side)).toEqual(["old", "old", "old", "new", "new", "new"]);
+    const once = laidOut(before, after, fd, false, new Set([0]));
+    expect(once.stops.map((s) => [s.side, s.twin, s.nav.changed])).toEqual([
+      ["new", 1, false],
+      ["new", 2, true],
+      ["new", 3, false],
+    ]);
+  });
+
+  test("items and rows added or removed inside a changed list or table face an empty slot; nested items pair too", () => {
+    const before = lines("- one", "- two", "  - two.a", "- three", "", "| k | v |", "|---|---|", "| a | 1 |", "| b | 2 |");
+    const after = lines("- one", "- two", "  - two.a", "  - two.b", "- three, now longer", "- four", "", "| k | v |", "|---|---|", "| a | 1 |", "| b | 20 |", "| c | 3 |");
+    const { rows, pairs, old, nw } = laidOut(before, after);
+    expect(rows.map((r) => r.kind)).toEqual(["changed", "changed"]);
+    const tagged = (list: typeof pairs[0]): unknown =>
+      list.map((p) => [p.old.map((i) => old!.blocks[i]!.tag + old!.blocks[i]!.start), p.new.map((i) => nw!.blocks[i]!.tag + nw!.blocks[i]!.start), p.children ? tagged(p.children) : null]);
+    expect(tagged(pairs[0]!)).toEqual([
+      [["ul1"], ["ul1"], [
+        [["li1"], ["li1"], null],
+        [["li2"], ["li2"], [[["ul3"], ["ul3"], [[["li3"], ["li3"], null], [[], ["li4"], null]]]]],
+        [["li4"], ["li5"], null],
+        [[], ["li6"], null],
+      ]],
+    ]);
+    expect(tagged(pairs[1]!)).toEqual([
+      [["table6"], ["table8"], [
+        [["thead6"], ["thead8"], [[["tr6"], ["tr8"], null]]],
+        [["tbody8"], ["tbody10"], [[["tr8"], ["tr10"], null], [["tr9"], ["tr11"], null], [[], ["tr12"], null]]],
+      ]],
+    ]);
+  });
+
+  test("blocks one change rewrote together pair by likeness, in order; what is left over stands alone", () => {
+    expect(likeness("Pay by card", "Pay by card or by invoice")).toBeCloseTo(2 / 3);
+    expect(likeness("alpha beta", "gamma delta")).toBe(0);
+    const { pairs, old, nw } = laidOut(lines("- Gone item", "- Pay by card"), lines("- Pay by card or by invoice", "- Promo codes"));
+    expect(pairs[0]![0]!.children!.map((p) => [p.old.map((i) => old!.blocks[i]!.start), p.new.map((i) => nw!.blocks[i]!.start)])).toEqual([
+      [[1], []],
+      [[2], [1]],
+      [[], [2]],
     ]);
   });
 

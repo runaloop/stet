@@ -63,7 +63,8 @@ Tools
   config get <key> | config set <key> <value> | config set <key> --unset
                                                 keys: snapshot.exclude, snapshot.max_untracked_bytes,
                                                 compare.tests, compare.skip_markers, compare.collapse,
-                                                compare.order
+                                                compare.order, compare.markdown (rendered or code: how
+                                                Markdown files open on the Changes page; default rendered)
   prune [--dry-run] | export
   skill install [--for agents|claude|all] [--dir <path>]
                                                 the agent's skill: ~/.agents/skills (Codex, Gemini CLI, Cursor,
@@ -84,8 +85,10 @@ Environment
 
 const CONFIG_KEYS = new Set([
   "snapshot.exclude", "snapshot.max_untracked_bytes",
-  "compare.tests", "compare.skip_markers", "compare.collapse", "compare.order",
+  "compare.tests", "compare.skip_markers", "compare.collapse", "compare.order", "compare.markdown",
 ]);
+
+const CONFIG_VALUES: Record<string, string[]> = { "compare.markdown": ["rendered", "code"] };
 
 function configKey(key: string | undefined, usageText: string): string {
   if (!key) throw usage(usageText);
@@ -516,6 +519,8 @@ const commands: Record<string, { options: Options; run: (p: Parsed) => Promise<n
       const [rawKey, value] = p.positionals;
       const key = configKey(rawKey, "usage: stet config set <key> <value> | --unset <key>");
       if (value === undefined && !bool(p, "unset")) throw usage("usage: stet config set <key> <value> | --unset <key>");
+      const allowed = CONFIG_VALUES[key];
+      if (allowed && value !== undefined && !allowed.includes(value)) throw usage(`${key} takes ${allowed.join(" or ")}`);
       ctx.store.setMeta(key, bool(p, "unset") ? null : value!);
       emit(p, { key, value: bool(p, "unset") ? null : value }, () => `${key} = ${value ?? "(unset)"}`);
     },

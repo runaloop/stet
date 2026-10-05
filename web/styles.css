@@ -613,6 +613,20 @@ a.img-frame:hover, a.img-frame.hover, a.img-frame.focused { border-width: 3px; b
 .md .md-thread-card { display: flex; align-items: center; gap: 8px; }
 .md .md-thread-card .thread-mini { flex: 1; min-width: 0; margin: 0; color: var(--fg); }
 .md .md-thread-lines { font: 11px var(--mono); color: var(--fg-soft); white-space: nowrap; }
+.md del { text-decoration: line-through; text-decoration-color: var(--bad); background: color-mix(in srgb, var(--bad) 17%, transparent); border-radius: 2px; }
+.md ins { text-decoration: none; background: color-mix(in srgb, var(--ok) 24%, transparent); border-radius: 2px; }
+.md .md-changed.md-words { background: none; box-shadow: none; }
+.md del + ins { margin-left: 2px; }
+.md .md-changed.md-thread.md-words { background: var(--md-mark); }
+.md .md-gap { display: block; list-style: none; background: repeating-linear-gradient(-45deg, transparent 0 7px, color-mix(in srgb, var(--border) 60%, transparent) 7px 8px); border-radius: 3px; }
+.md tr.md-gap { display: table-row; }
+.md tr.md-gap td { border-style: dashed; }
+.md img.md-target-new { outline: 2px dashed var(--warn); outline-offset: 2px; }
+.md a.md-target-new { text-decoration: underline wavy var(--warn); text-underline-offset: 3px; }
+.md img.md-target-old { outline: 2px dashed color-mix(in srgb, var(--bad) 60%, transparent); outline-offset: 2px; }
+.md a.md-target-old { text-decoration: line-through; }
+::highlight(stet-hit) { background-color: light-dark(rgb(255 214 0 / 0.6), rgb(255 200 0 / 0.4)); }
+::highlight(stet-hit-current) { background-color: #ffb000; color: #000; }
 
 /* git state: header line, file marks, the panel */
 header.top .gitchip { flex: none; display: inline-flex; gap: 5px; align-items: center; font: 12px var(--mono); background: transparent; border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; color: var(--fg-soft); white-space: nowrap; cursor: pointer; }

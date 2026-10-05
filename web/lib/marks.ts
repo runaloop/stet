@@ -135,3 +135,22 @@ export function paintMarks(container: Element, marks: readonly LineMark[]): void
   for (const p of ranges) highlight(p.current ? HIT_CURRENT : HIT)?.add(p.range);
   if (ranges.length) painted.set(container, ranges);
 }
+
+/** Paints search hits in text outside the code (rendered Markdown), in place of what was painted for `owner` before. */
+export function paintTextHits(owner: Element, ranges: { range: Range; current: boolean }[]): void {
+  for (const p of painted.get(owner) ?? []) highlight(p.current ? HIT_CURRENT : HIT)?.delete(p.range);
+  painted.delete(owner);
+  for (const p of ranges) highlight(p.current ? HIT_CURRENT : HIT)?.add(p.range);
+  if (ranges.length) painted.set(owner, ranges);
+}
+
+/** The drawn lines of a file of the diff, each with the side and number it shows (a context line in unified view, both). */
+export function drawnLines(container: Element): { el: Element; at: [Side, number][] }[] {
+  const root: ParentNode = (container as HTMLElement).shadowRoot ?? container;
+  const out: { el: Element; at: [Side, number][] }[] = [];
+  for (const code of root.querySelectorAll("code[data-code]")) {
+    const col: Column = code.hasAttribute("data-deletions") ? "deletions" : code.hasAttribute("data-additions") ? "additions" : "unified";
+    for (const row of code.querySelector(":scope > [data-content]")?.children ?? []) if (row.hasAttribute("data-line")) out.push({ el: row, at: sidesOf(col, row) });
+  }
+  return out;
+}

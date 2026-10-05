@@ -117,6 +117,12 @@ function moveBy(delta: number): boolean {
   return move(cursorSpace.value.move(cursor.value, delta));
 }
 
+function page(dir: 1 | -1): boolean {
+  const c = cursor.value;
+  const to = c ? compareNav.current?.pageFrom(c, dir) : null;
+  return to ? move(to) : moveBy(dir * (compareNav.current?.pageRows() ?? 15));
+}
+
 function repeat(n: number, step: (c: Cursor | null) => Cursor | null): boolean {
   let c: Cursor | null = cursor.value ?? startCursor();
   for (let i = 0; i < n; i++) {
@@ -248,8 +254,8 @@ export const BINDINGS: Binding[] = [
   { keys: "<Up>", desc: "cursor up", where: "compare", visual: true, run: (n) => moveBy(-n) },
   { keys: "gg", desc: "first line of the diff", where: "compare", visual: true, run: () => move(cursorSpace.value.at(0)) },
   { keys: "G", desc: "last line of the diff", where: "compare", visual: true, run: () => move(cursorSpace.value.at(cursorSpace.value.total - 1)) },
-  { keys: "<C-d>", desc: "half a page down", where: "compare", visual: true, run: () => moveBy(compareNav.current?.pageRows() ?? 15) },
-  { keys: "<C-u>", desc: "half a page up", where: "compare", visual: true, run: () => moveBy(-(compareNav.current?.pageRows() ?? 15)) },
+  { keys: "<C-d>", desc: "half a page down", where: "compare", visual: true, run: () => page(1) },
+  { keys: "<C-u>", desc: "half a page up", where: "compare", visual: true, run: () => page(-1) },
   { keys: "]c", desc: "next change", where: "compare", visual: true, run: (n) => repeat(n, (c) => cursorSpace.value.nextChange(c, 1)) },
   { keys: "[c", desc: "previous change", where: "compare", visual: true, run: (n) => repeat(n, (c) => cursorSpace.value.nextChange(c, -1)) },
   { keys: "]h", desc: "next hunk", where: "compare", visual: true, run: (n) => repeat(n, (c) => cursorSpace.value.nextHunk(c, 1)) },

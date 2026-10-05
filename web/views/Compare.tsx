@@ -25,6 +25,7 @@ import {
   isCollapsed,
   setFileView,
   fileView,
+  markdownView,
   isViewed,
   marksByPath,
   marksFor,
@@ -32,8 +33,11 @@ import {
   cursorLayer,
   cursorSpace,
   drawnFiles,
+  fileBlocks,
   pendingLines,
   type PendingLines,
+  searchQuery,
+  searchRegex,
   setCursor,
   resolvedIds,
   setViewed,
@@ -50,9 +54,10 @@ import { isMarkdown } from "../lib/markdown.ts";
 import { rowPosition, type Cursor, type LineRange } from "../lib/cursor.ts";
 import { compareOrder } from "../lib/nav.ts";
 import { PeekView } from "./Peek.tsx";
+import { codeAnchor, holdAt, renderedAnchor, rowElement, stopElement } from "./anchor.ts";
 import { Presets, rangeTitle, ReviewedButton, VersionStrip } from "../components/VersionStrip.tsx";
 import { takeSpot } from "../jumps.ts";
-import { diffRows } from "../lib/search.ts";
+import { compileQuery, diffRows } from "../lib/search.ts";
 import type { Side } from "../lib/search.ts";
 import { compareFocus, diffStyle, guard, navigate, noteJump, notify, reloadAll, reviewId, route, showResolved, status, threads, wrap } from "../state.ts";
 
@@ -90,7 +95,7 @@ function FileMeta({ path }: { path: string }) {
           {drawnFiles.value.has(path) ? "‹/› code" : "▣ picture"}
         </button>
       ) : isMarkdown(path) ? (
-        <button class="btn ghost small md-toggle" title="Markdown: show it rendered or as code" onClick={() => setFileView(path, drawnFiles.value.has(path) ? "code" : "rendered")}>
+        <button class="btn ghost small md-toggle" title="Markdown: show it rendered or as code" onClick={() => (compareHandle.current?.switchView ?? setFileView)(path, drawnFiles.value.has(path) ? "code" : "rendered")}>
           {drawnFiles.value.has(path) ? "‹/› code" : "¶ rendered"}
         </button>
       ) : null}
@@ -167,11 +172,12 @@ type SelectionContext = { item: { id: string; fileDiff?: FileDiffMetadata } };
 
 /**
  * What a file is drawn as instead of its lines: a picture for an image git calls binary, or for an SVG unless the
- * reader picked its code or lines of it have threads; rendered Markdown when the reader picked it.
+ * reader picked its code or lines of it have threads; rendered Markdown unless the reader or `compare.markdown` picked
+ * its code.
  */
 function viewerOf(fd: FileDiffMetadata, placed: ComparePlacement[] | undefined): Viewer | null {
   if (fd.hunks.length === 0 && isPixelImage(fd.name)) return "image";
-  if (isMarkdown(fd.name)) return fileView.value.get(fd.name) === "rendered" ? "markdown" : null;
+  if (isMarkdown(fd.name)) return (fileView.value.get(fd.name) ?? markdownView.value) === "rendered" ? "markdown" : null;
   if (!isSvg(fd.name)) return null;
   const view = fileView.value.get(fd.name);
   if (view) return view === "picture" ? "image" : null;
@@ -332,7 +338,8 @@ export function CompareView({ from, to }: { from: string; to: string }) {
   };
 
   const pendingScroll = useRef<CodeViewScrollTarget | null>(null);
-  const placeCursor = useRef<(() => void) | null>(null);
+  // run once the next list of items is drawn, when a file switched between code and a picture or rendered text
+  const afterDraw = useRef<(() => void)[]>([]);
   const scrollOrQueue = (target: CodeViewScrollTarget, wait: boolean) => {
     if (wait) pendingScroll.current = target;
     else view.current?.scrollTo(target);
@@ -355,9 +362,12 @@ export function CompareView({ from, to }: { from: string; to: string }) {
   const scrollToThread = (id: number) => {
     const p = order.find((x) => x.threadId === id);
     if (!p || !view.current) return false;
-    const block = isMarkdown(p.path) && drawnFiles.peek().has(p.path) ? cursorSpace.peek().locate(p.path, p.side, p.range.start) : null;
-    if (block) revealBlock(p.path, block.row, "center");
-    else if (threads.peek().find((t) => t.id === id)?.region) {
+    if (isMarkdown(p.path) && drawnFiles.peek().has(p.path)) {
+      whenLaidOut(p.path, () => {
+        const block = cursorSpace.peek().locate(p.path, p.side, p.range.start);
+        if (block) revealBlock(p.path, block.row, "center", p.side);
+      });
+    } else if (threads.peek().find((t) => t.id === id)?.region) {
       view.current.scrollTo({ type: "item", id: p.path, align: "start" });
       settleOn(p.path);
     } else scrollOrQueue({ type: "line", id: p.path, lineNumber: p.range.end, side: p.side, align: "center" }, codeOf(p.path));
@@ -376,39 +386,125 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     scrollOrQueue({ type: "line", id: path, lineNumber: line, side, align: "center" }, reveal(path, true) || switched);
   };
 
+  // A search hit in a rendered Markdown file goes to its block when the rendered text has the match; a match only the
+  // source has (a link address, a picture's path, markup) shows the file as code.
+  const showHit = (path: string, side: Side, line: number) => {
+    if (!(isMarkdown(path) && drawnFiles.peek().has(path))) return scrollToLine(path, side, line);
+    whenLaidOut(path, () => {
+      const at = cursorSpace.peek().locate(path, side, line);
+      const nav = at ? cursorSpace.peek().block(at) : null;
+      const span = nav ? (side === "deletions" ? nav.old : nav.new) : null;
+      const el = at && span && span.start <= line && line <= span.end ? stopElement(path, at.row, side) : null;
+      const re = compileQuery(searchQuery.peek(), searchRegex.peek());
+      if (at && el && re instanceof RegExp && ((re.lastIndex = 0), re.test(el.textContent ?? ""))) {
+        cursor.value = at;
+        revealBlock(path, at.row, "center", side);
+        return;
+      }
+      notify(`${path}: the match is in the Markdown source, not in the rendered text, so the file shows as code`);
+      scrollToLine(path, side, line);
+    });
+  };
+
   const scrollToFile = (path: string) => {
     scrollOrQueue({ type: "item", id: path, align: "start" }, reveal(path, false));
     settleOn(path);
   };
 
-  // A block of rendered Markdown, by its place among the file's blocks (`data-stop`): drawn inside the file's one row,
-  // so pierre cannot scroll to it; the file is scrolled into view first when it is not drawn.
-  const revealBlock = (path: string, stop: number, align: "nearest" | "center") => {
-    const find = () => document.querySelector<HTMLElement>(`.md-view[data-file="${CSS.escape(path)}"] [data-stop="${stop}"]`);
-    const go = (el: HTMLElement) => {
-      const v = view.current;
-      const h = host.current;
-      if (!v || !h) return;
-      const box = el.getBoundingClientRect();
-      const top = box.top - h.getBoundingClientRect().top + v.getScrollTop();
-      const head = 72;
-      const now = v.getScrollTop();
-      const height = v.getHeight();
-      let to = now;
-      if (align === "center") to = top - (height - box.height) / 2;
-      else if (top - head < now) to = top - head;
-      else if (top + box.height + 24 > now + height) to = Math.min(top - head, top + box.height + 24 - height);
-      if (Math.abs(to - now) > 1) v.scrollTo({ type: "position", position: Math.max(0, to) });
+  // Runs `fn` once the rendered Markdown file has laid out its blocks for the cursor; the file is scrolled to when it
+  // is not drawn (at once, or with `later` only if it is still not drawn a moment later).
+  const whenLaidOut = (path: string, fn: () => void, later = false) => {
+    const fd = files?.find((f) => f.name === path);
+    const ready = () => !!fd && fileBlocks.peek().get(path)?.fd === fd && !!stopElement(path, 0);
+    if (ready()) return fn();
+    const drawn = () => !!document.querySelector(`.md-anno [data-file="${CSS.escape(path)}"]`);
+    if (!later && !drawn()) view.current?.scrollTo({ type: "item", id: path, align: "start" });
+    if (later) setTimeout(() => drawn() || view.current?.scrollTo({ type: "item", id: path, align: "start" }), 150);
+    const end = performance.now() + 5000;
+    const poll = () => {
+      if (ready()) fn();
+      else if (performance.now() < end) requestAnimationFrame(poll);
     };
+    requestAnimationFrame(poll);
+  };
+
+  // A block of rendered Markdown, by its place among the file's blocks (`data-stop`): drawn inside the file's one row,
+  // so pierre cannot scroll to it. It is kept in place while pictures around it load.
+  const revealBlock = (path: string, stop: number, align: "nearest" | "center", side: Side = "additions") => {
+    const h = host.current;
+    if (!h) return;
+    const find = () => stopElement(path, stop, side);
     const el = find();
-    if (el) return go(el);
-    view.current?.scrollTo({ type: "item", id: path, align: "start" });
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        const later = find();
-        if (later) go(later);
-      }),
-    );
+    const height = h.clientHeight;
+    const box = el?.getBoundingClientRect();
+    const now = box ? box.top - h.getBoundingClientRect().top : null;
+    const head = 72;
+    const centered = box ? Math.max(head, (height - box.height) / 2) : height / 3;
+    let y = centered;
+    if (align === "nearest" && box && now !== null) y = now < head ? head : now + box.height + 24 > height ? Math.max(head, height - box.height - 24) : now;
+    if (!el) view.current?.scrollTo({ type: "item", id: path, align: "start" });
+    holdAt(h, find, y, 1200);
+  };
+
+  /** The line of `span` on `side` that the diff shows, or the nearest one it shows. */
+  const shownLine = (fd: FileDiffMetadata, side: Side, span: { start: number; end: number }): number => {
+    const lines = diffRows(fd).flatMap((r) => (side === "deletions" ? (r.kind !== "add" && r.old !== null ? [r.old] : []) : r.kind !== "del" && r.new !== null ? [r.new] : []));
+    const inside = lines.find((n) => n >= span.start && n <= span.end);
+    if (inside !== undefined) return inside;
+    return lines.reduce((best, n) => (Math.abs(n - span.start) < Math.abs(best - span.start) ? n : best), lines[0] ?? span.start);
+  };
+
+  // Switches a Markdown file between rendered and code and keeps the same point of the file at the same height: the
+  // block at the cursor (or `at`, or the topmost block in view) becomes its first line in the diff, and a line becomes
+  // the block that holds it. The cursor follows when it was in the file.
+  const switchView = (path: string, to: "code" | "rendered", at?: { stop: number; side: "old" | "new" }) => {
+    const h = host.current;
+    const v = view.current as CodeView<never> | null;
+    const fd = files?.find((f) => f.name === path);
+    const c = cursor.peek();
+    const here = c?.path === path && c.row >= 0;
+    if (!h || !v || !fd) return setFileView(path, to);
+    if (to === "code") {
+      const a = renderedAnchor(h, path, at?.stop ?? (here ? c!.row : null));
+      const nav = a ? cursorSpace.peek().block({ path, row: a.stop }) : null;
+      setFileView(path, "code");
+      if (!a || !nav) return;
+      const side: Side = (a.side === "old" || !nav.new) && nav.old ? "deletions" : "additions";
+      const line = shownLine(fd, side, (side === "deletions" ? nav.old : nav.new)!);
+      afterDraw.current.push(() => {
+        if (here || at) {
+          const moved = cursorSpace.peek().locate(path, side, line);
+          if (moved) cursor.value = moved;
+        }
+        requestAnimationFrame(() => {
+          view.current?.scrollTo({ type: "line", id: path, lineNumber: line, side, align: "start" });
+          const cv = view.current as CodeView<never> | null;
+          if (cv) holdAt(h, () => rowElement(cv, path, side, line), a.y);
+        });
+      });
+      return;
+    }
+    const r = here ? cursorSpace.peek().row(c!) : null;
+    const a = codeAnchor(h, v, path, r ? rowPosition(r) : null);
+    const d = data;
+    // with both texts at hand the rendered file lays out in the next frames, not after a round trip
+    const texts = d ? Promise.all([fd.type === "new" ? null : api.blob(d.from.sha, fd.prevName ?? path), fd.type === "deleted" ? null : api.blob(d.to.sha, path)]) : Promise.resolve();
+    void texts.catch(() => null).then(() => {
+      setFileView(path, "rendered");
+      if (!a) return;
+      afterDraw.current.push(() =>
+        whenLaidOut(
+          path,
+          () => {
+            const s = cursorSpace.peek().locate(path, a.side, a.line);
+            if (!s) return;
+            if (here) cursor.value = s;
+            holdAt(h, () => stopElement(path, s.row, a.side), a.y, 2500);
+          },
+          true,
+        ),
+      );
+    });
   };
 
   const revealCursor = (c: Cursor, align: "nearest" | "center" = "nearest") => {
@@ -432,6 +528,25 @@ export function CompareView({ from, to }: { from: string; to: string }) {
 
   const pageRows = () => Math.max(4, Math.floor((host.current?.clientHeight ?? 600) / 20 / 2));
 
+  // Half a screen in a rendered file: the block that far below (or above) the cursor's block, by where they are drawn.
+  const pageFrom = (c: Cursor, dir: 1 | -1): Cursor | null => {
+    const nav = c.row >= 0 ? cursorSpace.peek().block(c) : null;
+    const h = host.current;
+    const from = nav && h ? stopElement(c.path, c.row) : null;
+    if (!from || !h) return null;
+    const goal = from.getBoundingClientRect().top + (dir * h.clientHeight) / 2;
+    const count = cursorSpace.peek().rows(cursorSpace.peek().fileIndex(c.path)).length;
+    let to = c.row;
+    for (let k = c.row + dir; k >= 0 && k < count; k += dir) {
+      const el = stopElement(c.path, k);
+      if (!el) break;
+      to = k;
+      const top = el.getBoundingClientRect().top;
+      if (dir === 1 ? top >= goal : top <= goal) break;
+    }
+    return to === c.row ? null : { path: c.path, row: to };
+  };
+
   const openTarget = (path: string, line: number | null, side: Side) => {
     const fd = files?.find((x) => x.name === path);
     const at = side === "deletions" ? data?.from : data?.to;
@@ -451,13 +566,13 @@ export function CompareView({ from, to }: { from: string; to: string }) {
         if (c) cursor.value = c;
       };
       // a file drawn as a picture or rendered has its lines in the cursor only once it is drawn as code
-      if (switching) placeCursor.current = place;
+      if (switching) afterDraw.current.push(place);
       else place();
     } else if (at) peek.value = { path, sha: at.sha, label: at.label, line };
   };
 
-  const latest = useRef({ data, pending, from, to, rid, order, visible, startThread, createThread, cancelPending, scrollToThread, scrollToLine, scrollToFile, revealCursor, startComment, pageRows, openTarget });
-  latest.current = { data, pending, from, to, rid, order, visible, startThread, createThread, cancelPending, scrollToThread, scrollToLine, scrollToFile, revealCursor, startComment, pageRows, openTarget };
+  const latest = useRef({ data, pending, from, to, rid, order, visible, startThread, createThread, cancelPending, scrollToThread, scrollToLine, showHit, scrollToFile, revealCursor, startComment, pageRows, pageFrom, openTarget, switchView });
+  latest.current = { data, pending, from, to, rid, order, visible, startThread, createThread, cancelPending, scrollToThread, scrollToLine, showHit, scrollToFile, revealCursor, startComment, pageRows, pageFrom, openTarget, switchView };
 
   const r = route.value;
   const targetKey = r.name === "compare" && r.file ? `${r.file}:${r.line ?? ""}:${r.side ?? ""}` : "";
@@ -482,6 +597,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
         return latest.current.order;
       },
       scrollToThread: (id: number) => latest.current.scrollToThread(id),
+      switchView: (path: string, to: "code" | "rendered") => latest.current.switchView(path, to),
       cancelPending: () => latest.current.cancelPending(),
     };
     compareHandle.current = handle;
@@ -491,12 +607,15 @@ export function CompareView({ from, to }: { from: string; to: string }) {
         latest.current.scrollToFile(path);
       },
       scrollToLine: (path: string, side: Side, line: number) => latest.current.scrollToLine(path, side, line),
+      showHit: (path: string, side: Side, line: number) => latest.current.showHit(path, side, line),
       openLine: (path: string, side: Side, line: number) => latest.current.openTarget(path, line, side),
+      showCode: (path: string, stop: number, side: "old" | "new") => latest.current.switchView(path, "code", { stop, side }),
       revealCursor: (c: Cursor, align?: "nearest" | "center") => latest.current.revealCursor(c, align),
       startComment: (range: LineRange) => latest.current.startComment(range),
       submitComment: (body: string, mode: "draft" | "now") => latest.current.createThread(body, mode),
       cancelComment: () => latest.current.cancelPending(),
       pageRows: () => latest.current.pageRows(),
+      pageFrom: (c: Cursor, dir: 1 | -1) => latest.current.pageFrom(c, dir),
       getScrollTop: () => view.current?.getScrollTop() ?? 0,
       setScrollTop: (top: number) => view.current?.scrollTo({ type: "position", position: top }),
     };
@@ -665,8 +784,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     v.ids = ids;
     cv.setItems(items);
     if ([...drawn].join("\n") !== [...drawnFiles.peek()].join("\n")) drawnFiles.value = drawn;
-    placeCursor.current?.();
-    placeCursor.current = null;
+    for (const run of afterDraw.current.splice(0)) run();
     const queued = pendingScroll.current;
     if (queued) {
       pendingScroll.current = null;
@@ -690,7 +808,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
         requestAnimationFrame(() => latest.current.scrollToThread(id));
       }
     }
-  }, [files, visible, byPath, pending, fileOpen.value, viewed.value, diffStyle.value, wrap.value, fileView.value]);
+  }, [files, visible, byPath, pending, fileOpen.value, viewed.value, diffStyle.value, wrap.value, fileView.value, markdownView.value]);
 
   useEffect(() => {
     if ((isSha(from) || isSha(to)) && !commits.peek()) void loadCommits();
@@ -781,4 +899,6 @@ export function openFocusedCompareThread(): boolean {
   return true;
 }
 
-export const compareHandle: { current: { order: ComparePlacement[]; scrollToThread: (id: number) => boolean; cancelPending: () => void } | null } = { current: null };
+export const compareHandle: {
+  current: { order: ComparePlacement[]; scrollToThread: (id: number) => boolean; switchView: (path: string, to: "code" | "rendered") => void; cancelPending: () => void } | null;
+} = { current: null };

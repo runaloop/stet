@@ -24,7 +24,7 @@ export type ReviewStatus = StatusDto & {
   pinnedNow: string | null;
   versionsList: VersionDto[];
   submissions?: SubmissionDto[];
-  ui?: { tests: string | null; skipMarkers: string | null; collapse: string | null; order: string | null };
+  ui?: { tests: string | null; skipMarkers: string | null; collapse: string | null; order: string | null; markdown: string | null };
 };
 
 export interface BlobDto {
