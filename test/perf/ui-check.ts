@@ -68,6 +68,8 @@ const url = JSON.parse(await firstMatch(server.stdout as ReadableStream<Uint8Arr
 mkdirSync(join(OUT, "shots"), { recursive: true });
 rmSync(join(OUT, "ui-prof"), { recursive: true, force: true });
 mkdirSync(join(OUT, "ui-prof"), { recursive: true });
+// lets the page read the clipboard without a paste prompt, to check what "Copy link" put there
+writeFileSync(join(OUT, "ui-prof", "user.js"), `user_pref("dom.events.testing.asyncClipboard", true);\n`);
 const firefox = Bun.spawn(["firefox", "--headless", "--no-remote", "--profile", join(OUT, "ui-prof"), `--remote-debugging-port=${9800 + Math.floor(Math.random() * 100)}`], { stdout: "ignore", stderr: "pipe" });
 
 const checks: [string, boolean, unknown][] = [];
@@ -519,6 +521,51 @@ try {
     const deep = await waitFor(`(() => { const c = [...document.querySelectorAll(".codeview-host diffs-container")].find(c => c.shadowRoot.textContent.includes("HUNDRED_V2")); const rows = c ? [...c.shadowRoot.querySelectorAll('code[data-additions] [data-content] > [data-stet-mark~="cursor"]')].map(r => +r.getAttribute("data-line")) : []; return rows.includes(100) ? rows : null; })()`, 10000);
     const activeRow = await b.eval(`document.querySelector(".file-row.active .file-name")?.textContent ?? null`);
     check("a link with a file and a line opens the diff there with the cursor on it, and Files follows the cursor", !!deep && activeRow === "Zbig.kt", { deep, activeRow });
+
+    const zbigItem = `[...document.querySelectorAll(".codeview-host diffs-container")].find(c => c.shadowRoot.textContent.includes("HUNDRED_V2"))`;
+    const rowsMarked = (tag: string, side: string) => `[...(${zbigItem}?.shadowRoot.querySelectorAll('code[data-${side}] [data-content] > [data-stet-mark~="${tag}"]') ?? [])].map(r => +r.getAttribute("data-line"))`;
+    const lineTop = (n: number) => `Math.round([...${zbigItem}.shadowRoot.querySelectorAll('code[data-additions] [data-content] > [data-line="${n}"]')][0].getBoundingClientRect().top - document.querySelector(".codeview-host").getBoundingClientRect().top)`;
+    await b.eval(`location.hash = "#/compare/base..2?file=src%2FZbig.kt&line=8-12"; true`);
+    await waitFor(`${rowsMarked("linked", "additions")}.join() === "8,9,10,11,12"`, 10000);
+    await sleep(1600);
+    const linkedRange = await b.eval(`({ linked: ${rowsMarked("linked", "additions")}, cursor: ${rowsMarked("cursor", "additions")}, first: ${lineTop(8)}, last: ${lineTop(12)}, height: document.querySelector(".codeview-host").clientHeight })`);
+    await keys("j");
+    await sleep(200);
+    const inside = await b.eval(`${rowsMarked("linked", "additions")}.length`);
+    await keys("5", "j");
+    await sleep(300);
+    const left = await b.eval(`${rowsMarked("linked", "additions")}.length`);
+    await b.eval(`location.hash = "#/compare/base..2?file=src%2FZbig.kt&line=9-10&side=old"; true`);
+    const oldSide = await waitFor(`(() => { const o = ${rowsMarked("linked", "deletions")}; return o.length ? { old: o, new: ${rowsMarked("linked", "additions")} } : null; })()`, 8000);
+    check(
+      "a link to a range of lines scrolls it into view from near the top and highlights it, the cursor on its first line; the highlight stays while the cursor is on those lines and goes when it leaves; side=old marks the old side",
+      JSON.stringify(linkedRange.cursor) === "[8]" && linkedRange.first > 20 && linkedRange.first < 160 && linkedRange.last < linkedRange.height && inside === 5 && left === 0 && JSON.stringify(oldSide) === JSON.stringify({ old: [9, 10], new: [] }),
+      { linkedRange, inside, left, oldSide },
+    );
+
+    const clipboard = () => b.eval(`navigator.clipboard.readText().catch(e => "error: " + e)`) as Promise<string>;
+    const origin = url.split("#")[0];
+    await b.eval(`location.hash = "#/compare/base..2?file=src%2FZbig.kt&line=98"; true`);
+    await waitFor(`${rowsMarked("cursor", "additions")}.join() === "98"`, 8000);
+    await sleep(500);
+    await keys("V", "j", " ", "g", "Y");
+    await sleep(400);
+    const byKey = { copied: await clipboard(), toast: await b.eval(`document.querySelector(".toast")?.textContent ?? null`), visual: await b.eval(`${rowsMarked("visual", "additions")}.length`) };
+    const g99 = await b.eval(`(() => { const r = [...${zbigItem}.shadowRoot.querySelectorAll("[data-column-number='99']")].pop().getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
+    const g101 = await b.eval(`(() => { const r = [...${zbigItem}.shadowRoot.querySelectorAll("[data-column-number='101']")].pop().getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
+    await pointer([{ type: "pointerMove", x: g99.x, y: g99.y }, { type: "pointerDown", button: 0 }, { type: "pointerMove", x: g101.x, y: g101.y, duration: 100 }, { type: "pointerUp", button: 0 }]);
+    await waitFor(`document.querySelector(".codeview-host .new-thread .copy-link")`, 3000);
+    await click(".codeview-host .new-thread .copy-link");
+    await sleep(400);
+    const byButton = await clipboard();
+    await b.screenshot(join(OUT, "shots", "ui-check-copy-link.png"));
+    await cancel();
+    check(
+      "Space g Y copies a link to the selected lines and leaves visual mode; Copy link on the comment box of selected lines copies theirs; the link has the review and no token",
+      byKey.copied === `${origin}#/compare/base..2?file=src%2FZbig.kt&line=98-99&review=1` && (byKey.toast?.includes("copied a link to src/Zbig.kt:98–99") ?? false) && byKey.visual === 0 &&
+        byButton === `${origin}#/compare/base..2?file=src%2FZbig.kt&line=99-101&review=1`,
+      { byKey, byButton, origin },
+    );
 
     await b.eval(`[...document.querySelectorAll(".presets .chip")].find(x => x.textContent === "what changed in v2")?.click(); true`);
     await sleep(800);
@@ -1454,6 +1501,33 @@ try {
       onPage.length === 1 && onPage[0]!.includes("above/below/all") && openedThere.length === 1 && foldedN(openedThere.map((x) => x.split(":")[0]!)) < foldedN(onPage.map((x) => x.split(":")[0]!)) &&
         !!threadCode && threadCode.includes(20) && threadCode.includes(1),
       { onPage, openedThere, threadCode: threadCode?.join(" ") },
+    );
+
+    // a link to lines in the folded middle of a rendered file, opened in a new tab: the lines open, their blocks are marked
+    const homeTab = b.context;
+    const linkTab = await b.send("browsingContext.create", { type: "tab" });
+    b.context = linkTab.context;
+    await b.viewport(1400, 900);
+    await b.navigate(`${url.split("#")[0]}#/compare/${longV - 1}..${longV}?file=docs%2Freadme.md&line=130-132`);
+    const linkedBlocks = `[...(${rd}?.querySelectorAll(".md-linked") ?? [])].map(e => e.closest(".md-cell").dataset.side + ":" + e.dataset.start).sort()`;
+    await waitFor(`${linkedBlocks}.length > 0`, 15000);
+    await sleep(1500);
+    const mdLink = await b.eval(`({ linked: ${linkedBlocks}, cursor: [...${rd}.querySelectorAll(".md-cursor")].map(e => e.dataset.start), top: Math.round(${rd}.querySelector(".md-linked").getBoundingClientRect().top - document.querySelector(".codeview-host").getBoundingClientRect().top), text: ${rd}.querySelector('.md-linked[data-start="132"]')?.textContent.slice(0, 26) ?? null, bars: ${rd}.querySelectorAll(".md-fold").length })`);
+    await b.screenshot(join(OUT, "shots", "ui-check-markdown-link.png"));
+    await keys("j");
+    await sleep(200);
+    const mdInside = await b.eval(`${linkedBlocks}.length`);
+    await keys("j");
+    await sleep(200);
+    const mdLeft = await b.eval(`${linkedBlocks}.length`);
+    await b.send("browsingContext.close", { context: linkTab.context });
+    b.context = homeTab;
+    await b.send("browsingContext.activate", { context: homeTab }).catch(() => null);
+    check(
+      "a link to lines a rendered Markdown file folds, in a new tab: the lines open, the blocks that hold them are highlighted near the top with the cursor on the first; the highlight goes once the cursor leaves them",
+      JSON.stringify(mdLink.linked) === JSON.stringify(["new:130", "new:132", "old:130", "old:132"]) && JSON.stringify(mdLink.cursor) === JSON.stringify(["130", "130"]) && mdLink.top > 20 && mdLink.top < 200 &&
+        mdLink.text === "Text of section 30, the sa" && mdLink.bars === 2 && mdInside === 4 && mdLeft === 0,
+      { mdLink, mdInside, mdLeft },
     );
 
     await b.eval(`location.hash = "#/compare/${imgV - 1}..${imgV}"; true`);
