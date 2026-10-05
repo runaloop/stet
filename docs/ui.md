@@ -93,6 +93,19 @@ Search reads the rendered text: a match is highlighted where it shows and the cu
 that only the Markdown source has (a link address, a picture's path, markup) shows that file as code, and a note
 says so ([guide](guide/README.md#markdown)).
 
+## Blame
+
+`Space g b` on the Changes page shows where the cursor line, the selection or the rendered block under the cursor
+came from, in a small box under it: per run of lines the version that brought them in their current form (`base`
+when they are unchanged since the review's base, `now` when no version has them yet), the round of review that
+version answered, and the threads its agent replies answered there: `v3 · round 1 · fixed #12 “title”`. A thread
+anchored on the lines comes first; else one whose reply names the file `(named)`; else a fix in the same file
+`(same file)`. It blames the right side of the diff at its version (or the pinned "now"); lines of the old side
+blame the left one. The version opens what changed in it, on those lines; the thread opens its page. `Enter` follows
+the first thread, `j` / `k` pick another link when there are several, and `Esc` or moving the cursor closes the box.
+On a thread page `Space g b` blames the thread's lines in the code shown (the right side of the diff, Then or the
+step). The agent gets the same from `stet blame <path>:<lines>`.
+
 ## Keys
 
 Vim-style, modelled on [LazyVim](https://www.lazyvim.org). `?` shows every key with a filter box; `Space s k`
@@ -115,6 +128,7 @@ picture) is one stop:
 | `V` then `j` / `k`, `o` | select lines, jump to the other end of the selection |
 | `i` · `a` · `c` · `gcc` | comment on the cursor line or the selection |
 | `Space g Y` | copy a link to the cursor line or the selection ([links](#links)) |
+| `Space g b` | where the cursor line or the selection came from: version, round, the threads it answered ([blame](#blame)) |
 | `zo` / `zc` / `za`, `zR` / `zM` | open / close the file under the cursor, all files |
 | `/` · `Space /` | search the diff · search all files of the version |
 | `*` · `Space s w` · double-click | find where the selected word (or the double-clicked name) is used, in all files |
@@ -129,7 +143,8 @@ picture) is one stop:
 | `Esc` | close the preview, the selection, then the comment box |
 
 In a thread: `j` / `k` next / previous thread, `n` / `N` unread, `[` / `]` timeline step, `t` diff / then /
-at step, `p` diff base, `r` reply, `x` / `X` resolve / reopen, `e` editor, `/` search all
+at step, `p` diff base, `r` reply, `x` / `X` resolve / reopen, `e` editor, `Space g b` blame the thread's lines in the code
+shown, `/` search all
 files at the step shown, `*` find the selected word, `Space u l` the conversation left / right of the code, `Esc` close
 the preview, then back to the changes.
 In its messages: `}` / `{` next / previous message, `gg` / `G` first / last, `Ctrl+d` / `Ctrl+u` half a

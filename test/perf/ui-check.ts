@@ -1649,6 +1649,67 @@ try {
       { mdLink, mdInside, mdLeft },
     );
 
+    const blameKt = (fixed: boolean) => Array.from({ length: 10 }, (_, i) => (i === 4 ? (fixed ? "val pause = 0" : "val pause = sleep(1000)") : `val b${i + 1} = ${i + 1}`)).join("\n") + "\n";
+    const blameMd = (fixed: boolean) => ["# Blame", "", "First paragraph.", "", fixed ? "Second paragraph, rewritten after the review." : "Second paragraph.", ""].join("\n");
+    writeFileSync(join(repo, "src/Blame.kt"), blameKt(false));
+    writeFileSync(join(repo, "docs/blame.md"), blameMd(false));
+    run(repo, ["git", "add", "-A"]);
+    const blameA = JSON.parse(run(repo, ["bun", CLI, "version", "create", "--label", "blame: first take", "--json"])).version.number as number;
+    const sleepThread = JSON.parse(run(repo, ["bun", CLI, "comment", "add", "--file", "src/Blame.kt", "--range", "5-5", "--at", String(blameA), "--body", "Why sleep here?", "--as", "reviewer", "--json"])).id as number;
+    writeFileSync(join(repo, "src/Blame.kt"), blameKt(true));
+    writeFileSync(join(repo, "docs/blame.md"), blameMd(true));
+    run(repo, ["bun", CLI, "reply", String(sleepThread), "--intent", "fixed", "--body", "No sleep: the retry waits on its own (src/Blame.kt:5).", "--json"]);
+    run(repo, ["git", "add", "-A"]);
+    const blameB = JSON.parse(run(repo, ["bun", CLI, "version", "create", "--label", "blame: no sleep", "--json"])).version.number as number;
+    const blameRange = `#/compare/${blameA}..${blameB}`;
+    const popExpr = `(() => { const p = document.querySelector(".blame-pop"); return p && p.querySelector("li") ? { head: p.querySelector(".blame-head").textContent, rows: [...p.querySelectorAll("li")].map(l => l.textContent), links: [...p.querySelectorAll("a")].map(a => a.getAttribute("href")), on: p.querySelector("a.on")?.getAttribute("href") ?? null, top: Math.round(p.getBoundingClientRect().top) } : null; })()`;
+    const blameItem = `[...document.querySelectorAll(".codeview-host diffs-container")].find(c => c.shadowRoot.querySelector("[data-title]")?.textContent === "src/Blame.kt")`;
+    const openKt = async () => {
+      await b.eval(`location.hash = "${blameRange}?file=src%2FBlame.kt&line=5"; true`);
+      await waitFor(`[...(${blameItem}?.shadowRoot.querySelectorAll('code[data-additions] [data-content] > [data-stet-mark~="cursor"]') ?? [])].map(r => r.getAttribute("data-line")).join() === "5"`, 10000);
+      await sleep(400);
+      await keys(" ", "g", "b");
+      return waitFor(popExpr, 5000);
+    };
+    const onKt = await openKt();
+    const line5 = await b.eval(`Math.round([...${blameItem}.shadowRoot.querySelectorAll('code[data-additions] [data-content] > [data-line="5"]')].pop().getBoundingClientRect().bottom)`);
+    await b.screenshot(join(OUT, "shots", "ui-check-blame.png"));
+    await click(".blame-pop a.blame-thread");
+    const toThread = await waitFor(`location.hash === "#/thread/${sleepThread}" && document.querySelector(".thread-code .code-label") ? location.hash : null`, 5000);
+    await sleep(600);
+    await keys(" ", "g", "b");
+    const onThreadPop = await waitFor(popExpr, 5000);
+    await keys("");
+    const threadClosed = await waitFor(`!document.querySelector(".blame-pop")`, 2000);
+    await openKt();
+    await click(".blame-pop a.blame-ver");
+    const toVersion = await waitFor(`location.hash.startsWith("#/compare/${blameB - 1}..${blameB}?file=src%2FBlame.kt&line=5") ? location.hash : null`, 5000);
+    await openKt();
+    await keys("");
+    const closedByEsc = await waitFor(`!document.querySelector(".blame-pop")`, 2000);
+    await openKt();
+    await keys("G");
+    const closedByMove = await waitFor(`!document.querySelector(".blame-pop")`, 2000);
+    check(
+      "Space g b on a fixed line opens a popover under it: the version that brought it and the thread its fix answered; the thread link opens the thread, where Space g b blames its lines too; the version link opens what changed in it on those lines; Esc or moving the cursor closes it",
+      !!onKt && onKt.head === `src/Blame.kt:5 at v${blameB}` && new RegExp(`^5v${blameB} · round \\d+ · fixed #${sleepThread} “Why sleep here\\?”$`).test(onKt.rows[0]) && onKt.on === `#/thread/${sleepThread}` &&
+        onKt.top >= line5 && onKt.top - line5 < 40 && !!toThread && !!onThreadPop && onThreadPop.rows[0] === onKt.rows[0] && !!threadClosed && !!toVersion && !!closedByEsc && !!closedByMove,
+      { onKt, line5, toThread, onThreadPop, threadClosed, toVersion, closedByEsc, closedByMove },
+    );
+
+    const blameMdView = `document.querySelector('.md-view[data-file="docs/blame.md"]')`;
+    await b.eval(`location.hash = "${blameRange}?file=docs%2Fblame.md&line=5"; true`);
+    await waitFor(`${blameMdView}?.querySelector('.md-cursor[data-start="5"]')`, 10000);
+    await sleep(1200);
+    await keys(" ", "g", "b");
+    const onMd = await waitFor(popExpr, 5000);
+    await keys("");
+    check(
+      "in rendered Markdown, Space g b blames the source lines of the block under the cursor",
+      !!onMd && onMd.head === `docs/blame.md:5 at v${blameB}` && new RegExp(`^5v${blameB} · round \\d+$`).test(onMd.rows[0]),
+      onMd,
+    );
+
     await b.eval(`location.hash = "#/compare/${imgV - 1}..${imgV}"; true`);
     await waitFor(`[...document.querySelectorAll(".imgdiff img")].length >= 5`, 10000);
     await sleep(800);

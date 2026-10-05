@@ -144,6 +144,7 @@ The web UI is keyboard-first, vim-style, with `Space` as the leader. The ones to
 | `[` / `]` | a thread's timeline: the previous or next version |
 | `x` | resolve the thread |
 | `/` · `*` | search the diff · find where the selected name is used |
+| `Space g b` | where the line came from: the version, its round, the thread its fix answered |
 | `Space` · `?` | what can follow the leader · every key, with a filter |
 
 All of them, and how the pages and panels work: [docs/ui.md](docs/ui.md).
