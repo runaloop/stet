@@ -1731,6 +1731,53 @@ try {
       onMd,
     );
 
+    const restoreOld = `(() => { const all = [...(${blameItem}?.shadowRoot.querySelectorAll("[data-column-number='5']") ?? [])]; return all.find(e => e.closest("[data-deletions]")) ?? all[0] ?? null; })()`;
+    await b.eval(`location.hash = "${blameRange}?file=src%2FBlame.kt"; true`);
+    await waitFor(restoreOld, 10000);
+    await sleep(600);
+    const o5 = (await b.eval(`(() => { const r = ${restoreOld}.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`)) as { x: number; y: number };
+    await pointer([{ type: "pointerMove", x: o5.x, y: o5.y }, { type: "pointerDown", button: 0 }, { type: "pointerUp", button: 0 }]);
+    const restoreOffer = await waitFor(`document.querySelector(".codeview-host .new-thread .restore-lines")?.textContent ?? null`, 3000);
+    await b.eval(`(() => { const ta = document.querySelector(".codeview-host .new-thread textarea"); ta.value = "keep the pause"; ta.dispatchEvent(new Event("input", { bubbles: true })); return true; })()`);
+    await click(".codeview-host .new-thread .restore-lines");
+    const restoreToast = (await waitFor(`/^restore draft saved in #\\d+/.test(document.querySelector(".toast")?.textContent ?? "") ? document.querySelector(".toast").textContent : null`, 5000)) as string | null;
+    const restoreThread = Number(/#(\d+)/.exec(restoreToast ?? "")?.[1] ?? 0);
+    const restoreCard = await waitFor(`[...document.querySelectorAll(".codeview-host .thread-mini")].some(x => x.dataset.thread === "${restoreThread}")`, 5000);
+    await b.eval(`document.activeElement?.blur(); location.hash = "#/drafts"; true`);
+    const restoreDraft = await waitFor(`(() => { const d = [...document.querySelectorAll(".drafts .draft")].find(x => x.querySelector(".restore")); return d ? { body: d.querySelector(".body")?.textContent, label: d.querySelector(".restore-label").textContent, code: d.querySelector(".restore-code").textContent } : null; })()`, 5000);
+    const oldLine = "val pause = sleep(1000)\n";
+    check(
+      "lines picked on the old side of a compare of two versions offer Restore as in that version; it saves a draft on the lines now in their place, with what was typed and the old text, shown on the drafts page",
+      restoreOffer === `↺ Restore as in v${blameA}` && restoreThread > 0 && !!restoreCard &&
+        JSON.stringify(restoreDraft) === JSON.stringify({ body: "keep the pause", label: `Restore as in v${blameA} · line 5`, code: oldLine }),
+      { restoreOffer, restoreToast, restoreCard, restoreDraft },
+    );
+
+    await b.eval(`location.hash = "#/thread/${sleepThread}"; true`);
+    await waitFor(`location.hash === "#/thread/${sleepThread}" && document.querySelector(".code-area .code-label")`, 5000);
+    await sleep(400);
+    await click(".code-tabs .seg button:nth-child(2)");
+    const thenOffer = await waitFor(`document.querySelector(".code-area .code-label .restore-lines")?.textContent ?? null`, 5000);
+    await click(".code-area .code-label .restore-lines");
+    const thenDraft = await waitFor(`(() => { const r = [...document.querySelectorAll(".thread-msgs .comment.is-draft .restore")].pop(); return r ? { label: r.querySelector(".restore-label").textContent, code: r.querySelector(".restore-code").textContent } : null; })()`, 5000);
+    await b.screenshot(join(OUT, "shots", "ui-check-restore.png"));
+    await b.eval(`document.activeElement?.blur(); location.hash = "#/drafts"; true`);
+    await waitFor(`document.querySelector(".drafts .submit-actions")`, 3000);
+    await sleep(300);
+    await keys("S");
+    const restoreSent = await waitFor(`location.hash !== "#/drafts" && !document.querySelector(".draft-bar")`, 5000);
+    const asAgent = [restoreThread, sleepThread].map((id) =>
+      (JSON.parse(run(repo, ["bun", CLI, "thread", "show", String(id), "--json"])).comments as { draft: boolean; body: string; restore?: { version: number; text: string } }[])
+        .filter((c) => c.restore)
+        .map((c) => [c.draft, c.body, c.restore!.version, c.restore!.text]),
+    );
+    check(
+      "a thread's Then view of an older version offers Restore for the thread's lines, a draft in that thread; submitting the review sends both requests to the agent",
+      thenOffer === `↺ Restore as in v${blameA}` && JSON.stringify(thenDraft) === JSON.stringify({ label: `Restore as in v${blameA} · line 5`, code: oldLine }) && !!restoreSent &&
+        JSON.stringify(asAgent) === JSON.stringify([[[false, "keep the pause", blameA, oldLine.trimEnd()]], [[false, "", blameA, oldLine.trimEnd()]]]),
+      { thenOffer, thenDraft, restoreSent, asAgent },
+    );
+
     await b.eval(`location.hash = "#/compare/${imgV - 1}..${imgV}"; true`);
     await waitFor(`[...document.querySelectorAll(".imgdiff img")].length >= 5`, 10000);
     await sleep(800);
