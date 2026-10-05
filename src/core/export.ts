@@ -124,7 +124,8 @@ const REASONS = { fixed: "fixed", wontfix: "won't fix", answered: "answered" } a
 function threadLine(x: ReviewExport, d: ThreadDetail): string {
   const t = d.thread;
   const head = `#${t.id} ${t.title} (${location(d)})`;
-  const lastAgent = [...d.comments].reverse().find((c) => c.role === "agent") ?? null;
+  const replies = d.comments.slice(1).reverse();
+  const lastAgent = replies.find((c) => c.role === "agent") ?? null;
   if (t.status === "open") {
     const turn = t.needsReply ? `waits for the ${t.needsReply}` : "open";
     const said = t.needsReply === "reviewer" && lastAgent?.intent ? ` (the agent: ${lastAgent.intent})` : "";
@@ -133,7 +134,8 @@ function threadLine(x: ReviewExport, d: ThreadDetail): string {
   const at = settledAt(x, d);
   if (t.resolveReason === "fixed") return `${head} — fixed${at === null ? "" : ` in v${at}`}`;
   const outcome = `${t.resolveReason ? REASONS[t.resolveReason] : "resolved"}${at === null ? "" : ` at v${at}`}`;
-  const g = lastAgent ? gist(lastAgent.body) : null;
+  const other = t.author.role === "agent" ? replies.find((c) => c.role === "reviewer") : lastAgent;
+  const g = other ? gist(other.body) : null;
   return `${head} — ${outcome}${g ? `: ${g}` : ""}`;
 }
 
@@ -160,9 +162,13 @@ function location(d: ThreadDetail): string {
   return `${t.path}:${lineRange(t.range)} in ${d.timeline[0]!.label}`;
 }
 
+const GIST_MIN = 60;
 const GIST_MAX = 140;
 
-/** The first sentence of the first paragraph of prose, cut at a word to at most `GIST_MAX` characters. */
+/**
+ * Sentences from the start of the first paragraph of prose until there are `GIST_MIN` characters, since a
+ * first sentence alone is often just "Yes." or "Good idea."; cut at a word to at most `GIST_MAX` characters.
+ */
 export function gist(body: string): string | null {
   const paragraph: string[] = [];
   let fence = false;
@@ -181,10 +187,13 @@ export function gist(body: string): string | null {
     paragraph.push(line.replace(/^(#+|>|[-*+]|\d+[.)])\s+/, ""));
   }
   if (!paragraph.length) return null;
-  const text = paragraph.join(" ");
-  const sentence = /^.*?[.!?…](?=\s|$)/u.exec(text)?.[0] ?? text;
-  if (sentence.length <= GIST_MAX) return sentence;
-  return sentence.slice(0, GIST_MAX).replace(/\s+\S*$/u, "") + "…";
+  let text = "";
+  for (const sentence of paragraph.join(" ").split(/(?<=[.!?…])\s+/u)) {
+    text = text ? `${text} ${sentence}` : sentence;
+    if (text.length >= GIST_MIN) break;
+  }
+  if (text.length <= GIST_MAX) return text;
+  return text.slice(0, GIST_MAX).replace(/\s+\S*$/u, "") + "…";
 }
 
 function threadSection(d: ThreadDetail): string[] {

@@ -10,16 +10,25 @@ import { Fixture, lines } from "./helpers/fixture.ts";
 import { png } from "./helpers/png.ts";
 
 describe("gist", () => {
-  test("the first sentence of the first paragraph of prose", () => {
-    expect(gist("Kept as is. The variants come from the schema.")).toBe("Kept as is.");
+  test("sentences from the start of the first paragraph of prose until there is enough to say something", () => {
+    expect(gist("The variants come from the backend schema, so they stay open. A sealed class would break the parser.")).toBe(
+      "The variants come from the backend schema, so they stay open.",
+    );
+    expect(gist("Да. Оставили как есть: варианты приходят из схемы бэкенда, менять её нельзя. Подробнее в ADR-12.")).toBe(
+      "Да. Оставили как есть: варианты приходят из схемы бэкенда, менять её нельзя.",
+    );
+    expect(gist("Хорошая идея. Записал. Сделаю в следующей версии, вместе с тестами. Остальное потом.")).toBe(
+      "Хорошая идея. Записал. Сделаю в следующей версии, вместе с тестами.",
+    );
     expect(gist("```kotlin\nval x = 1\n```\n\nSee the fence above\nfor the case.\n\nMore.")).toBe("See the fence above for the case.");
-    expect(gist("- Оставили как есть: схема бэкенда! Подробности ниже.")).toBe("Оставили как есть: схема бэкенда!");
+    expect(gist("- Согласен.\n\nДальше другой абзац.")).toBe("Согласен.");
     expect(gist("```\nonly code\n```")).toBeNull();
   });
 
   test("cuts a long sentence at a word", () => {
-    const g = gist(`${"word ".repeat(60)}end.`)!;
+    const g = gist(`Yes. ${"word ".repeat(60)}end.`)!;
     expect(g.length).toBeLessThanOrEqual(141);
+    expect(g).toStartWith("Yes. word word");
     expect(g.endsWith("word…")).toBe(true);
   });
 });
@@ -80,7 +89,7 @@ describe("export", () => {
         "### Review: 2 rounds, v1–v2, approved at v2",
         "",
         `- #${ids.fixed} Кэш не сбрасывается при выходе (a.kt:3-4) — fixed in v2`,
-        `- #${ids.answered} Why not a sealed class? (a.kt:11) — answered at v2: Оставили как есть: варианты приходят из схемы бэкенда.`,
+        `- #${ids.answered} Why not a sealed class? (a.kt:11) — answered at v2: Оставили как есть: варианты приходят из схемы бэкенда. Подробнее в ADR-12.`,
         `- #${ids.wontfix} Retry without backoff (b.kt:4) — won't fix at v2: OkHttp's interceptor already retries, with backoff.`,
         "",
         "Open:",
@@ -127,6 +136,40 @@ describe("export", () => {
     const md = exportMarkdown(await collectExport(agent, review));
     expect(md).toStartWith("### Review: 2 rounds, v1–v3, approved at v2 · changed after\n");
   });
+});
+
+describe("export of threads the agent opened", () => {
+  test("the gist comes from the reviewer's last reply, never from the opening question", async () => {
+    const f = new Fixture();
+    try {
+      f.write("a.kt", lines(10));
+      f.commit("base");
+      f.git(["checkout", "-q", "-b", "feat"]);
+      const reviewer = await openContext({ cwd: f.root, role: "reviewer", author: "alice" });
+      const agent = await openContext({ cwd: f.root, role: "agent", author: "claude" });
+      const review = await ensureReview(agent);
+      f.write("a.kt", lines(11));
+      await createVersion(agent, review, {});
+      const asked = await addThread(agent, review, { path: "a.kt", start: 2, end: 2, at: "1", body: "Куда G: в общий модуль или в фичу?" });
+      await addReply(reviewer, review, asked.id, { body: "Хорошая мысль." });
+      await addReply(reviewer, review, asked.id, { body: "Да. В общий модуль: он нужен двум фичам сразу, и платёжной, и профилю. Остальное потом." });
+      resolveThread(reviewer, review, asked.id, "answered");
+      const silent = await addThread(agent, review, { path: "a.kt", start: 5, end: 5, at: "1", body: "Оставить старый формат?" });
+      resolveThread(reviewer, review, silent.id, "answered");
+
+      expect(exportMarkdown(await collectExport(reviewer, review))).toBe(
+        [
+          "### Review: v1",
+          "",
+          `- #${asked.id} Куда G: в общий модуль или в фичу? (a.kt:2) — answered at v1: Да. В общий модуль: он нужен двум фичам сразу, и платёжной, и профилю.`,
+          `- #${silent.id} Оставить старый формат? (a.kt:5) — answered at v1`,
+          "",
+        ].join("\n"),
+      );
+    } finally {
+      f.cleanup();
+    }
+  }, 30_000);
 });
 
 describe("stet export", () => {
