@@ -35,7 +35,8 @@ stet is merge-request review on your machine, on the working tree, with the agen
   account, nothing in `git status`.
 
 Also: a commit picker, image diffs with threads on an area of the image, rendered Markdown diffs with threads
-on its blocks, folding of test files that only add code, `git grep` over any version, vim-style keys. The
+on its blocks, folding of test files that only add code, `git grep` over any version, "restore as in v2" requests
+for old lines, vim-style keys. The
 [guide](docs/guide/README.md) shows each with screenshots; the [UI reference](docs/ui.md) lists every page and key.
 
 ## Install
@@ -96,7 +97,7 @@ All commands print JSON when piped or with `--json`, except `stet export`, which
 | `stet versions diff <a> <b>` | files and thread placements between two refs (`base`, `N`, `latest`, `now`, `empty`, sha) |
 | `stet blame <path>:<a>-<b> [--at N\|now]` | where each line came from: the version that brought it (or `base`, or `now`), the round of review it answered and the threads that version answered, e.g. `40-44  v3 (round 2) · fixed #12 "cache invalidation on logout"`: a `fixed` thread anchored on the line, else a `fixed` or `answered` reply that names the file (`(named)`, with its `file:line` when it gives one), else a fix in the same file (`(same file)`); at the latest version by default |
 | `stet threads list [--needs-reply] [--unread] [--state changed,outdated] [--new-since N] [--file glob]` | threads |
-| `stet thread show <id>` | conversation, timeline, code then / now, interdiff; for an image, the paths of the PNGs with the area framed |
+| `stet thread show <id>` | conversation, timeline, code then / now, interdiff; for an image, the paths of the PNGs with the area framed; a comment with `restore` asks to put back old lines exactly as they were in a version |
 | `stet comment add --file <p> --range a-b --body <t> [--at <ref>] [--draft]` | new thread; `--region x,y,w,h` in place of `--range` for an area of an image |
 | `stet reply <id> --body <t\|-> [--intent fixed\|answered\|disagree\|question]` | reply |
 | `stet review submit [--approve]` | publish your drafts as one review (request changes); `--approve` approves the latest version, drafts going as nits (with other threads open, add `--force` to leave them open or `--resolve-all` to resolve them) |

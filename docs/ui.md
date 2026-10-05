@@ -184,7 +184,7 @@ The compare highlights every line of each thread; hovering a thread card highlig
 A thread page shows the code around the thread the same way in Diff, Then and At step: the commented
 lines with a few lines around them, the ⋯ bars expand more, and "whole file" / "all changes in this
 file" switch the scope; a line above the code says what is shown. Selecting lines there starts a new
-thread or quotes them into the reply. A Markdown file shows rendered here too (by `compare.markdown`), with the same
+thread or quotes them into the reply; lines of an older version can be [restored](#restore-as-in-vn). A Markdown file shows rendered here too (by `compare.markdown`), with the same
 **‹/› code** / **¶ rendered** button, which stays as you pick steps in the timeline: the blocks the code shows for
 the scope picked ("around the thread", "all changes in this file", "whole file"), the rest folded into the same bars as
 on the Changes page, shared with the thread's code; the thread's blocks marked; and two versions old beside new (or
@@ -205,6 +205,25 @@ A thread opens at the first message you have not read, under a "new" line, or at
 the reply box when nothing is new; the header of the messages counts them ("7 messages · 2 new", a click
 goes to the first new one). Long messages you have already read fold to a few lines
 ([screenshots](guide/README.md#long-conversations)).
+
+## Restore as in vN
+
+To get old code back exactly, select the lines where an older version shows them and press **↺ Restore as in v2**
+(or **as in base**). It saves a draft that asks the agent to put back exactly that text; stet never writes the
+working tree itself. The draft goes with your review like any comment, and you can edit or discard it on the
+Drafts page or in its thread.
+
+- On the Changes page the button sits next to **Copy link** on the comment box of lines selected on the old side,
+  when that side is a version or the base (not a commit picked from the list). The draft starts a thread on the lines
+  of the new side that now stand where the old ones were (on the old lines when the file is gone there), and takes
+  what you typed in the box as its words.
+- On a thread page, Then and At step on an older version show the button above the code: it asks, in that thread, for
+  the thread's lines as they were then. Lines selected on an older version (the old side of Diff, or Then) offer it
+  next to **Quote in reply**.
+
+A comment with a restore request shows the old text as a small code block labelled "Restore as in v2 · lines 40–44",
+in the thread and on the Drafts page. The agent gets it as `restore: { path, range, version, text }` on the comment
+in `stet thread show --json`.
 
 ## Drafts and approval
 
