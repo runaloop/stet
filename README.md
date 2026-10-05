@@ -93,7 +93,8 @@ All commands print JSON when piped or with `--json`, except `stet export`, which
 | `stet init [--base <ref>\|empty]` | start a review for the current branch (done automatically on first use); `--base empty` shows every file as new, e.g. to review a repository's first commit |
 | `stet status` | versions, thread counts, UI URL |
 | `stet serve [--open] [--stop]` | the web UI; `--open` runs it in the background and opens the browser |
-| `stet version create [--label] [--at <commit>]` | snapshot the working tree (or the index) as the next version, or make a commit one |
+| `stet version create [--label] [--at <commit>] [--guide <file>]` | snapshot the working tree (or the index) as the next version, or make a commit one; `--guide` (experimental) stores the agent's guide to it: numbered steps in Markdown, each ending in its lines (`path:a-b`, or a path for the file's whole change), shown in the Changes page's Guide tab. A path or range the version does not have refuses the version |
+| `stet guide [N]` | print a version's guide (the latest version's by default) |
 | `stet versions diff <a> <b>` | files and thread placements between two refs (`base`, `N`, `latest`, `now`, `empty`, sha) |
 | `stet blame <path>:<a>-<b> [--at N\|now]` | where each line came from: the version that brought it (or `base`, or `now`), the round of review it answered and the threads that version answered, e.g. `40-44  v3 (round 2) · fixed #12 "cache invalidation on logout"`: a `fixed` thread anchored on the line, else a `fixed` or `answered` reply that names the file (`(named)`, with its `file:line` when it gives one), else a fix in the same file (`(same file)`); at the latest version by default |
 | `stet threads list [--needs-reply] [--unread] [--state changed,outdated] [--new-since N] [--file glob]` | threads |

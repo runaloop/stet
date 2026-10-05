@@ -106,6 +106,21 @@ the first thread, `j` / `k` pick another link when there are several, and `Esc` 
 On a thread page `Space g b` blames the thread's lines in the code shown (the right side of the diff, Then or the
 step). The agent gets the same from `stet blame <path>:<lines>`.
 
+## The agent's guide to a version (experimental)
+
+An experiment: it may change or go. With `stet version create --guide <file>` the agent explains a version as a
+few steps, in the order that makes the change easiest to follow, each naming its lines (`path:a-b`, or a path alone
+for the file's whole change). When the right side of the Changes page is such a version, a **Diff | Guide** switch
+sits next to the title (`Space u g`). The Guide tab shows the guide's title, then each step's text (Markdown, raw HTML
+shown as text; `#12` links the thread) and under it only that step's lines as a small diff of the open compare, with
+three lines around them; the bars above and below show more. Threads on those lines show as cards that open the
+thread. **open in Diff** goes to the normal diff at exactly those lines, highlighted, with the cursor on the first.
+At the end, **Not in the guide** lists the files the compare changes that no step names. Comments are written in the
+Diff. Switching to the Guide and back leaves the diff as it was: its scroll, cursor and selection.
+
+In the Guide tab: `}` / `{` next / previous step, `Enter` opens the step's first lines in the Diff, `j` / `k` and
+`Ctrl+d` / `Ctrl+u` scroll, `Esc` or `Space u g` back to the Diff. The agent reads it back with `stet guide [N]`.
+
 ## Keys
 
 Vim-style, modelled on [LazyVim](https://www.lazyvim.org). `?` shows every key with a filter box; `Space s k`
@@ -139,6 +154,7 @@ picture) is one stop:
 | `Space e` · `Space st` · `Space n` | Files tab · Threads tab · threads with news |
 | `Space uw` · `Space ud` · `Space ur` · `Space ut` | wrap · split/unified · resolved threads · folded tests |
 | `Space ul` · `Space uL` | side panel left / right of the diff · the page's column order and widths back to the defaults |
+| `Space ug` | the agent's guide to the version on the right, or back to the diff ([experimental](#the-agents-guide-to-a-version-experimental)) |
 | `Space rd` · `Space rs` · `Space rv` · `Space rr` | drafts · submit or approve · changes since you last looked · re-read "now" |
 | `Esc` | close the preview, the selection, then the comment box |
 
