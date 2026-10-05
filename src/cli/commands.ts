@@ -45,8 +45,10 @@ Versions
   versions list
   versions diff <a> <b> [--patch]               refs: base, 1..N, latest, now, empty, <sha>
   blame <path>[:<a>[-<b>]] [--at N|latest|now]  where each line came from: the version that brought it (or
-                                                base, or now), the round it answered and the threads its
-                                                agent replied fixed to; at the latest version by default
+                                                base, or now), the round it answered and the threads that
+                                                version answered: anchored on the line, else a reply that
+                                                names the file (named), else a fix in the same file (same
+                                                file); at the latest version by default
 
 Threads
   threads list [--status open|resolved|all] [--state ok,moved,changed,outdated]

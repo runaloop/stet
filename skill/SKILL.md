@@ -108,7 +108,7 @@ Make the code changes in the working tree as usual. Reply `fixed` only after the
 actually in the files.
 
 Before you change lines that an earlier round may have fixed, run `stet blame <path>:<a>-<b>`. It names
-the version that brought each line and the threads that version fixed there (`fixed #12`); read those with
+the version that brought each line and the threads that version answered (`fixed #12`); read those with
 `stet thread show <id>` first, so your change does not undo a fix the reviewer asked for.
 
 ## 5. Hand over the next version
