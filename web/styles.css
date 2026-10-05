@@ -610,7 +610,12 @@ a.img-frame:hover, a.img-frame.hover, a.img-frame.focused { border-width: 3px; b
 .md-gutter .md-jump { font-size: 9px; letter-spacing: -1px; }
 .md .md-threads { margin: 6px 0 12px; display: flex; flex-direction: column; gap: 4px; font: 12px/1.45 var(--sans); }
 .md-grid > .md-threads { grid-column: 1 / -1; }
-.md-grid > .md-skip { grid-column: 1 / -1; margin: 2px 0 14px; padding: 3px 30px; font: 12px var(--mono); color: var(--fg-soft); background: var(--bg-soft); border-block: 1px solid var(--border); }
+.md-fold { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 4px 0 12px; padding: 2px 8px; font: 12px/20px var(--mono); color: var(--fg-soft); background: var(--bg-soft); border: 1px dashed var(--border); border-radius: var(--radius); }
+.md-grid > .md-fold { grid-column: 1 / -1; margin: 2px 16px 14px 30px; }
+.md-fold-text { margin-right: auto; }
+.md-fold button { padding: 0 6px; font: inherit; color: var(--accent); background: none; border: 1px solid transparent; border-radius: 4px; cursor: pointer; }
+.md-fold button:hover { border-color: var(--accent); }
+.md :is(ul, ol, table):has(+ .md-fold) { margin-bottom: 4px; }
 .md .md-thread-card { display: flex; align-items: center; gap: 8px; }
 .md .md-thread-card .thread-mini { flex: 1; min-width: 0; margin: 0; color: var(--fg); }
 .md .md-thread-lines { font: 11px var(--mono); color: var(--fg-soft); white-space: nowrap; }

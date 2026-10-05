@@ -16,6 +16,10 @@ import { CommitPicker } from "../components/CommitPicker.tsx";
 import { commitPicker, commits, isSha, loadCommits } from "../commits.ts";
 import {
   compareData,
+  baseFiles,
+  changeReveal,
+  isWhole,
+  revealNow,
   compareFiles,
   compareNav,
   activeFile,
@@ -51,6 +55,7 @@ import {
 } from "../compare.ts";
 import { MARK_CSS, paintMarks } from "../lib/marks.ts";
 import { isMarkdown } from "../lib/markdown.ts";
+import { CHUNK, expansionOf, newLineOf, textLines, withSpan, type Reveal } from "../lib/reveal.ts";
 import { rowPosition, type Cursor, type LineRange } from "../lib/cursor.ts";
 import { compareOrder } from "../lib/nav.ts";
 import { PeekView } from "./Peek.tsx";
@@ -97,6 +102,15 @@ function FileMeta({ path }: { path: string }) {
       ) : isMarkdown(path) ? (
         <button class="btn ghost small md-toggle" title="Markdown: show it rendered or as code" onClick={() => (compareHandle.current?.switchView ?? setFileView)(path, drawnFiles.value.has(path) ? "code" : "rendered")}>
           {drawnFiles.value.has(path) ? "‹/› code" : "¶ rendered"}
+        </button>
+      ) : null}
+      {isMarkdown(path) && fd && fd.type !== "new" && fd.type !== "deleted" ? (
+        <button
+          class={`btn ghost small md-whole${isWhole(path) ? " on" : ""}`}
+          title={isWhole(path) ? "show only the changes and the lines opened around them, rendered and as code" : "show the whole file, rendered and as code"}
+          onClick={() => (compareHandle.current?.wholeFile ?? ((p: string, on: boolean) => void changeReveal(p, (r) => ({ ...r, full: on }))))(path, !isWhole(path))}
+        >
+          full file
         </button>
       ) : null}
       <label class="viewed" title="mark as viewed: the file collapses until its content changes">
@@ -190,6 +204,29 @@ let viewerFiles = 0;
 const viewerFile = (name: string) => ({ name, contents: "", cacheKey: `stet-viewer-${++viewerFiles}` });
 
 /** True when a file kept from `before` to `after` sits at another index. */
+type Expandable = { expandHunk: (hunk: number, direction: "up" | "down" | "both", count?: number) => void };
+const ownExpand = new WeakMap<Expandable, Expandable["expandHunk"]>();
+
+/**
+ * The "show more" bars of a Markdown file's code open lines in the model its rendered view shares (they come back as
+ * context of the file's diff), not in pierre's own state, so both views show the same lines.
+ */
+function sharedExpansion(inst: Expandable, path: string): void {
+  if (!ownExpand.has(inst)) ownExpand.set(inst, inst.expandHunk);
+  if (!isMarkdown(path)) {
+    inst.expandHunk = ownExpand.get(inst)!;
+    return;
+  }
+  inst.expandHunk = (hunk, direction, count) =>
+    void changeReveal(path, (r) => {
+      const d = compareData.peek();
+      const fd = compareFiles.peek()?.find((f) => f.name === path);
+      const text = d && fd ? (fd.type === "deleted" ? "" : api.loadedBlob(d.to.sha, path)?.contents) : null;
+      const span = fd && typeof text === "string" ? expansionOf(fd.hunks, textLines(text).lines.length, hunk, direction, count ?? CHUNK) : null;
+      return span ? withSpan(r, span) : r;
+    });
+}
+
 function moved(before: string[], after: string[]): boolean {
   const at = new Map(after.map((id, i) => [id, i]));
   return before.some((id, i) => at.has(id) && at.get(id) !== i);
@@ -242,7 +279,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
       (d) => {
         if (!live) return;
         const cur = compareData.value;
-        if (cur && (cur.from.sha !== d.from.sha || cur.to.sha !== d.to.sha)) compareFiles.value = null;
+        if (cur && (cur.from.sha !== d.from.sha || cur.to.sha !== d.to.sha)) baseFiles.value = null;
         compareData.value = d;
       },
       (e) => live && setError((e as Error).message),
@@ -255,14 +292,15 @@ export function CompareView({ from, to }: { from: string; to: string }) {
   useEffect(() => {
     if (!data) return;
     let live = true;
-    if (files && (files as FileDiffMetadata[] & { key?: string }).key === `${data.from.sha}-${data.to.sha}`) return;
+    const base = baseFiles.peek() as (FileDiffMetadata[] & { key?: string }) | null;
+    if (base?.key === `${data.from.sha}-${data.to.sha}`) return;
     api.patch(data.from.sha, data.to.sha).then(
       (text) => {
         if (!live) return;
         const parsed = parsePatchFiles(text, `${data.from.sha}-${data.to.sha}`).flatMap((p) => p.files) as FileDiffMetadata[] & { key?: string };
         parsed.key = `${data.from.sha}-${data.to.sha}`;
         fileOpen.value = new Map();
-        compareFiles.value = parsed;
+        baseFiles.value = parsed;
       },
       (e) => live && setError((e as Error).message),
     );
@@ -477,21 +515,27 @@ export function CompareView({ from, to }: { from: string; to: string }) {
       const nav = top ? cursorSpace.peek().block({ path, row: top.stop }) : null;
       const seen = here && onScreen(h, stopElement(path, c!.row));
       const kept = here && !seen ? { at: cursorSpace.peek().block(c!) } : null;
-      setFileView(path, "code");
-      if (!top || !nav) return;
+      if (!top || !nav) return setFileView(path, "code");
       const side: Side = (top.side === "old" || !nav.new) && nav.old ? "deletions" : "additions";
       const span = (side === "deletions" ? nav.old : nav.new)!;
       const count = span.end - span.start + 1;
       const k = Math.min(count - 1, Math.floor(top.past * count));
-      const line = at ? shownLine(fd, side, span) : shownLine(fd, side, { start: span.start + k, end: span.start + k });
+      const want = at ? span : { start: span.start + k, end: span.start + k };
       const y = top.y + (k / count) * top.height;
+      // the text read stays in the code: its lines and a screen of lines around them join the lines shown
+      const toNew = (n: number) => (side === "additions" ? n : newLineOf(fd.hunks, n));
+      const rows = (px: number) => Math.ceil(Math.max(0, px) / 20) + 5;
+      revealNow(path, (r) => withSpan(r, { start: Math.max(1, toNew(want.start) - rows(y)), end: toNew(want.end) + rows(h.clientHeight - y) }));
+      const shown = compareFiles.peek()?.find((f) => f.name === path) ?? fd;
+      const line = shownLine(shown, side, want);
+      setFileView(path, "code");
       afterDraw.current.push(() => {
         const space = cursorSpace.peek();
         if (at || seen) cursor.value = space.locate(path, side, line) ?? cursor.peek();
         else if (kept?.at) {
           const s: Side = kept.at.new ? "additions" : "deletions";
           const r = (s === "additions" ? kept.at.new : kept.at.old)!;
-          const moved = space.locate(path, s, shownLine(fd, s, r));
+          const moved = space.locate(path, s, shownLine(shown, s, r));
           if (moved) {
             cursor.value = moved;
             // a block the diff does not show lands on the nearest line; back in rendered it comes back to that block
@@ -534,6 +578,32 @@ export function CompareView({ from, to }: { from: string; to: string }) {
           true,
         ),
       );
+    });
+  };
+
+  // Shows a Markdown file whole, or again only around its changes, rendered and as code; the first text in view stays
+  // where it was.
+  const wholeFile = (path: string, on: boolean) => {
+    const h = host.current;
+    const v = view.current as CodeView<never> | null;
+    const next = (r: Reveal) => ({ ...r, full: on });
+    if (!h || !v) return void changeReveal(path, next);
+    if (drawnFiles.peek().has(path)) {
+      const top = renderedTop(h, path);
+      const b = top ? stopElement(path, top.stop, top.side === "old" ? "deletions" : "additions")?.getAttribute("data-b") : null;
+      void changeReveal(path, next).then(() => {
+        if (!top || b === null || b === undefined) return;
+        const find = () => document.querySelector(`.md-view[data-file="${CSS.escape(path)}"] .md-cell[data-side="${top.side}"] [data-b="${b}"]`);
+        placeAt(h, find, top.y, 1500);
+      });
+      return;
+    }
+    const top = codeTop(h, v, path);
+    void changeReveal(path, next).then(() => {
+      if (top) afterDraw.current.push(() => requestAnimationFrame(() => {
+        const cv = view.current as CodeView<never> | null;
+        if (cv) lineAt(h, cv, path, top.side, top.line, top.y);
+      }));
     });
   };
 
@@ -601,8 +671,8 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     } else if (at) peek.value = { path, sha: at.sha, label: at.label, line };
   };
 
-  const latest = useRef({ data, pending, from, to, rid, order, visible, startThread, createThread, cancelPending, scrollToThread, scrollToLine, showHit, scrollToFile, revealCursor, startComment, pageRows, pageFrom, openTarget, switchView });
-  latest.current = { data, pending, from, to, rid, order, visible, startThread, createThread, cancelPending, scrollToThread, scrollToLine, showHit, scrollToFile, revealCursor, startComment, pageRows, pageFrom, openTarget, switchView };
+  const latest = useRef({ data, pending, from, to, rid, order, visible, startThread, createThread, cancelPending, scrollToThread, scrollToLine, showHit, scrollToFile, revealCursor, startComment, pageRows, pageFrom, openTarget, switchView, wholeFile });
+  latest.current = { data, pending, from, to, rid, order, visible, startThread, createThread, cancelPending, scrollToThread, scrollToLine, showHit, scrollToFile, revealCursor, startComment, pageRows, pageFrom, openTarget, switchView, wholeFile };
 
   const r = route.value;
   const targetKey = r.name === "compare" && r.file ? `${r.file}:${r.line ?? ""}:${r.side ?? ""}` : "";
@@ -628,6 +698,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
       },
       scrollToThread: (id: number) => latest.current.scrollToThread(id),
       switchView: (path: string, to: "code" | "rendered") => latest.current.switchView(path, to),
+      wholeFile: (path: string, on: boolean) => latest.current.wholeFile(path, on),
       cancelPending: () => latest.current.cancelPending(),
     };
     compareHandle.current = handle;
@@ -699,10 +770,11 @@ export function CompareView({ from, to }: { from: string; to: string }) {
       renderHeaderPrefix: (fd: FileDiffMetadata) => header(fd.name).prefix,
       renderHeaderMetadata: (fd: FileDiffMetadata) => header(fd.name).meta,
       renderCodeViewFooter: () => footer,
-      onPostRender: (node: HTMLElement, _inst: unknown, phase: string, ctx: SelectionContext) => {
+      onPostRender: (node: HTMLElement, inst: unknown, phase: string, ctx: SelectionContext) => {
         if (phase === "unmount") return;
         node.toggleAttribute("data-stet-viewer", !ctx.item.fileDiff);
         paintMarks(node, marksFor(ctx.item.id));
+        if (ctx.item.fileDiff) sharedExpansion(inst as Expandable, ctx.item.id);
       },
       renderAnnotation: (a: DiffLineAnnotation<Anno>) => {
         if (a.metadata.kind === "image") return viewer(a.metadata.path, a.metadata.version, <ImageDiff file={a.metadata.path} />, "anno image-anno");
@@ -774,13 +846,15 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     };
   }, [diffStyle.value, wrap.value]);
 
-  const versions = useRef({ gen: 0, byItem: new Map<string, { sig: string; version: number; viewer?: { file: ReturnType<typeof viewerFile>; annotations: LineAnnotation<Anno>[] } }>(), files: null as FileDiffMetadata[] | null, scrolled: false, ids: [] as string[] });
+  const versions = useRef({ gen: 0, byItem: new Map<string, { sig: string; version: number; fd?: FileDiffMetadata; viewer?: { file: ReturnType<typeof viewerFile>; annotations: LineAnnotation<Anno>[] } }>(), files: null as FileDiffMetadata[] | null, scrolled: false, ids: [] as string[] });
   useEffect(() => {
     const cv = view.current;
     if (!cv || !files) return;
     const v = versions.current;
-    if (v.files !== files) {
-      v.files = files;
+    // lines opened in a Markdown file give it another diff, not another range
+    const base = baseFiles.peek();
+    if (v.files !== base) {
+      v.files = base;
       v.byItem.clear();
       v.scrolled = false;
     }
@@ -803,8 +877,8 @@ export function CompareView({ from, to }: { from: string; to: string }) {
       const collapsed = isCollapsed(fd);
       const sig = JSON.stringify([collapsed, annotations.map((a) => [a.side, a.lineNumber, a.metadata.kind === "thread" ? [a.metadata.placement.threadId, a.metadata.placement.state] : pendingSig])]);
       let entry = v.byItem.get(fd.name);
-      if (!entry || entry.sig !== sig) {
-        entry = { sig, version: ++v.gen };
+      if (!entry || entry.sig !== sig || entry.fd !== fd) {
+        entry = { sig, version: ++v.gen, fd };
         v.byItem.set(fd.name, entry);
       }
       return { id: fd.name, type: "diff", fileDiff: fd, annotations, version: entry.version, collapsed };
@@ -933,5 +1007,5 @@ export function openFocusedCompareThread(): boolean {
 }
 
 export const compareHandle: {
-  current: { order: ComparePlacement[]; scrollToThread: (id: number) => boolean; switchView: (path: string, to: "code" | "rendered") => void; cancelPending: () => void } | null;
+  current: { order: ComparePlacement[]; scrollToThread: (id: number) => boolean; switchView: (path: string, to: "code" | "rendered") => void; wholeFile: (path: string, on: boolean) => void; cancelPending: () => void } | null;
 } = { current: null };
