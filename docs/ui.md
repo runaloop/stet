@@ -157,7 +157,10 @@ The compare highlights every line of each thread; hovering a thread card highlig
 A thread page shows the code around the thread the same way in Diff, Then and At step: the commented
 lines with a few lines around them, the ⋯ bars expand more, and "whole file" / "all changes in this
 file" switch the scope; a line above the code says what is shown. Selecting lines there starts a new
-thread or quotes them into the reply. A strip under the header says whose turn it is ("the agent asked
+thread or quotes them into the reply. A Markdown file shows rendered here too (by `compare.markdown`), with the same
+**‹/› code** / **¶ rendered** button, which stays as you pick steps in the timeline: the blocks the code would show,
+the rest folded, the thread's blocks marked, and two versions old beside new (or one column in unified view) with the
+changed words marked, as on the Changes page. A strip under the header says whose turn it is ("the agent asked
 you a question", "the agent says it fixed this", with a warning when the commented lines did not change),
 or that the thread is resolved, by whom and when; `#12` or "thread 12" in a message links to that thread
 with a preview on hover. The agent's and your messages have their own colours.

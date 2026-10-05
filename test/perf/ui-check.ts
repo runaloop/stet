@@ -1232,6 +1232,49 @@ try {
       { halfFrom, halfTo, screen },
     );
 
+    // A thread on a Markdown file: its page shows the thread's code rendered as well, with the same toggle.
+    const mdThread = JSON.parse(run(repo, ["bun", CLI, "comment", "add", "--file", "docs/long.md", "--range", "11-11", "--at", String(longV - 1), "--body", "is paragraph 3 right?", "--as", "reviewer", "--json"])).id as number;
+    const tmd = `document.querySelector(".code-area .md-view")`;
+    const threadMd = () =>
+      b.eval(`(() => { const v = ${tmd}; return {
+        toggle: document.querySelector(".code-label .md-toggle")?.textContent ?? null,
+        rendered: !!v,
+        code: !!document.querySelector(".code-area diffs-container"),
+        split: v?.classList.contains("md-split") ?? null,
+        focus: v ? [...v.querySelectorAll(".md-thread-focus")].map(e => e.closest(".md-cell").dataset.side + ":" + e.textContent.trim().slice(0, 11)) : [],
+        marker: !!v?.querySelector(".md-threads .thread-marker"),
+        words: v ? [...v.querySelectorAll(".md-thread-focus :is(del, ins)")].map(e => e.tagName.toLowerCase() + ":" + e.textContent) : [],
+        folds: v ? v.querySelectorAll(".md-skip").length : 0,
+      }; })()`);
+    const stepButton = (state: string) => `[...document.querySelectorAll(".timeline .step:not(.fold)")].find(s => s.querySelector(".step-state")?.textContent === "${state}")?.querySelector("button")`;
+    await b.eval(`location.hash = "#/thread/${mdThread}"; true`);
+    await waitFor(`${tmd}?.querySelector(".md-thread-focus")`, 10000);
+    await sleep(500);
+    const threadOpened = await threadMd();
+    await b.eval(`document.querySelector(".code-label .md-toggle").click(); true`);
+    await waitFor(`!${tmd} && document.querySelector(".code-area diffs-container")`, 8000);
+    const codeThere = await threadMd();
+    await b.eval(`document.querySelector(".code-label .md-toggle").click(); true`);
+    await waitFor(`${tmd}?.querySelector(".md-thread-focus")`, 8000);
+    await b.eval(`${stepButton("written")}.click(); true`);
+    await waitFor(`${tmd}?.querySelector(".md-thread-focus") && !${tmd}.classList.contains("md-split")`, 8000);
+    await sleep(300);
+    const written = await threadMd();
+    await b.eval(`${stepButton("changed")}.click(); true`);
+    await waitFor(`${tmd}?.querySelector(".md-thread-focus del")`, 8000);
+    await sleep(500);
+    const changed = await threadMd();
+    await b.screenshot(join(OUT, "shots", "ui-check-thread-markdown.png"));
+    check(
+      "a thread on a Markdown file shows its code rendered, with the toggle to code and back; its blocks are marked, picking a step keeps the view, and a changed step compares old and new with the changed words marked",
+      threadOpened.rendered && (threadOpened.toggle?.includes("code") ?? false) && threadOpened.marker && threadOpened.focus.some((f: string) => f.endsWith("Paragraph 3")) &&
+        !codeThere.rendered && codeThere.code && (codeThere.toggle?.includes("rendered") ?? false) &&
+        written.rendered && written.folds > 0 && written.words.length === 0 && JSON.stringify(written.focus) === JSON.stringify(["new:Paragraph 3"]) &&
+        changed.rendered && changed.split === true && JSON.stringify(changed.focus) === JSON.stringify(["old:Paragraph 3", "new:Paragraph 3"]) &&
+        JSON.stringify(changed.words) === JSON.stringify(["del:1", "ins:2"]),
+      { threadOpened, codeThere, written, changed },
+    );
+
     await b.eval(`location.hash = "#/compare/${imgV - 1}..${imgV}"; true`);
     await waitFor(`[...document.querySelectorAll(".imgdiff img")].length >= 5`, 10000);
     await sleep(800);

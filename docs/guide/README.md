@@ -118,7 +118,8 @@ are not loaded, raw HTML stays text.
 Threads are still on lines, so the agent gets the same thread as from the code. A thread shows on the blocks its
 lines are in; **+** beside a block, or `i` on the block under the cursor, starts one on the block's lines. The
 cursor keys of the code move over the blocks, and **‹/›** beside a block shows its lines in the code. Search
-finds matches in the rendered text.
+finds matches in the rendered text. A thread's own page shows the file rendered as well, with the same button: the
+blocks around the thread, and each step of its timeline old beside new with the changed words marked.
 
 ![A thread on a list item, and the buttons beside a block](markdown-2.png)
 

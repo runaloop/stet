@@ -13,6 +13,20 @@ export interface RegionDiff {
 
 const overlaps = (start: number, count: number, r: LineRange) => start <= r.end && start + Math.max(count, 1) - 1 >= r.start;
 
+type Hunk = ReturnType<typeof structuredPatch>["hunks"][number];
+
+function patchOf(oldPath: string, newPath: string, hunks: readonly Hunk[]): string {
+  const body = hunks.map((h) => `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@\n${h.lines.join("\n")}`).join("\n");
+  const rename = oldPath !== newPath ? `rename from ${oldPath}\nrename to ${newPath}\n` : "";
+  return `diff --git a/${oldPath} b/${newPath}\n${rename}--- a/${oldPath}\n+++ b/${newPath}\n${body}\n`;
+}
+
+/** Every change from one text to another as a patch, or null when they are the same. */
+export function filePatch(oldFile: { path: string; text: string }, newFile: { path: string; text: string }, context = 3): string | null {
+  const p = structuredPatch(oldFile.path, newFile.path, oldFile.text, newFile.text, undefined, undefined, { context });
+  return p.hunks.length ? patchOf(oldFile.path, newFile.path, p.hunks) : null;
+}
+
 function slice(text: string, r: LineRange): string {
   return text.split("\n").slice(r.start - 1, r.end).join("\n");
 }
@@ -29,13 +43,7 @@ export function regionDiff(
   );
   const complete = hunks.length === p.hunks.length;
   if (hunks.length === 0) return { changed, patch: null, complete };
-  const body = hunks.map((h) => `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@\n${h.lines.join("\n")}`).join("\n");
-  const rename = oldFile.path !== newFile.path ? `rename from ${oldFile.path}\nrename to ${newFile.path}\n` : "";
-  return {
-    changed,
-    complete,
-    patch: `diff --git a/${oldFile.path} b/${newFile.path}\n${rename}--- a/${oldFile.path}\n+++ b/${newFile.path}\n${body}\n`,
-  };
+  return { changed, complete, patch: patchOf(oldFile.path, newFile.path, hunks) };
 }
 
 export type RegionKind = "changed" | "nearby" | "same";

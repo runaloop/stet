@@ -40,7 +40,7 @@ export interface SideChanges {
 // a hunk with no lines on a side names the line before them
 const firstLine = (start: number, count: number) => (count ? start : start + 1);
 
-export function changesOf(fd: FileDiffMetadata): { old: SideChanges; new: SideChanges } {
+export function changesOf(fd: Pick<FileDiffMetadata, "hunks">): { old: SideChanges; new: SideChanges } {
   const removed = new Set<number>();
   const added = new Set<number>();
   const oldGaps: number[] = [];
@@ -229,7 +229,7 @@ export interface Slots {
   new: number[];
 }
 
-export function slotsOf(fd: FileDiffMetadata, oldLines: number, newLines: number): Slots {
+export function slotsOf(fd: Pick<FileDiffMetadata, "hunks">, oldLines: number, newLines: number): Slots {
   const old: number[] = [];
   const nw: number[] = [];
   let slot = 0;

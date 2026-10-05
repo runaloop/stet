@@ -1,4 +1,5 @@
 import { hydratePartialDiff, parsePatchFiles, type FileDiffMetadata, type SelectedLineRange } from "@pierre/diffs";
+import { signal } from "@preact/signals";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { CommentDto, ThreadDetail as Detail, TimelineStepDto } from "../../src/core/types.ts";
 import { api } from "../api.ts";
@@ -6,6 +7,8 @@ import { useBlob } from "../components/useBlob.ts";
 import { ago, Badge, Kbd, rangeText, ThreadBadges, threadRefs, ThreadRef, StateBadge, whereText } from "../components/Bits.tsx";
 import { DiffView } from "../components/Code.tsx";
 import { ImageArea } from "../components/ImageView.tsx";
+import { RenderedMarkdown, type MdShown, type MdThread } from "../components/MarkdownView.tsx";
+import { markdownView, type FileView } from "../compare.ts";
 import { Composer } from "../components/Composer.tsx";
 import { Conversation, unchangedSince } from "../components/Conversation.tsx";
 import { hi, lo, NewHereBox, useNewThread, type Here } from "../components/NewThread.tsx";
@@ -16,7 +19,8 @@ import { usePlacements } from "../components/usePlacements.ts";
 import { apply, takeSpot } from "../jumps.ts";
 import { latchNew, openAtNews } from "../msgs.ts";
 import { stepThread, stepUnread } from "../lib/nav.ts";
-import { regionPatch } from "../lib/region.ts";
+import { isMarkdown } from "../lib/markdown.ts";
+import { filePatch, regionPatch } from "../lib/region.ts";
 import { clampStep, diffPair } from "../lib/timeline.ts";
 import {
   codeMode,
@@ -48,6 +52,14 @@ function Marker({ id, step }: { id: number; step: TimelineStepDto }) {
 }
 
 type Scope = "region" | "changes" | "file";
+
+/** A Markdown file's code rendered or as code, kept while you step through the timeline and go from thread to thread. */
+const mdView = signal<FileView | null>(null);
+
+const spansOf = (hunks: FileDiffMetadata["hunks"]): MdShown => ({
+  old: hunks.map((h) => ({ start: h.deletionStart, end: h.deletionStart + h.deletionCount - 1 })),
+  new: hunks.map((h) => ({ start: h.additionStart, end: h.additionStart + h.additionCount - 1 })),
+});
 type Anno = { kind: "marker" | "new" | "thread"; id: number; state: string };
 
 function hydrated(patch: string, key: string, oldFile: { name: string; contents: string }, newFile: { name: string; contents: string }): FileDiffMetadata | null {
@@ -58,6 +70,17 @@ function hydrated(patch: string, key: string, oldFile: { name: string; contents:
   } catch {
     return fd;
   }
+}
+
+/** Brings the thread's blocks to the middle of the code, when asked or when they are out of sight. */
+function reveal(host: HTMLElement | null, always: boolean): void {
+  const el = host?.querySelector(".md-thread-focus");
+  if (!host || !el) return;
+  let box = host.parentElement;
+  while (box && !(box.scrollHeight > box.clientHeight && /auto|scroll/.test(getComputedStyle(box).overflowY))) box = box.parentElement;
+  const view = box?.getBoundingClientRect() ?? { top: 0, bottom: innerHeight };
+  const r = el.getBoundingClientRect();
+  if (always || r.top < view.top || r.bottom > view.bottom) el.scrollIntoView({ block: "center", behavior: "instant" as ScrollBehavior });
 }
 
 function CodeBlock({ d, from, to, here }: { d: Detail; from: TimelineStepDto; to: TimelineStepDto; here: Here }) {
@@ -85,6 +108,19 @@ function CodeBlock({ d, from, to, here }: { d: Detail; from: TimelineStepDto; to
     },
     [region, oldFile, newFile],
   );
+
+  const rendered = !!to.path && isMarkdown(to.path) && (mdView.value ?? markdownView.value) === "rendered";
+  const whole = useMemo(() => {
+    if (!rendered || oldText === null || newText === null || !from.path || !to.path) return null;
+    const patch = single ? null : filePatch({ path: from.path, text: oldText }, { path: to.path, text: newText });
+    return (patch ? parsePatchFiles(patch, `md-${d.thread.id}-${from.sha}-${to.sha}`)[0]?.files[0] : null) ?? { hunks: [] };
+  }, [rendered, oldText, newText, from.path, to.path, single]);
+  const mdHost = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!rendered) return;
+    const frame = requestAnimationFrame(() => reveal(mdHost.current, scope !== "region"));
+    return () => cancelAnimationFrame(frame);
+  }, [rendered, scope, !!whole]);
 
   const p = here.pending;
   const mine = p && p.diffSide && (single ? p.sha === to.sha : (p.side === "new" && p.sha === to.sha) || (p.side === "old" && p.sha === from.sha)) ? p : null;
@@ -160,6 +196,13 @@ function CodeBlock({ d, from, to, here }: { d: Detail; from: TimelineStepDto; to
       a.metadata.kind === "thread" ? <ThreadMini id={a.metadata.id} state={a.metadata.state} /> : a.metadata.kind === "new" && mine ? <NewHereBox here={here} p={mine} /> : <Marker id={d.thread.id} step={to} />,
     onSelect,
   };
+  const mdThreads: MdThread[] = [
+    { threadId: d.thread.id, side: "additions", range: to.range, state: to.state },
+    ...(!single && from.range ? [{ threadId: d.thread.id, side: "deletions" as const, range: from.range, state: from.state }] : []),
+    ...others.map((x) => ({ threadId: x.threadId, side: "additions" as const, range: x.range, state: x.state })),
+  ];
+  const cardOf = (x: MdThread) => (x.threadId !== d.thread.id ? <ThreadMini id={x.threadId} state={x.state} /> : x.side === "additions" ? <Marker id={d.thread.id} step={to} /> : null);
+  const shown = scope === "file" ? null : scope === "changes" ? (whole ? spansOf(whole.hunks) : null) : fileDiff ? spansOf(fileDiff.hunks) : null;
   const scopes: [Scope, string][] = [
     ["region", "around the thread"],
     ...(!single && oldText !== newText ? ([["changes", "all changes in this file"]] as [Scope, string][]) : []),
@@ -170,7 +213,7 @@ function CodeBlock({ d, from, to, here }: { d: Detail; from: TimelineStepDto; to
       <div class="code-label">
         <span>{label}</span>
         <span class="spacer" />
-        {scope !== "region" ? null : region?.complete ? (
+        {scope !== "region" ? null : region?.complete && !rendered ? (
           <span class="hint">the ⋯ bars above and below show more lines</span>
         ) : (
           <button class="btn ghost small" title="other changes in this file are left out; this shows more of the code around the thread" onClick={() => setMore(more + 20)}>
@@ -182,8 +225,30 @@ function CodeBlock({ d, from, to, here }: { d: Detail; from: TimelineStepDto; to
             <button class={scope === s ? "on" : ""} onClick={() => setScope(s)}>{text}</button>
           ))}
         </span>
+        {isMarkdown(to.path) ? (
+          <button class="btn ghost small md-toggle" title="Markdown: show it rendered or as code" onClick={() => (mdView.value = rendered ? "code" : "rendered")}>
+            {rendered ? "‹/› code" : "¶ rendered"}
+          </button>
+        ) : null}
       </div>
-      {scope === "changes" ? (
+      {rendered ? (
+        whole && (scope !== "region" || fileDiff) ? (
+          <div class="md-anno" ref={mdHost}>
+            <RenderedMarkdown
+              file={to.path}
+              fd={whole}
+              old={single ? { sha: to.sha, path: to.path, label: to.label } : { sha: from.sha, path: from.path!, label: from.label }}
+              now={{ sha: to.sha, path: to.path, label: to.label }}
+              split={!single && diffStyle.value === "split"}
+              threads={mdThreads}
+              shown={shown}
+              cardOf={cardOf}
+            />
+          </div>
+        ) : (
+          <div class="note">loading…</div>
+        )
+      ) : scope === "changes" ? (
         <DiffView {...common} oldFile={oldFile} newFile={newFile} />
       ) : scope === "file" && !region?.complete ? (
         <DiffView {...common} oldFile={oldFile} newFile={newFile} expandUnchanged focus={{ line: to.range.start, side: "additions" }} />
