@@ -8,9 +8,11 @@ import {
   compareNav,
   currentGrepHit,
   currentHit,
+  changeReveal,
   cursor,
   grepHits,
   hoverThread,
+  isWhole,
   peek,
   pendingLines,
   searchQuery,
@@ -26,6 +28,8 @@ import { paintTextHits } from "../lib/marks.ts";
 import { changesOf, pairsOf, renderMarkdown, rowsOf, slotsOf, stopsOf, stopsOn, subtree, type MdSide, type Row, type RowKind, type SideBlocks, type SideChanges, type Stop } from "../lib/markdown.ts";
 import { isSimple, markInline, markPairs, markWords, textOf as blockText, unitsOf } from "../lib/richdiff.ts";
 import { breakAfter, unitOf } from "../lib/breaks.ts";
+import { closeGaps, foldInside, meets, opening } from "../lib/mdfold.ts";
+import { CHUNK, newLineOf, withSpan } from "../lib/reveal.ts";
 import type { NavBlock, Span } from "../lib/cursor.ts";
 import { compileQuery, type Side } from "../lib/search.ts";
 import { compareFocus, diffStyle } from "../state.ts";
@@ -87,22 +91,27 @@ interface Cell {
   html: string;
 }
 
-type Skip = { key: string; skip: number };
+/** A run of rows folded away, across both columns: the lines of their blocks, on the new side. */
+type Fold = { key: string; hidden: Span[] };
 
-/** The rows with a block on lines `shown` holds, and a fold for each run of rows between them. */
-function foldRows(cells: Cell[], rows: readonly Row[], sides: { old: SideBlocks | null; new: SideBlocks | null }, shown: MdShown): (Cell | Skip)[] {
-  const meets = (s: SideBlocks | null, list: number[], spans: readonly Span[]) =>
-    !!s && list.some((i) => spans.some((r) => s.blocks[i]!.start <= r.end && r.start <= s.blocks[i]!.end));
-  const keep = rows.map((r) => meets(sides.old, r.old, shown.old) || meets(sides.new, r.new, shown.new));
-  const out: (Cell | Skip)[] = [];
-  let folded = 0;
+/** Whether a row has a block on the lines shown, on either side. */
+function rowsShown(rows: readonly Row[], sides: { old: SideBlocks | null; new: SideBlocks | null }, shown: MdShown): boolean[] {
+  const on = (s: SideBlocks | null, list: number[], spans: readonly Span[]) => !!s && list.some((i) => meets(s.blocks[i]!, spans));
+  return rows.map((r) => on(sides.old, r.old, shown.old) || on(sides.new, r.new, shown.new));
+}
+
+/** The cells of the rows shown, and a fold for each run of rows between them. */
+function foldRows(cells: Cell[], rows: readonly Row[], keep: readonly boolean[], sides: { old: SideBlocks | null; new: SideBlocks | null }): (Cell | Fold)[] {
+  const out: (Cell | Fold)[] = [];
+  let hidden: Span[] = [];
   const fold = (at: number) => {
-    if (folded) out.push({ key: `skip${at}`, skip: folded });
-    folded = 0;
+    if (hidden.length) out.push({ key: `fold${at}`, hidden });
+    hidden = [];
   };
-  rows.forEach((_, i) => {
+  rows.forEach((r, i) => {
     if (!keep[i]) {
-      folded++;
+      const s = r.new.length ? sides.new : sides.old;
+      for (const b of r.new.length ? r.new : r.old) hidden.push({ start: s!.blocks[b]!.start, end: s!.blocks[b]!.end });
       return;
     }
     fold(i);
@@ -110,6 +119,29 @@ function foldRows(cells: Cell[], rows: readonly Row[], sides: { old: SideBlocks 
   });
   fold(rows.length);
   return out;
+}
+
+const foldText = (hidden: readonly Span[]) => {
+  const n = hidden[hidden.length - 1]!.end - hidden[0]!.start + 1;
+  return `${n} line${n === 1 ? "" : "s"} folded`;
+};
+
+/** A fold bar's buttons: open about `CHUNK` lines from its top or its bottom, or all of it. */
+function foldButtons(hidden: readonly Span[]): string {
+  const n = hidden[hidden.length - 1]!.end - hidden[0]!.start + 1;
+  const all = `<button class="md-fold-all" data-act="all" title="show the folded lines">show all ${n}</button>`;
+  if (n <= CHUNK || hidden.length < 2) return all;
+  return `<button data-act="above" title="show about ${CHUNK} more lines from the top of the fold, under the text above">▲ show above</button><button data-act="below" title="show about ${CHUNK} more lines from the bottom of the fold, over the text below">▼ show below</button>${all}`;
+}
+
+function foldBar(hidden: Span[], side: MdSide, pair: string, live: boolean): HTMLElement {
+  const bar = document.createElement("div");
+  bar.className = "md-fold";
+  bar.setAttribute("data-side", side);
+  bar.setAttribute("data-hidden", JSON.stringify(hidden.map((s) => [s.start, s.end])));
+  bar.setAttribute("data-pair", pair);
+  bar.innerHTML = `<span class="md-fold-text">⋯ ${foldText(hidden)}</span>${live ? foldButtons(hidden) : ""}`;
+  return bar;
 }
 
 /** The element a stop is drawn as, for a thread or a comment on `side`: in split view an unchanged block's old twin stands for the old side. */
@@ -182,7 +214,7 @@ function level(a: HTMLElement, b: HTMLElement): void {
 function alignColumns(g: HTMLElement): void {
   for (const first of g.querySelectorAll<HTMLTableElement>(".md-cell table:not(.md-more)")) {
     const parts = [first];
-    for (let at: Element | null = first.nextElementSibling; at?.classList.contains("md-slot"); ) {
+    for (let at: Element | null = first.nextElementSibling; at?.matches(".md-slot, .md-fold"); ) {
       const more = at.nextElementSibling;
       if (!(more instanceof HTMLTableElement) || !more.classList.contains("md-more")) break;
       parts.push(more);
@@ -270,11 +302,19 @@ export function MarkdownView({ file }: { file: string }) {
       now={fd && fd.type !== "deleted" ? at("to", file) : null}
       split={diffStyle.value === "split"}
       threads={shownPlacements.value.filter((p) => p.path === file)}
+      shown={fd && !isWhole(file) ? spansOf(fd.hunks) : null}
+      onReveal={(span) => void changeReveal(file, (r) => withSpan(r, span))}
       live
       onStops={(navs) => fd && setFileBlocks(fd, navs)}
     />
   );
 }
+
+/** The lines the hunks of a diff show, on each side. */
+export const spansOf = (hunks: Pick<FileDiffMetadata, "hunks">["hunks"]): MdShown => ({
+  old: hunks.map((h) => ({ start: h.deletionStart, end: h.deletionStart + h.deletionCount - 1 })),
+  new: hunks.map((h) => ({ start: h.additionStart, end: h.additionStart + h.additionCount - 1 })),
+});
 
 /** Lines of each side to show, the rest folded; all of them when absent. */
 export interface MdShown {
@@ -291,6 +331,8 @@ interface RenderedProps {
   split: boolean;
   threads: readonly MdThread[];
   shown?: MdShown | null;
+  /** Opens folded lines (of the new version): the buttons of a fold bar. */
+  onReveal?: (span: Span) => void;
   /** What stands under a thread's blocks; null for a mark on its blocks only. */
   cardOf?: (p: MdThread) => VNode | null;
   /** On the Changes page: the cursor, comments, search and the gutter beside a block. */
@@ -305,7 +347,7 @@ interface RenderedProps {
  * Threads show on the blocks their lines are in; on the Changes page a block can be commented on like lines of code,
  * and search hits are highlighted in the text.
  */
-export function RenderedMarkdown({ file, fd, old, now, split: splitWanted, threads: placed, shown = null, cardOf = miniCard, live = false, onStops }: RenderedProps) {
+export function RenderedMarkdown({ file, fd, old, now, split: splitWanted, threads: placed, shown = null, onReveal, cardOf = miniCard, live = false, onStops }: RenderedProps) {
   const oldPath = old?.path ?? file;
   const oldSha = fd && old ? old.sha : null;
   const newSha = fd && now ? now.sha : null;
@@ -325,6 +367,7 @@ export function RenderedMarkdown({ file, fd, old, now, split: splitWanted, threa
   const pending = live ? pendingLines.value : null;
   const mine = pending?.path === file ? pending : null;
   const shownKey = shown ? JSON.stringify(shown) : "";
+  const revealing = !!onReveal;
   const pendingKey = mine ? `${mine.range.side}:${lo(mine.range)}-${hi(mine.range)}` : "";
   const layout = useMemo(() => {
     if (!fd || !(sides.old || sides.new)) return null;
@@ -405,9 +448,28 @@ export function RenderedMarkdown({ file, fd, old, now, split: splitWanted, threa
         broken.add(facing);
       }
     }
-    const cells: Cell[] = frags.map((f) => ({ key: f.key, row: f.row, side: f.side, kind: f.kind, html: sized(f.t.innerHTML) }));
-    return { rows, pairs, cells: shown ? foldRows(cells, rows, sides, shown) : cells, merged, stops };
-  }, [fd, sides, split, placedKey, pendingKey, shownKey]);
+
+    // What the diff does not show is folded: whole rows across both columns, and inside a list or a table partly
+    // shown its items or rows. Threads and the comment being written keep their blocks shown.
+    const sideOf = (s: Side): MdSide => (s === "deletions" ? "old" : "new");
+    const kept = [
+      ...placed.map((p) => ({ side: sideOf(p.side), start: p.range.start, end: p.range.end })),
+      ...(mine ? [{ side: sideOf(mine.range.side ?? "additions"), start: lo(mine.range), end: hi(mine.range) }] : []),
+    ];
+    const fold = shown
+      ? { old: [...closeGaps(shown.old, lineCount(oldText)), ...kept.filter((r) => r.side === "old")], new: [...closeGaps(shown.new, lineCount(newText)), ...kept.filter((r) => r.side === "new")] }
+      : null;
+    const keep = fold ? rowsShown(rows, sides, fold) : rows.map(() => true);
+    if (fold)
+      for (const f of frags) {
+        if (!keep[f.row]) continue;
+        let k = 0;
+        foldInside(f.t.content, fold[f.side], (hidden) => foldBar(hidden, f.side, `fold-${f.row}-${k++}`, revealing));
+      }
+    const shownStops = fold ? stops.filter((s) => keep[s.row] && !!root(s.row, s.side)?.querySelector(`[data-b="${s.block}"]`)) : stops;
+    const cells: Cell[] = frags.filter((f) => keep[f.row]).map((f) => ({ key: f.key, row: f.row, side: f.side, kind: f.kind, html: sized(f.t.innerHTML) }));
+    return { rows, pairs, cells: fold ? foldRows(cells, rows, keep, sides) : cells, merged, stops: shownStops };
+  }, [fd, sides, split, placedKey, pendingKey, shownKey, revealing]);
   const cells = layout?.cells ?? [];
   const seen = (e: Event) => {
     const img = e.target;
@@ -598,6 +660,14 @@ export function RenderedMarkdown({ file, fd, old, now, split: splitWanted, threa
   const click = (e: MouseEvent) => {
     const el = e.target as Element;
     if (el.closest(".md-threads, .md-gutter")) return;
+    const bar = el.closest<HTMLElement>(".md-fold");
+    if (bar) {
+      const act = el.closest<HTMLElement>("button[data-act]")?.dataset.act as "above" | "below" | "all" | undefined;
+      const hidden = (JSON.parse(bar.dataset.hidden ?? "[]") as [number, number][]).map(([start, end]) => ({ start, end }));
+      const span = act ? opening(hidden, act) : null;
+      if (span && onReveal) onReveal(bar.dataset.side === "old" ? { start: newLineOf(fd.hunks, span.start), end: newLineOf(fd.hunks, span.end) } : span);
+      return;
+    }
     const link = el.closest("a");
     if (link) {
       e.preventDefault();
@@ -667,10 +737,14 @@ export function RenderedMarkdown({ file, fd, old, now, split: splitWanted, threa
           </>
         ) : null}
         {cells.map((cell) =>
-          "skip" in cell ? (
-            <div key={cell.key} class="md-skip">
-              ⋯ {cell.skip} block{cell.skip === 1 ? "" : "s"} not shown
-            </div>
+          "hidden" in cell ? (
+            <div
+              key={cell.key}
+              class="md-fold md-fold-rows"
+              data-side="new"
+              data-hidden={JSON.stringify(cell.hidden.map((s) => [s.start, s.end]))}
+              dangerouslySetInnerHTML={{ __html: `<span class="md-fold-text">⋯ ${foldText(cell.hidden)}</span>${onReveal ? foldButtons(cell.hidden) : ""}` }}
+            />
           ) : (
             <div
               key={cell.key}

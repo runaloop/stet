@@ -1,10 +1,12 @@
-import type { FileDiffMetadata, SelectedLineRange } from "@pierre/diffs";
+import { hydratePartialDiff, parsePatchFiles, type FileDiffMetadata, type SelectedLineRange } from "@pierre/diffs";
 import { computed, effect, signal } from "@preact/signals";
 import type { CompareDto, GrepResultDto, Region } from "../src/core/types.ts";
 import { DEFAULT_COLLAPSE_GLOBS, DEFAULT_SKIP_MARKERS, foldOf, isTestPath, parseList, viewedKey, type FoldDecision, type FoldGroup } from "./lib/fold.ts";
 import { groupTitle } from "./lib/order.ts";
 import type { LineMark } from "./lib/marks.ts";
-import { CursorSpace, type Cursor, type LineRange, type NavBlock } from "./lib/cursor.ts";
+import { CursorSpace, rowPosition, type Cursor, type LineRange, type NavBlock } from "./lib/cursor.ts";
+import { isMarkdown } from "./lib/markdown.ts";
+import { NOTHING, revealedPatch, type Reveal } from "./lib/reveal.ts";
 import { api } from "./api.ts";
 import { compileQuery, diffRows, flatHits, matchRanges, searchDiff, type Hit, type Side } from "./lib/search.ts";
 import { clampStep } from "./lib/timeline.ts";
@@ -29,7 +31,98 @@ function save(key: string, value: string): void {
 }
 
 export const compareData = signal<CompareDto | null>(null);
-export const compareFiles = signal<FileDiffMetadata[] | null>(null);
+/** The files of the diff as the server sent them. */
+export const baseFiles = signal<FileDiffMetadata[] | null>(null);
+
+/**
+ * Lines of Markdown files shown beyond their hunks, in the code and rendered alike: what the reader opened, and the
+ * files shown whole. Opened lines last for the range shown; a file shown whole stays so while the page is open.
+ */
+export const reveals = signal<ReadonlyMap<string, Reveal>>(new Map());
+
+const derived = new WeakMap<FileDiffMetadata, { reveal: Reveal; fd: FileDiffMetadata }>();
+
+/** The diff of a file with its revealed lines as context; the file itself while its texts are not loaded. */
+function withRevealed(fd: FileDiffMetadata, reveal: Reveal, d: CompareDto): FileDiffMetadata {
+  const hit = derived.get(fd);
+  if (hit?.reveal === reveal) return hit.fd;
+  const oldPath = fd.prevName ?? fd.name;
+  const oldText = fd.type === "new" ? "" : api.loadedBlob(d.from.sha, oldPath)?.contents;
+  const newText = fd.type === "deleted" ? "" : api.loadedBlob(d.to.sha, fd.name)?.contents;
+  if (typeof oldText !== "string" || typeof newText !== "string") return fd;
+  const patch = revealedPatch({ path: oldPath, text: oldText }, { path: fd.name, text: newText }, fd.hunks, reveal);
+  const parsed = patch ? parsePatchFiles(patch, `${fd.cacheKey ?? fd.name}:${reveal.full ? "whole" : JSON.stringify(reveal.spans)}`)[0]?.files[0] : null;
+  let out = fd;
+  if (parsed) {
+    try {
+      out = hydratePartialDiff("clone", parsed, { oldFile: { name: oldPath, contents: oldText }, newFile: { name: fd.name, contents: newText } } as never);
+    } catch {
+      out = parsed;
+    }
+    Object.assign(out, { name: fd.name, prevName: fd.prevName, type: fd.type, newObjectId: fd.newObjectId, prevObjectId: fd.prevObjectId, mode: fd.mode, prevMode: fd.prevMode });
+  }
+  derived.set(fd, { reveal, fd: out });
+  return out;
+}
+
+/** The files of the diff as the page shows them: a Markdown file with lines the reader opened has them as context. */
+export const compareFiles = computed<FileDiffMetadata[] | null>(() => {
+  const base = baseFiles.value;
+  const d = compareData.value;
+  const r = reveals.value;
+  if (!base || !d || !r.size) return base;
+  return base.map((fd) => {
+    const reveal = r.get(fd.name);
+    return reveal && isMarkdown(fd.name) ? withRevealed(fd, reveal, d) : fd;
+  });
+});
+
+let revealRange = "";
+effect(() => {
+  const d = compareData.value;
+  const range = d ? `${d.from.sha}..${d.to.sha}` : "";
+  if (range === revealRange) return;
+  revealRange = range;
+  reveals.value = new Map([...reveals.peek()].flatMap(([path, r]) => (r.full ? [[path, { spans: [], full: true }] as const] : [])));
+});
+
+export const isWhole = (path: string): boolean => reveals.value.get(path)?.full ?? false;
+
+/**
+ * Changes what a Markdown file shows beyond its hunks, once both its texts are loaded. A cursor on its lines stays on
+ * the same line; one on its rendered blocks follows its block when the blocks are laid out again.
+ */
+export async function changeReveal(path: string, next: (r: Reveal) => Reveal): Promise<void> {
+  const d = compareData.peek();
+  const fd = baseFiles.peek()?.find((f) => f.name === path);
+  if (!d || !fd || !isMarkdown(path)) return;
+  if (!revealNow(path, next)) {
+    await Promise.all([fd.type === "new" ? null : api.blob(d.from.sha, fd.prevName ?? path), fd.type === "deleted" ? null : api.blob(d.to.sha, path)]).catch(() => null);
+    if (compareData.peek() === d) revealNow(path, next);
+  }
+}
+
+/** The same at once, when both texts are loaded; false when they are not. */
+export function revealNow(path: string, next: (r: Reveal) => Reveal): boolean {
+  const d = compareData.peek();
+  const fd = baseFiles.peek()?.find((f) => f.name === path);
+  if (!d || !fd) return false;
+  if ((fd.type !== "new" && !api.loadedBlob(d.from.sha, fd.prevName ?? path)) || (fd.type !== "deleted" && !api.loadedBlob(d.to.sha, path))) return false;
+  const lines = !drawnFiles.peek().has(path);
+  const at = (c: Cursor | null) => {
+    const r = lines && c?.path === path && c.row >= 0 ? cursorSpace.peek().row(c) : null;
+    return r ? rowPosition(r) : null;
+  };
+  const c = at(cursor.peek());
+  const a = at(visualAnchor.peek());
+  const was = reveals.peek().get(path) ?? NOTHING;
+  const now = next(was);
+  if (now.full === was.full && JSON.stringify(now.spans) === JSON.stringify(was.spans)) return true;
+  reveals.value = new Map(reveals.peek()).set(path, now);
+  if (c) cursor.value = cursorSpace.peek().locate(path, c.side, c.line) ?? cursor.peek();
+  if (a) visualAnchor.value = cursorSpace.peek().locate(path, a.side, a.line) ?? visualAnchor.peek();
+  return true;
+}
 export const activeFile = signal<string | null>(null);
 const sideTabs = signal<{ compare: SideTab; thread: SideTab }>({ compare: load("sideTab", "threads") as SideTab, thread: "threads" });
 const tabPage = () => (route.value.name === "thread" ? "thread" : "compare");
@@ -105,6 +198,18 @@ export function setFileBlocks(fd: FileDiffMetadata, blocks: readonly NavBlock[])
   const had = fileBlocks.peek().get(fd.name);
   if (had?.fd === fd && JSON.stringify(had.blocks) === JSON.stringify(blocks)) return;
   fileBlocks.value = new Map(fileBlocks.peek()).set(fd.name, { fd, blocks });
+  // blocks opened or folded above the cursor: it stays on its block (a file shown as code has the cursor on its lines)
+  const follow = (c: Cursor | null) => {
+    const was = had && drawnFiles.peek().has(fd.name) && c?.path === fd.name && c.row >= 0 ? had.blocks[c.row] : null;
+    if (!was) return c;
+    const same = (b: NavBlock) => JSON.stringify([b.old, b.new]) === JSON.stringify([was.old, was.new]);
+    const k = blocks.findIndex(same);
+    return k === -1 || k === c!.row ? c : { path: fd.name, row: k };
+  };
+  const c = follow(cursor.peek());
+  if (c !== cursor.peek()) cursor.value = c;
+  const a = follow(visualAnchor.peek());
+  if (a !== visualAnchor.peek()) visualAnchor.value = a;
 }
 
 /** Lines picked for a new thread on the Changes page, waiting for its first message: in the code or on a rendered block. */
@@ -327,7 +432,7 @@ export const currentHit = computed<Hit | null>(() => searchHits.value[searchInde
 effect(() => {
   searchQuery.value;
   searchRegex.value;
-  compareFiles.value;
+  baseFiles.value;
   searchIndex.value = -1;
 });
 
