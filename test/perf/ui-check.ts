@@ -217,6 +217,43 @@ try {
     check("the thread's code shows other threads on the lines it shows (the one just written), not threads further away", !!neighbour && !neighbour.some((x: string) => x.includes("100000")), neighbour);
     await b.screenshot(join(OUT, "shots", "ui-check-thread.png"));
 
+    // the Changes page's comment layer on a thread's code: a drag over the line numbers, and the keys while the code has the focus
+    const num = (n: number) => b.eval(`(() => { const el = [...${area}.querySelectorAll("[data-column-number='${n}']")].pop(); const r = el.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`) as Promise<{ x: number; y: number }>;
+    const n13 = await num(13);
+    const n14 = await num(14);
+    await pointer([{ type: "pointerMove", x: n13.x + 40, y: n13.y }, { type: "pointerMove", x: n13.x, y: n13.y }, { type: "pointerDown", button: 0 }, { type: "pointerMove", x: n13.x, y: (n13.y + n14.y) / 2 }, { type: "pointerMove", x: n14.x, y: n14.y }, { type: "pointerUp", button: 0 }]);
+    const dragBox = (await waitFor(`document.querySelector(".code-area .new-thread .note")?.textContent ?? null`, 3000)) as string | null;
+    const dragCursor = await b.eval(`[...${area}.querySelectorAll("[data-content] > [data-stet-mark~=cursor]")].map(e => +e.getAttribute("data-line"))`);
+    await click(".code-area .new-thread .quote-lines");
+    const quotedLines = (await waitFor(`(() => { const t = document.querySelector(".thread-msgs textarea")?.value ?? ""; return t.includes("Zbig.kt:13-14") ? t : null; })()`, 3000)) as string | null;
+    const quoteClosed = await b.eval(`!document.querySelector(".code-area .new-thread")`);
+    check(
+      "on a thread page a drag over the line numbers opens the Changes page's comment box, the cursor on the last line; ❝ Quote in reply puts the lines into the reply instead",
+      !!dragBox?.includes("src/Zbig.kt (v2) · lines 13–14") && !!dragBox?.includes("Copy link") && dragCursor.includes(14) && !!quotedLines?.includes("val line13 = 13") && quoteClosed === true,
+      { dragBox, dragCursor, quotedLines, quoteClosed },
+    );
+    await b.eval(`document.querySelector(".thread-msgs textarea").scrollIntoView({ block: "center", behavior: "instant" }); true`);
+    await click(".thread-msgs textarea");
+    await b.eval(`(() => { const ta = document.querySelector(".thread-msgs textarea"); ta.value = ""; ta.dispatchEvent(new Event("input", { bubbles: true })); ta.blur(); return true; })()`);
+    const offCode = await waitFor(`!document.querySelector(".code-area").classList.contains("code-focus")`, 2000);
+    await keys("V", "j", "i");
+    const keyBox = (await waitFor(`document.querySelector(".code-area .new-thread .note")?.textContent ?? null`, 3000)) as string | null;
+    check("a click outside the code (here the reply box) takes the keys off it; V takes them back from the cursor, j selects the next line too and i opens the box on both", offCode === true && !!keyBox?.includes("lines 14–15"), { offCode, keyBox });
+    await keys("", "");
+    const boxClosed = await waitFor(`!document.querySelector(".code-area .new-thread")`, 2000);
+    await keys("");
+    const codeLeft = await waitFor(`!document.querySelector(".code-area").classList.contains("code-focus")`, 2000);
+    await keys("j");
+    const nextThread = (await waitFor(`location.hash !== "#/thread/${t10}" ? location.hash : null`, 5000)) as string | null;
+    await keys("k");
+    const prevThread = await waitFor(`location.hash === "#/thread/${t10}" && document.querySelector(".code-area diffs-container")?.shadowRoot?.textContent.includes("TEN_V2")`, 8000);
+    check(
+      "Esc leaves the box's text, closes the box, then leaves the code; after that j and k go from thread to thread again",
+      boxClosed === true && codeLeft === true && !!nextThread?.startsWith("#/thread/") && prevThread === true,
+      { boxClosed, codeLeft, nextThread, prevThread },
+    );
+    await sleep(500);
+
     await keys("");
     await sleep(1200);
     const back = await b.eval("location.hash");
@@ -668,6 +705,9 @@ try {
     await b.eval(`document.querySelector(".thread-code .code-area").style.width = ""; true`);
     check("a double-click on a name that a wrapped line breaks in two searches for the whole name", wholeName === "\\bHUNDRED_V2\\b", { piece, wholeName });
 
+    // the double-clicks put the keys on the code; a click on the header gives them back to the thread
+    await b.eval(`document.querySelector(".detail-head h2").scrollIntoView({ block: "center", behavior: "instant" }); true`);
+    await click(".detail-head h2");
     await b.eval(`document.activeElement?.blur(); true`);
     const startHash = await b.eval("location.hash");
     await keys("k");
@@ -1525,6 +1565,23 @@ try {
         JSON.stringify(changed.words) === JSON.stringify(["del:1", "ins:2"]),
       { threadOpened, codeThere, written, changed },
     );
+
+    // rendered Markdown on a thread page takes comments like the Changes page
+    const p3 = await rect(`.code-area .md-view .md-cell[data-side="new"] .md-thread-focus`);
+    if (p3) await pointer([{ type: "pointerMove", x: p3.x + 5, y: p3.y }, { type: "pointerMove", x: p3.x, y: p3.y }, { type: "pointerDown", button: 0 }, { type: "pointerUp", button: 0 }]);
+    await sleep(300);
+    const mdCursorHere = await b.eval(`[...document.querySelectorAll(".code-area.code-focus .md-view .md-cursor")].map(e => e.closest(".md-cell").dataset.side + ":" + e.textContent.trim().slice(0, 11))`);
+    await keys("i");
+    const mdBox = (await waitFor(`document.querySelector(".code-area .md-view .new-thread .note")?.textContent ?? null`, 3000)) as string | null;
+    await keys("m", "d");
+    await chord([CTRL], "s");
+    const mdSaved = (await waitFor(`/^draft #\\d+ saved on docs\\/long\\.md:/.test(document.querySelector(".toast")?.textContent ?? "") ? document.querySelector(".toast").textContent : null`, 5000)) as string | null;
+    check(
+      "rendered Markdown on a thread page takes comments like the Changes page: a click puts the cursor on a block, i opens the box under it, Ctrl+S saves a draft thread on its lines",
+      mdCursorHere.includes("new:Paragraph 3") && !!mdBox?.startsWith("New thread on docs/long.md (v") && !!mdBox?.includes("Quote in reply") && !!mdSaved,
+      { mdCursorHere, mdBox, mdSaved },
+    );
+    await keys("");
 
     // A long Markdown file with two small changes far apart. Rendered, it shows the changes with the lines around them
     // and folds the rest; the bars open it a piece at a time, and what one view opens the other shows too.
