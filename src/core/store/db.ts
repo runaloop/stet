@@ -6,6 +6,7 @@ import { MIGRATIONS } from "./migrations.ts";
 export type Role = "reviewer" | "agent";
 export type Intent = "fixed" | "answered" | "disagree" | "question";
 export type ResolveReason = "fixed" | "wontfix" | "answered";
+export type Verdict = "changes" | "approved";
 
 export interface ReviewRow {
   id: number;
@@ -105,6 +106,7 @@ export interface SubmissionRow {
   body: string | null;
   version_id: number | null;
   submitted_at: string;
+  verdict: Verdict;
 }
 
 export function nowIso(): string {

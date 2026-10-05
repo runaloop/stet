@@ -1,7 +1,7 @@
 import type { AnchorState, Method, OutdatedReason } from "./reanchor.ts";
-import type { EventType, Intent, ResolveReason, Role } from "./store/db.ts";
+import type { EventType, Intent, ResolveReason, Role, Verdict } from "./store/db.ts";
 
-export type { AnchorState, EventType, Intent, Method, OutdatedReason, ResolveReason, Role };
+export type { AnchorState, EventType, Intent, Method, OutdatedReason, ResolveReason, Role, Verdict };
 
 export interface Range {
   start: number;
@@ -43,6 +43,20 @@ export interface SubmissionDto {
   at: string;
   /** The version on screen when the review was submitted. */
   version: number | null;
+  /** `changes`: the drafts went to the agent for the next round; `approved`: that version is done. */
+  verdict: Verdict;
+  /** The summary written with it. */
+  body: string | null;
+}
+
+export interface SubmittedDto {
+  submission: number;
+  verdict: Verdict;
+  version: number | null;
+  threads: number[];
+  comments: number;
+  /** Open threads resolved before an approval. */
+  resolved: number[];
 }
 
 export interface AnchorDto {
@@ -154,6 +168,8 @@ export interface EventDto {
   commentId: number | null;
   version: number | null;
   submissionId: number | null;
+  /** Set on `review.submitted`. */
+  verdict?: Verdict;
   createdAt: string;
 }
 
@@ -205,6 +221,11 @@ export interface StatusDto {
     needsReviewer: number;
     unread: number;
   };
+  /**
+   * The reviewer's latest submission: its verdict stands until the next one. `changedAfter`: a newer version
+   * exists, or "now" differs from the version it was about.
+   */
+  lastSubmission: (SubmissionDto & { changedAfter: boolean }) | null;
   lastSeq: number;
 }
 

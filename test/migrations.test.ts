@@ -9,13 +9,16 @@ import { MIGRATIONS } from "../src/core/store/migrations.ts";
 const columns = (db: Database, table: string) =>
   db.query<{ name: string }, []>(`SELECT name FROM pragma_table_info('${table}')`).all().map((c) => c.name);
 
+const before = (marker: string) => MIGRATIONS.findIndex((sql) => sql.includes(marker));
+
 test("dropping origin columns keeps threads and comments", () => {
   const dir = mkdtempSync(join(tmpdir(), "stet-mig-"));
   const path = join(dir, "review.db");
   try {
     const old = new Database(path, { create: true, strict: true });
-    for (const sql of MIGRATIONS.slice(0, -1)) old.exec(sql);
-    old.exec(`PRAGMA user_version = ${MIGRATIONS.length - 1}`);
+    const at = before("DROP COLUMN origin");
+    for (const sql of MIGRATIONS.slice(0, at)) old.exec(sql);
+    old.exec(`PRAGMA user_version = ${at}`);
     old.exec(`
       INSERT INTO reviews(id, branch, created_at) VALUES (1, 'feat', 't');
       INSERT INTO snapshots(sha, tree, created_at) VALUES ('s', 't', 't');
@@ -37,6 +40,29 @@ test("dropping origin columns keeps threads and comments", () => {
     expect(store.db.query("SELECT thread_id, role, author, body FROM comments").all()).toEqual([
       { thread_id: 1, role: "reviewer", author: "alice", body: "hello" },
     ]);
+    store.db.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("submissions made before verdicts existed count as requests for changes", () => {
+  const dir = mkdtempSync(join(tmpdir(), "stet-mig-"));
+  const path = join(dir, "review.db");
+  try {
+    const old = new Database(path, { create: true, strict: true });
+    const at = before("ADD COLUMN verdict");
+    for (const sql of MIGRATIONS.slice(0, at)) old.exec(sql);
+    old.exec(`PRAGMA user_version = ${at}`);
+    old.exec(`
+      INSERT INTO reviews(id, branch, created_at) VALUES (1, 'feat', 't');
+      INSERT INTO submissions(id, review_id, role, author, submitted_at) VALUES (1, 1, 'reviewer', 'alice', 't');
+    `);
+    old.close();
+
+    const store = new Store(path);
+    expect(store.db.query("SELECT id, verdict FROM submissions").all()).toEqual([{ id: 1, verdict: "changes" }]);
+    expect(() => store.db.run("UPDATE submissions SET verdict = 'maybe'")).toThrow();
     store.db.close();
   } finally {
     rmSync(dir, { recursive: true, force: true });

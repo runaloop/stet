@@ -2,6 +2,7 @@ import pkg from "../../package.json" with { type: "json" };
 import { spawnSync } from "node:child_process";
 import {
   StetError,
+  conflict,
   ensureReview,
   initReview,
   openContext,
@@ -12,6 +13,7 @@ import {
 import { unifiedPatch } from "../core/diff.ts";
 import * as svc from "../core/service.ts";
 import type { Intent, ResolveReason, Role } from "../core/store/db.ts";
+import type { SubmittedDto } from "../core/types.ts";
 import { bool, duration, int, list, parse, range, readBody, region, str, type Options, type Parsed } from "./args.ts";
 import { formatCompare, formatStatus, formatThreadDetail, formatThreadList, formatVersions, regionText } from "./format.ts";
 
@@ -24,8 +26,13 @@ Review
                                                 start a review for the current branch; --staged reviews
                                                 the index against HEAD instead of the whole working tree;
                                                 --base empty: every file is new, e.g. for the first commit
-  status                                        versions, thread counts, UI url
-  review submit [--body <text>]                 publish all your drafts as one review
+  status                                        versions, thread counts, the last review's verdict, UI url
+  review submit [--body <text>]                 publish all your drafts as one review: request changes
+  review submit --approve [--body <text>] [--force|--resolve-all]
+                                                approve the latest version; drafts go along as nits the
+                                                agent fixes without a new round. With other threads open
+                                                it refuses unless --force (they stay open) or
+                                                --resolve-all (they are resolved first)
   review close | review move --to <branch>
 
 Versions
@@ -315,12 +322,31 @@ const commands: Record<string, { options: Options; run: (p: Parsed) => Promise<n
   },
 
   "review submit": {
-    options: { body: { type: "string", short: "m" } },
+    options: { body: { type: "string", short: "m" }, approve: { type: "boolean" }, force: { type: "boolean" }, "resolve-all": { type: "boolean" } },
     async run(p) {
+      const approve = bool(p, "approve");
+      if (!approve && (bool(p, "force") || bool(p, "resolve-all"))) throw usage("--force and --resolve-all go with --approve");
+      if (bool(p, "force") && bool(p, "resolve-all")) throw usage("--force or --resolve-all, not both");
       const ctx = await context(p);
       const review = await requireReview(ctx, str(p, "branch"));
-      const r = svc.submitReview(ctx, review, { body: str(p, "body") });
-      emit(p, r, () => `submitted review ${r.submission}: ${r.comments} comments in ${r.threads.length} threads`);
+      let r: SubmittedDto;
+      try {
+        r = svc.submitReview(ctx, review, {
+          body: str(p, "body"),
+          verdict: approve ? "approved" : "changes",
+          open: bool(p, "force") ? "keep" : bool(p, "resolve-all") ? "resolve" : undefined,
+        });
+      } catch (e) {
+        if (e instanceof StetError && e.code === "open_threads") {
+          throw conflict(`${e.message}. Resolve the open threads first, or add --resolve-all to resolve them and approve, or --force to approve and leave them open`);
+        }
+        throw e;
+      }
+      const sent = `${r.comments} comment${r.comments === 1 ? "" : "s"} in ${r.threads.length} thread${r.threads.length === 1 ? "" : "s"}`;
+      emit(p, r, () =>
+        r.verdict === "approved"
+          ? `approved v${r.version}${r.comments ? `; ${sent} went to the agent as nits` : ""}${r.resolved.length ? `; resolved ${r.resolved.map((i) => "#" + i).join(" ")}` : ""}`
+          : `submitted review ${r.submission}: ${sent}`);
     },
   },
 
@@ -411,7 +437,7 @@ const commands: Record<string, { options: Options; run: (p: Parsed) => Promise<n
         timeoutMs: duration(str(p, "timeout")),
         signal: ac.signal,
       });
-      emit(p, r, () => (r.reason === "timeout" ? "timed out" : `${r.reason}: threads ${r.threads.map((i) => "#" + i).join(" ") || "-"}`));
+      emit(p, r, () => (r.reason === "timeout" ? "timed out" : `${r.reason === "approved" ? `approved v${r.version}` : r.reason}: threads ${r.threads.map((i) => "#" + i).join(" ") || "-"}`));
       return r.reason === "timeout" ? 5 : 0;
     },
   },

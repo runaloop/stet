@@ -106,6 +106,11 @@ export function formatStatus(s: StatusDto, url?: string | null): string {
   out.push(
     `threads: ${k.open} open (${k.needsAgent} need agent, ${k.needsReviewer} need reviewer, ${k.changed} changed, ${k.outdated} outdated), ${k.resolved} resolved, ${k.drafts} drafts, ${k.unread} unread`,
   );
+  const ls = s.lastSubmission;
+  if (ls) {
+    const what = `${ls.verdict === "approved" ? "approved" : "changes requested"}${ls.version !== null ? ` at v${ls.version}` : ""}`;
+    out.push(`last review: ${ls.verdict === "approved" ? green(what) : what}${ls.changedAfter ? yellow(", changed after") : ""} ${dim(`(${ls.at.replace("T", " ").slice(0, 16)})`)}`);
+  }
   if (url) out.push(`ui: ${url}`);
   return out.join("\n");
 }

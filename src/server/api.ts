@@ -5,7 +5,7 @@ import { imageType } from "../core/image.ts";
 import { editorCommand, editorTemplate, renderTemplate } from "../core/jump.ts";
 import * as svc from "../core/service.ts";
 import { takeNow } from "../core/snapshot.ts";
-import type { Intent, ResolveReason, ReviewRow } from "../core/store/db.ts";
+import type { Intent, ResolveReason, ReviewRow, Verdict } from "../core/store/db.ts";
 import { gitState } from "../core/gitstate.ts";
 import type { Watcher } from "./watch.ts";
 
@@ -201,8 +201,10 @@ route("POST", "/api/threads/:id/reopen", async (s, _req, url, p) => {
 route("GET", "/api/drafts", async (s, _req, url) => svc.listDrafts(s.ctx, review(s, url)));
 
 route("POST", "/api/review/submit", async (s, req, url) => {
-  const b = await body<{ body?: string }>(req).catch(() => ({ body: undefined }));
-  return svc.submitReview(s.ctx, review(s, url), { body: b.body || undefined });
+  const b = await body<{ body?: string; verdict?: Verdict; open?: "keep" | "resolve" }>(req).catch(() => ({ body: undefined, verdict: undefined, open: undefined }));
+  if (b.verdict !== undefined && b.verdict !== "changes" && b.verdict !== "approved") throw usage("verdict must be changes or approved");
+  if (b.open !== undefined && b.open !== "keep" && b.open !== "resolve") throw usage("open must be keep or resolve");
+  return svc.submitReview(s.ctx, review(s, url), { body: b.body || undefined, verdict: b.verdict, open: b.open });
 });
 
 route("GET", "/api/compare", async (s, _req, url) => {

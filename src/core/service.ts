@@ -11,6 +11,7 @@ import {
   notFound,
   nowSource,
   resolveCommit,
+  StetError,
   usage,
   type Ctx,
 } from "./context.ts";
@@ -27,7 +28,9 @@ import type {
   ResolveReason,
   ReviewRow,
   Role,
+  SubmissionRow,
   ThreadRow,
+  Verdict,
   VersionRow,
 } from "./store/db.ts";
 import { nowIso } from "./store/db.ts";
@@ -48,6 +51,7 @@ import type {
   ReviewedDto,
   StatusDto,
   SubmissionDto,
+  SubmittedDto,
   ThreadDetail,
   ThreadSummary,
   TimelineStepDto,
@@ -84,7 +88,7 @@ export function versionRows(ctx: Ctx, reviewId: number): VersionRow[] {
 export function submissionTimes(ctx: Ctx, reviewId: number): SubmissionDto[] {
   return ctx.store.db
     .query<SubmissionDto, [number]>(
-      "SELECT s.submitted_at AS at, v.number AS version FROM submissions s LEFT JOIN versions v ON v.id = s.version_id WHERE s.review_id = ? AND s.role = 'reviewer' ORDER BY s.id",
+      "SELECT s.submitted_at AS at, v.number AS version, s.verdict, s.body FROM submissions s LEFT JOIN versions v ON v.id = s.version_id WHERE s.review_id = ? AND s.role = 'reviewer' ORDER BY s.id",
     )
     .all(reviewId);
 }
@@ -408,7 +412,33 @@ export async function addReply(ctx: Ctx, review: ReviewRow, threadId: number, in
   return commentDto(ctx, detail, new Map(), 0);
 }
 
-export function submitReview(ctx: Ctx, review: ReviewRow, opts: { body?: string } = {}): { submission: number; threads: number[]; comments: number } {
+/** Published threads that are still open, apart from `except`. */
+function openThreadIds(ctx: Ctx, review: ReviewRow, except: ReadonlySet<number>): number[] {
+  return ctx.store.db
+    .query<{ id: number }, [number]>(
+      `SELECT t.id FROM threads t
+       JOIN comments r ON r.id = (SELECT min(id) FROM comments WHERE thread_id = t.id)
+       WHERE t.review_id = ? AND t.status = 'open' AND r.published_seq IS NOT NULL ORDER BY t.id`,
+    )
+    .all(review.id)
+    .map((r) => r.id)
+    .filter((id) => !except.has(id));
+}
+
+export interface SubmitOptions {
+  body?: string;
+  verdict?: Verdict;
+  /** An approval while threads outside it are open: `keep` leaves them open, `resolve` resolves them first. */
+  open?: "keep" | "resolve";
+}
+
+/**
+ * `changes` publishes the drafts for the next round. `approved` says the latest version is done; drafts go
+ * along as nits that the agent fixes without a new round. Neither closes the review.
+ */
+export function submitReview(ctx: Ctx, review: ReviewRow, opts: SubmitOptions = {}): SubmittedDto {
+  const verdict = opts.verdict ?? "changes";
+  if (verdict === "approved" && ctx.role === "agent") throw forbidden("only the reviewer approves");
   return ctx.store.tx(() => {
     const drafts = ctx.store.db
       .query<CommentRow, [number, Role]>(
@@ -416,16 +446,29 @@ export function submitReview(ctx: Ctx, review: ReviewRow, opts: { body?: string 
          WHERE t.review_id = ? AND c.published_seq IS NULL AND c.role = ? ORDER BY c.id`,
       )
       .all(review.id, ctx.role);
-    if (drafts.length === 0) throw conflict("no drafts to submit");
+    if (drafts.length === 0 && verdict === "changes") throw conflict("no drafts to submit");
     const version = latestVersion(ctx, review.id);
+    const threads = [...new Set(drafts.map((d) => d.thread_id))];
+    let resolved: number[] = [];
+    if (verdict === "approved") {
+      if (!version) throw conflict("nothing to approve: no version yet");
+      const open = openThreadIds(ctx, review, new Set(threads));
+      if (open.length && !opts.open) {
+        throw new StetError(`${open.length} thread${open.length === 1 ? " is" : "s are"} still open: ${open.map((id) => "#" + id).join(" ")}`, 3, "open_threads");
+      }
+      if (opts.open === "resolve") {
+        for (const id of open) markResolved(ctx, review, id, null);
+        resolved = open;
+      }
+    }
     const r = ctx.store.db.run(
-      "INSERT INTO submissions(review_id, role, author, body, version_id, submitted_at) VALUES (?, ?, ?, ?, ?, ?)",
-      [review.id, ctx.role, ctx.author, opts.body ?? null, version?.id ?? null, nowIso()],
+      "INSERT INTO submissions(review_id, role, author, body, version_id, submitted_at, verdict) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [review.id, ctx.role, ctx.author, opts.body ?? null, version?.id ?? null, nowIso(), verdict],
     );
     const submissionId = Number(r.lastInsertRowid);
     for (const d of drafts) publish(ctx, review, d.id, d.thread_id, submissionId);
     ctx.store.addEvent({ review_id: review.id, type: "review.submitted", role: ctx.role, thread_id: null, comment_id: null, version_id: version?.id ?? null, submission_id: submissionId });
-    return { submission: submissionId, threads: [...new Set(drafts.map((d) => d.thread_id))], comments: drafts.length };
+    return { submission: submissionId, verdict, version: version?.number ?? null, threads, comments: drafts.length, resolved };
   });
 }
 
@@ -482,13 +525,15 @@ export function resolveThread(ctx: Ctx, review: ReviewRow, id: number, reason: R
   }
   const t = visibleThread(ctx, review, id);
   if (rootComment(ctx, id)!.published_seq === null) throw conflict(`thread #${id} is a draft`);
-  ctx.store.tx(() => {
-    ctx.store.db.run(
-      "UPDATE threads SET status = 'resolved', resolve_reason = ?, resolved_by = ?, resolved_at = ? WHERE id = ?",
-      [reason, ctx.author, nowIso(), t.id],
-    );
-    ctx.store.addEvent({ review_id: review.id, type: "thread.resolved", role: ctx.role, thread_id: t.id, comment_id: null, version_id: null, submission_id: null });
-  });
+  ctx.store.tx(() => markResolved(ctx, review, t.id, reason));
+}
+
+function markResolved(ctx: Ctx, review: ReviewRow, threadId: number, reason: ResolveReason | null): void {
+  ctx.store.db.run(
+    "UPDATE threads SET status = 'resolved', resolve_reason = ?, resolved_by = ?, resolved_at = ? WHERE id = ?",
+    [reason, ctx.author, nowIso(), threadId],
+  );
+  ctx.store.addEvent({ review_id: review.id, type: "thread.resolved", role: ctx.role, thread_id: threadId, comment_id: null, version_id: null, submission_id: null });
 }
 
 export function reopenThread(ctx: Ctx, review: ReviewRow, id: number): void {
@@ -1143,7 +1188,7 @@ export async function compare(
   };
 }
 
-function eventDto(e: EventRow, versionNumbers: Map<number, number>): EventDto {
+function eventDto(e: EventRow & { verdict: Verdict | null }, versionNumbers: Map<number, number>): EventDto {
   return {
     seq: e.seq,
     type: e.type,
@@ -1152,6 +1197,7 @@ function eventDto(e: EventRow, versionNumbers: Map<number, number>): EventDto {
     commentId: e.comment_id,
     version: e.version_id === null ? null : (versionNumbers.get(e.version_id) ?? null),
     submissionId: e.submission_id,
+    ...(e.verdict ? { verdict: e.verdict } : {}),
     createdAt: e.created_at,
   };
 }
@@ -1159,7 +1205,10 @@ function eventDto(e: EventRow, versionNumbers: Map<number, number>): EventDto {
 export function eventsSince(ctx: Ctx, review: ReviewRow, since: number, limit = 1000): EventDto[] {
   const versionNumbers = new Map(versionRows(ctx, review.id).map((v) => [v.id, v.number]));
   return ctx.store.db
-    .query<EventRow, [number, number, number]>("SELECT * FROM events WHERE review_id = ? AND seq > ? ORDER BY seq LIMIT ?")
+    .query<EventRow & { verdict: Verdict | null }, [number, number, number]>(
+      `SELECT e.*, s.verdict FROM events e LEFT JOIN submissions s ON s.id = e.submission_id AND e.type = 'review.submitted'
+       WHERE e.review_id = ? AND e.seq > ? ORDER BY e.seq LIMIT ?`,
+    )
     .all(review.id, since, limit)
     .filter((e) => e.type !== "draft.changed" || e.role === ctx.role)
     .map((e) => eventDto(e, versionNumbers));
@@ -1169,8 +1218,10 @@ export async function status(ctx: Ctx, review: ReviewRow, opts: { pinnedNow?: st
   const versions = versionRows(ctx, review.id);
   const latest = versions[versions.length - 1] ?? null;
   let now: StatusDto["now"] = null;
+  let nowTree: string | null = null;
   try {
     const snap = opts.pinnedNow ? { sha: opts.pinnedNow, tree: snapshotTree(ctx, opts.pinnedNow), excluded: [] as string[] } : await takeNow(ctx, review, { keep: false });
+    nowTree = snap.tree;
     now = {
       sha: snap.sha,
       changedSinceLatest: latest ? snapshotTree(ctx, latest.snapshot) !== snap.tree : true,
@@ -1179,6 +1230,10 @@ export async function status(ctx: Ctx, review: ReviewRow, opts: { pinnedNow?: st
   } catch {
     now = null;
   }
+  const submissions = submissionTimes(ctx, review.id);
+  const last = submissions[submissions.length - 1] ?? null;
+  const judged = last ? (versions.find((v) => v.number === last.version) ?? null) : null;
+  const changedAfter = judged ? judged.number !== latest?.number ||(nowTree !== null && snapshotTree(ctx, judged.snapshot) !== nowTree) : versions.length > 0;
   const all = await threadSummaries(ctx, review, { includeDrafts: true, pinnedNow: now?.sha ?? null });
   const published = all.filter((t) => !t.draft);
   const drafts = listDrafts(ctx, review).length;
@@ -1197,6 +1252,7 @@ export async function status(ctx: Ctx, review: ReviewRow, opts: { pinnedNow?: st
       needsReviewer: published.filter((t) => t.needsReply === "reviewer").length,
       unread: published.filter((t) => t.unread).length,
     },
+    lastSubmission: last ? { ...last, changedAfter } : null,
     lastSeq: ctx.store.maxSeq(review.id),
   };
 }
@@ -1204,10 +1260,26 @@ export async function status(ctx: Ctx, review: ReviewRow, opts: { pinnedNow?: st
 export type WaitKind = "review" | "reply" | "version" | "any";
 
 export interface WaitResult {
-  reason: "pending" | "event" | "timeout";
+  reason: "pending" | "approved" | "event" | "timeout";
   events: EventDto[];
   threads: number[];
   cursor: number;
+  /** With `approved`: the version the reviewer approved. */
+  version?: number | null;
+}
+
+/** The reviewer's latest submission when it approves the latest version, with the threads it published. */
+function standingApproval(ctx: Ctx, review: ReviewRow): { version: number | null; threads: number[] } | null {
+  const last = ctx.store.db
+    .query<SubmissionRow, [number]>("SELECT * FROM submissions WHERE review_id = ? AND role = 'reviewer' ORDER BY id DESC LIMIT 1")
+    .get(review.id);
+  const latest = latestVersion(ctx, review.id);
+  if (!last || last.verdict !== "approved" || last.version_id !== (latest?.id ?? null)) return null;
+  const threads = ctx.store.db
+    .query<{ thread_id: number }, [number]>("SELECT DISTINCT thread_id FROM comments WHERE submission_id = ? ORDER BY thread_id")
+    .all(last.id)
+    .map((r) => r.thread_id);
+  return { version: latest?.number ?? null, threads };
 }
 
 function pendingThreads(ctx: Ctx, review: ReviewRow, kind: WaitKind): number[] {
@@ -1244,9 +1316,11 @@ export async function waitFor(
     return e.type === "comment.published";
   };
   while (true) {
+    const approval = kind === "review" ? standingApproval(ctx, review) : null;
     const pending = pendingThreads(ctx, review, kind);
     const events = eventsSince(ctx, review, since).filter(matches);
     const cursor = ctx.store.maxSeq(review.id);
+    if (approval) return { reason: "approved", events, threads: approval.threads, cursor, version: approval.version };
     if (pending.length > 0 && (kind === "review" || kind === "reply")) {
       return { reason: "pending", events, threads: pending, cursor };
     }

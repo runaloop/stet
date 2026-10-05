@@ -129,3 +129,19 @@ test("a server started in one worktree gives another worktree a URL of that work
   expect((await ok(stet(["status"], { cwd: wt }))).server.url).toContain(`review=${other}&token=`);
   expect((await ok(stet(["status"], { cwd: f.root }))).server.url).toContain(`review=${feat}&token=`);
 });
+
+test("an approval through the API keeps or resolves the open threads, and the review carries its verdict", async () => {
+  const post = (b: unknown) => api("/api/review/submit", { method: "POST", body: JSON.stringify(b) });
+  const refused = await post({ verdict: "approved" });
+  expect(refused.status).toBe(409);
+  expect((await refused.json()).error.code).toBe("open_threads");
+  expect((await post({ verdict: "yes" })).status).toBe(400);
+  expect((await post({ verdict: "approved", open: "all" })).status).toBe(400);
+  const approved = await (await post({ verdict: "approved", open: "resolve" })).json();
+  expect(approved).toMatchObject({ verdict: "approved", comments: 0 });
+  expect(approved.resolved.length).toBeGreaterThan(0);
+  const s = await (await api("/api/review")).json();
+  expect(s.submissions.map((x: { verdict: string }) => x.verdict)).toEqual(["changes", "approved"]);
+  expect(s.lastSubmission).toMatchObject({ verdict: "approved", version: approved.version });
+  expect(s.counts.open).toBe(0);
+});

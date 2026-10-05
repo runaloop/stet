@@ -149,4 +149,7 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE comments DROP COLUMN origin;
   ALTER TABLE comments DROP COLUMN origin_id;
   `,
+  `
+  ALTER TABLE submissions ADD COLUMN verdict TEXT NOT NULL DEFAULT 'changes' CHECK(verdict IN ('changes','approved'));
+  `,
 ];
