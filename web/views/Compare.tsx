@@ -773,11 +773,14 @@ export function CompareView({ from, to }: { from: string; to: string }) {
   const r = route.value;
   const targetKey = r.name === "compare" && r.file ? `${r.file}:${r.line ?? ""}-${r.end ?? ""}:${r.side ?? ""}` : "";
   const handledTarget = useRef(targetKey);
+  // after a change of range the files are still the old range's until the new ones load: a file missing from them
+  // would open in the preview instead of the diff
+  const filesOfRange = !!data && data.from.ref === from && data.to.ref === to && (baseFiles.value as { key?: string } | null)?.key === `${data.from.sha}-${data.to.sha}`;
   useEffect(() => {
-    if (!targetKey || handledTarget.current === targetKey || !files || r.name !== "compare") return;
+    if (!targetKey || handledTarget.current === targetKey || !files || !filesOfRange || r.name !== "compare") return;
     handledTarget.current = targetKey;
     latest.current.openTarget(r.file!, r.line ?? null, r.side === "old" ? "deletions" : "additions", r.end ?? r.line ?? null);
-  }, [targetKey, files]);
+  }, [targetKey, files, filesOfRange]);
 
   useEffect(() => {
     const handle = {
