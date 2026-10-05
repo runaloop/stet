@@ -6,7 +6,8 @@ import { nowIso } from "./store/db.ts";
 /**
  * The agent's guide to a version (experimental): a `# title`, an optional intro, then numbered steps. A step is its
  * text (Markdown, over as many lines as it needs) and, on its last lines, one or more references, each alone on its
- * line: `path` for the file's whole change, `path:a` or `path:a-b` for lines of the file in the version.
+ * line: `path` for the file's whole change, `path:a` or `path:a-b` for lines of the file in the version. A path has a
+ * folder or an extension, so a short last line of text is not taken for one.
  */
 export interface ParsedGuide {
   title: string | null;
@@ -16,6 +17,8 @@ export interface ParsedGuide {
 
 const STEP = /^(\d+)[.)](?:[ \t]+(.*))?$/;
 const REF = /^`?([^\s`:]+)(?::(\d+)(?:-(\d+))?)?`?$/;
+// a reference names a file: a folder in the path or an extension, and no punctuation at the end ("прежним." is text)
+const PATH = /^(?=.*(?:\/|\.[A-Za-z0-9]+$))[^\s`:]*[A-Za-z0-9_-]$/;
 const THREAD = /(?<![\w&#])#(\d+)\b/g;
 
 /** Threads a step's text names as `#12`, outside code spans. */
@@ -26,7 +29,7 @@ export function threadsIn(text: string): number[] {
 
 function refOf(line: string): { ref: GuideRefDto } | { error: string } | null {
   const m = REF.exec(line.trim());
-  if (!m) return null;
+  if (!m || !PATH.test(m[1]!)) return null;
   const path = m[1]!.replace(/^\.\//, "");
   if (path.startsWith("/") || path.split("/").includes("..")) return { error: `${line.trim()}: give the path from the repository's root` };
   if (m[2] === undefined) return { ref: { path, range: null } };

@@ -50,8 +50,8 @@ change as a few steps, in the order that makes it easiest to understand. Skip it
 ```
 
 Each step ends with its lines, one reference per line: `path:a-b` for lines of the file in this version, or
-`path` alone for the file's whole change. stet refuses the version when a path or a range is not in it: fix
-the guide and run the command again.
+`path` alone for the file's whole change, the path from the repository's root. stet refuses the version when a
+path or a range is not in it: fix the guide and run the command again.
 
 ## 2. End your turn
 

@@ -75,6 +75,35 @@ describe("the guide format", () => {
     expect(message).toContain("step 4: ../x.ts: give the path from the repository's root");
   });
 
+  test("a short last line of text is text, not a reference: a reference has a folder or an extension, and no punctuation at its end", () => {
+    const g = parseGuide(
+      [
+        "1. Дифф после возврата остаётся",
+        "   прежним.",
+        "   test/perf/ui-check.ts:1781-1826",
+        "2. Two lines of text,",
+        "   done",
+        "   Makefile.am",
+        "3. Ends in a word with a colon:",
+        "   see:",
+        "   src/a.ts",
+        "4. And with a comma or a dot after a path",
+        "   src/a.ts,",
+        "   docs/",
+        "   web/lib/guide.ts:3",
+      ].join("\n"),
+    );
+    expect(g.steps.map((s) => [s.text.split("\n").pop(), s.refs.map((r) => r.path)])).toEqual([
+      ["прежним.", ["test/perf/ui-check.ts"]],
+      ["done", ["Makefile.am"]],
+      ["see:", ["src/a.ts"]],
+      ["docs/", ["web/lib/guide.ts"]],
+    ]);
+    expect(g.steps[3]!.text).toBe("And with a comma or a dot after a path\nsrc/a.ts,\ndocs/");
+    expect(() => parseGuide("1. Только текст,\n   и в конце слово\n   прежним.\n")).toThrow("step 1 names no lines");
+    expect(() => parseGuide("1. A file without a folder or an extension\n   Makefile\n")).toThrow("step 1 names no lines");
+  });
+
   test("thread references outside code", () => {
     expect(threadsIn("fixes #3, see #3 and #10; not `#4`, not a&#5, not x#6")).toEqual([3, 10]);
   });
