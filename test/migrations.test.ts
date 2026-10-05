@@ -69,6 +69,36 @@ test("submissions made before verdicts existed count as requests for changes", (
   }
 });
 
+test("restore requests come to a database that has comments, and go with a discarded comment", () => {
+  const dir = mkdtempSync(join(tmpdir(), "stet-mig-"));
+  const path = join(dir, "review.db");
+  try {
+    const old = new Database(path, { create: true, strict: true });
+    const at = before("CREATE TABLE restores");
+    for (const sql of MIGRATIONS.slice(0, at)) old.exec(sql);
+    old.exec(`PRAGMA user_version = ${at}`);
+    old.exec(`
+      INSERT INTO reviews(id, branch, created_at) VALUES (1, 'feat', 't');
+      INSERT INTO snapshots(sha, tree, created_at) VALUES ('s', 't', 't');
+      INSERT INTO threads(id, review_id, path, start_line, end_line, anchor_sha, anchor_lines, ctx_before, ctx_after, created_at)
+        VALUES (1, 1, 'f.txt', 2, 3, 's', 'x', 'a', 'b', 't');
+      INSERT INTO comments(id, thread_id, role, author, body, created_at) VALUES (1, 1, 'reviewer', 'alice', 'hello', 't');
+    `);
+    old.close();
+
+    const store = new Store(path);
+    expect(columns(store.db, "restores")).toEqual(["comment_id", "version_id", "path", "start_line", "end_line", "text"]);
+    expect(store.db.query("SELECT id, body FROM comments").all()).toEqual([{ id: 1, body: "hello" }]);
+    store.db.run("INSERT INTO restores(comment_id, version_id, path, start_line, end_line, text) VALUES (1, NULL, 'f.txt', 2, 3, 'old')");
+    expect(() => store.db.run("INSERT INTO restores(comment_id, path, start_line, end_line, text) VALUES (1, 'f.txt', 3, 2, 'x')")).toThrow();
+    store.db.run("DELETE FROM comments WHERE id = 1");
+    expect(store.db.query("SELECT count(*) AS n FROM restores").get()).toEqual({ n: 0 });
+    store.db.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("a fresh database has no origin columns", () => {
   const store = new Store(":memory:");
   for (const table of ["threads", "comments"]) {

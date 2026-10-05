@@ -179,6 +179,23 @@ route("POST", "/api/threads/:id/comments", async (s, req, url, p) => {
   });
 });
 
+route("POST", "/api/restore", async (s, req, url) => {
+  const r = review(s, url);
+  const b = await body<{ from: string; path: string; start: number; end: number; at?: string; thread?: number | null; body?: string; draft?: boolean }>(req);
+  if (typeof b.from !== "string" || typeof b.path !== "string") throw usage("from and path are required");
+  return svc.requestRestore(s.ctx, r, {
+    from: b.from,
+    path: b.path,
+    start: b.start,
+    end: b.end,
+    at: b.at ?? "now",
+    thread: b.thread ?? null,
+    body: b.body ?? "",
+    draft: b.draft ?? true,
+    pinnedNow: await pinned(s, r),
+  });
+});
+
 route("PATCH", "/api/comments/:id", async (s, req, url, p) => {
   const b = await body<{ body: string }>(req);
   svc.editDraft(s.ctx, review(s, url), num(p.id, "comment id"), b.body);

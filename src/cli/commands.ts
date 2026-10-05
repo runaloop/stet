@@ -53,7 +53,8 @@ Versions
 Threads
   threads list [--status open|resolved|all] [--state ok,moved,changed,outdated]
                [--needs-reply] [--unread] [--new-since <N>] [--file <glob>] [--drafts] [--against <ref>]
-  thread show <id>                              comments, timeline, code then / now
+  thread show <id>                              comments, timeline, code then / now; a comment with
+                                                \`restore\` asks to put back old lines exactly as they were
   comment add --file <path> --range <a-b> --body <text|-> [--at <ref>] [--side new|old] [--draft]
               --region <x,y,w,h> in place of --range: an area of an image, in pixels
   reply <id> --body <text|-> [--intent fixed|answered|disagree|question] [--to <commentId>] [--draft]
@@ -412,7 +413,7 @@ const commands: Record<string, { options: Options; run: (p: Parsed) => Promise<n
       const ctx = await context(p);
       const review = await requireReview(ctx, str(p, "branch"));
       const d = svc.listDrafts(ctx, review);
-      emit(p, d, () => (d.length ? d.map((x) => `#${x.id} thread #${x.threadId}: ${svc.firstLine(x.body)}`).join("\n") : "no drafts"));
+      emit(p, d, () => (d.length ? d.map((x) => `#${x.id} thread #${x.threadId}: ${[svc.firstLine(x.body), x.restore ? svc.restoreTitle(x.restore) : ""].filter(Boolean).join(" · ")}`).join("\n") : "no drafts"));
     },
   },
 

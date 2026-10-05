@@ -15,17 +15,18 @@ import {
   usage,
   type Ctx,
 } from "./context.ts";
-import { diffTreeRaw, NULL_BLOB, numstat } from "./diff.ts";
+import { diffTreeRaw, NULL_BLOB, numstat, type Hunk } from "./diff.ts";
 import { blobIdAt, git, Lru, readBlobById } from "./git.ts";
 import { imageType, isPng, sizeOf } from "./image.ts";
-import { direct, linesAt, trace, type TimelinePoint } from "./placement.ts";
-import { specAt, type AnchorSpec, type AnchorState } from "./reanchor.ts";
+import { direct, fileChange, linesAt, trace, type TimelinePoint } from "./placement.ts";
+import { mapLine, specAt, type AnchorSpec, type AnchorState } from "./reanchor.ts";
 import { getSnapshot, promote, registerCommitSnapshot, takeNow } from "./snapshot.ts";
 import type {
   CommentRow,
   EventRow,
   Intent,
   ResolveReason,
+  RestoreRow,
   ReviewRow,
   Role,
   SubmissionRow,
@@ -46,7 +47,9 @@ import type {
   Excerpt,
   ImageFiles,
   ImageInfo,
+  Range,
   Region,
+  RestoreDto,
   ReviewDto,
   ReviewedDto,
   StatusDto,
@@ -326,10 +329,12 @@ export interface AddThreadInput {
   region?: { x: number; y: number; w: number; h: number; iw?: number; ih?: number } | null;
   /** PNGs made by the browser: the image with the area framed, and the area at full size. */
   shot?: { full: Uint8Array; crop?: Uint8Array | null } | null;
+  /** The first comment asks to restore these old lines; the body may then be empty. */
+  restore?: RestoreText | null;
 }
 
 export async function addThread(ctx: Ctx, review: ReviewRow, input: AddThreadInput): Promise<ThreadSummary> {
-  if (!input.body.trim()) throw usage("comment body is empty");
+  if (!input.body.trim() && !input.restore) throw usage("comment body is empty");
   const at = await resolveRef(ctx, review, input.at ?? "now", { pinnedNow: input.pinnedNow });
   await ensureSnapshotRow(ctx, at.sha);
   const image = input.region ? await captureImageAnchor(ctx, at.sha, input.path, input.region) : null;
@@ -359,6 +364,7 @@ export async function addThread(ctx: Ctx, review: ReviewRow, input: AddThreadInp
       [threadId, ctx.role, ctx.author, input.body, at.sha, version.id, created],
     );
     const commentId = Number(c.lastInsertRowid);
+    if (input.restore) insertRestore(ctx, commentId, input.restore);
     if (input.draft) draftChanged(ctx, review, threadId, commentId);
     else publish(ctx, review, commentId, threadId, null);
     return threadId;
@@ -373,10 +379,11 @@ export interface ReplyInput {
   draft?: boolean;
   at?: string | null;
   pinnedNow?: string | null;
+  restore?: RestoreText | null;
 }
 
 export async function addReply(ctx: Ctx, review: ReviewRow, threadId: number, input: ReplyInput): Promise<CommentDto> {
-  if (!input.body.trim()) throw usage("comment body is empty");
+  if (!input.body.trim() && !input.restore) throw usage("comment body is empty");
   const thread = visibleThread(ctx, review, threadId);
   const root = rootComment(ctx, thread.id)!;
   let parentId = input.parentId ?? root.id;
@@ -404,12 +411,117 @@ export async function addReply(ctx: Ctx, review: ReviewRow, threadId: number, in
       [thread.id, parentId, ctx.role, ctx.author, input.body, input.intent ?? null, snapshot, version?.id ?? null, nowIso()],
     );
     const commentId = Number(c.lastInsertRowid);
+    if (input.restore) insertRestore(ctx, commentId, input.restore);
     if (input.draft || root.published_seq === null) draftChanged(ctx, review, thread.id, commentId);
     else publish(ctx, review, commentId, thread.id, null);
     return commentId;
   });
   const detail = commentRows(ctx, [thread.id]).find((c) => c.id === id)!;
-  return commentDto(ctx, detail, new Map(), 0);
+  return commentDto(ctx, detail, new Map(), 0, Infinity, restoresOf(ctx, [id]));
+}
+
+/** Old lines to put back: lines `start`-`end` of `path` in a version (by id), or in the base when `versionId` is null. */
+export interface RestoreText {
+  versionId: number | null;
+  path: string;
+  start: number;
+  end: number;
+  text: string;
+}
+
+function insertRestore(ctx: Ctx, commentId: number, r: RestoreText): void {
+  ctx.store.db.run(
+    "INSERT INTO restores(comment_id, version_id, path, start_line, end_line, text) VALUES (?, ?, ?, ?, ?, ?)",
+    [commentId, r.versionId, r.path, r.start, r.end, r.text],
+  );
+}
+
+function restoresOf(ctx: Ctx, commentIds: number[]): Map<number, RestoreDto> {
+  const out = new Map<number, RestoreDto>();
+  if (commentIds.length === 0) return out;
+  const rows = ctx.store.db
+    .query<RestoreRow & { number: number | null }, number[]>(
+      `SELECT r.*, v.number FROM restores r LEFT JOIN versions v ON v.id = r.version_id WHERE r.comment_id IN (${commentIds.map(() => "?").join(",")})`,
+    )
+    .all(...commentIds);
+  for (const r of rows) {
+    out.set(r.comment_id, { path: r.path, range: { start: r.start_line, end: r.end_line }, version: r.number ?? "base", text: r.text });
+  }
+  return out;
+}
+
+export function restoreTitle(r: RestoreDto): string {
+  const lines = r.range.start === r.range.end ? `line ${r.range.start}` : `lines ${r.range.start}-${r.range.end}`;
+  return `Restore as in ${r.version === "base" ? "base" : `v${r.version}`}: ${r.path} ${lines}`;
+}
+
+/** The lines of the newer file that stand where old lines `start`-`end` were: the unchanged ones and what replaced the rest. */
+export function linesInPlace(start: number, end: number, hunks: Hunk[], newLength: number): Range | null {
+  if (newLength === 0) return null;
+  let lo = Infinity;
+  let hi = -Infinity;
+  const take = (a: number, b: number) => {
+    lo = Math.min(lo, a);
+    hi = Math.max(hi, b);
+  };
+  for (let n = start; n <= end; n++) {
+    const m = mapLine(n, hunks);
+    if (m !== null) take(m, m);
+  }
+  for (const h of hunks) {
+    if (h.oldCount === 0 || h.oldStart > end || h.oldStart + h.oldCount - 1 < start) continue;
+    // git puts a pure deletion after new line `newStart`: the line after it now stands in their place
+    if (h.newCount > 0) take(h.newStart, h.newStart + h.newCount - 1);
+    else take(h.newStart + 1, h.newStart + 1);
+  }
+  if (lo === Infinity) return null;
+  const clamp = (n: number) => Math.min(Math.max(n, 1), newLength);
+  return { start: clamp(lo), end: clamp(hi) };
+}
+
+export interface RestoreInput {
+  /** The version the lines come from (`v2`, `2`, `latest`), or `base`: the base below `at`, as on the Changes page. */
+  from: string;
+  path: string;
+  start: number;
+  end: number;
+  body?: string;
+  draft?: boolean;
+  /** Ask in this thread; otherwise in a new thread on the lines of `at` that stand where the old ones were. */
+  thread?: number | null;
+  at?: string;
+  pinnedNow?: string | null;
+}
+
+/**
+ * A comment asking to put back old lines exactly as they were in a version or the base. Without a thread, the new
+ * thread sits on the matching lines of `at`, or on the old lines themselves when the file is gone there.
+ */
+export async function requestRestore(ctx: Ctx, review: ReviewRow, input: RestoreInput): Promise<CommentDto> {
+  const at = input.thread ? null : await resolveRef(ctx, review, input.at ?? "now", { pinnedNow: input.pinnedNow });
+  const from = await resolveRef(ctx, review, input.from, { pinnedNow: input.pinnedNow, ...(at ? { baseFor: at.sha } : {}) });
+  if (!from.version && input.from !== "base") throw usage(`restore takes a version or base, not '${input.from}'`);
+  const lines = await linesAt(ctx.repo.cwd, from.sha, input.path);
+  if (lines === null) throw notFound(`text file '${input.path}' at ${from.label}`);
+  const { start, end } = input;
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start || end > lines.length) {
+    throw usage(`range ${start}-${end} is outside '${input.path}' (${lines.length} lines at ${from.label})`);
+  }
+  const restore: RestoreText = { versionId: from.version?.id ?? null, path: input.path, start, end, text: lines.slice(start - 1, end).join("\n") };
+  const common = { body: input.body ?? "", draft: input.draft ?? true, restore, pinnedNow: input.pinnedNow };
+  if (input.thread) return addReply(ctx, review, input.thread, common);
+  const change = await fileChange(ctx.repo.cwd, from.sha, at!.sha, input.path);
+  const place =
+    change.kind === "same"
+      ? { path: change.newPath, range: { start, end } }
+      : change.kind === "modified"
+        ? { path: change.newPath, range: linesInPlace(start, end, change.hunks, change.newLines.length) }
+        : null;
+  const t = place?.range
+    ? await addThread(ctx, review, { ...common, path: place.path, start: place.range.start, end: place.range.end, at: at!.sha })
+    : await addThread(ctx, review, { ...common, path: input.path, start, end, side: "old", at: from.sha });
+  const root = rootComment(ctx, t.id)!;
+  return commentDto(ctx, root, new Map(), 0, Infinity, restoresOf(ctx, [root.id]));
 }
 
 /** Published threads that are still open, apart from `except`. */
@@ -482,8 +594,8 @@ function ownDraft(ctx: Ctx, review: ReviewRow, commentId: number): CommentRow {
 }
 
 export function editDraft(ctx: Ctx, review: ReviewRow, commentId: number, body: string): void {
-  if (!body.trim()) throw usage("comment body is empty");
   const c = ownDraft(ctx, review, commentId);
+  if (!body.trim() && !restoresOf(ctx, [commentId]).size) throw usage("comment body is empty");
   ctx.store.tx(() => {
     ctx.store.db.run("UPDATE comments SET body = ?, updated_at = ? WHERE id = ?", [body, nowIso(), commentId]);
     draftChanged(ctx, review, c.thread_id, commentId);
@@ -516,7 +628,8 @@ export function listDrafts(ctx: Ctx, review: ReviewRow): CommentDto[] {
     )
     .all(review.id, ctx.role);
   const versions = new Map(versionRows(ctx, review.id).map((v) => [v.id, v.number]));
-  return rows.map((r) => commentDto(ctx, r, versions, 0));
+  const restores = restoresOf(ctx, rows.map((r) => r.id));
+  return rows.map((r) => commentDto(ctx, r, versions, 0, Infinity, restores));
 }
 
 export function resolveThread(ctx: Ctx, review: ReviewRow, id: number, reason: ResolveReason | null): void {
@@ -681,7 +794,8 @@ function commentRows(ctx: Ctx, threadIds: number[]): CommentRow[] {
     .all(...threadIds, ctx.role);
 }
 
-function commentDto(ctx: Ctx, c: CommentRow, versionNumbers: Map<number, number>, step: number, seen = Infinity): CommentDto {
+function commentDto(ctx: Ctx, c: CommentRow, versionNumbers: Map<number, number>, step: number, seen = Infinity, restores?: Map<number, RestoreDto>): CommentDto {
+  const restore = restores?.get(c.id);
   let version: number | null = null;
   if (c.version_id !== null) {
     version = versionNumbers.get(c.version_id) ?? ctx.store.db.query<{ number: number }, [number]>("SELECT number FROM versions WHERE id = ?").get(c.version_id)?.number ?? null;
@@ -701,6 +815,7 @@ function commentDto(ctx: Ctx, c: CommentRow, versionNumbers: Map<number, number>
     updatedAt: c.updated_at,
     step,
     unread: c.published_seq !== null && c.role !== ctx.role && c.published_seq > seen,
+    ...(restore ? { restore } : {}),
   };
 }
 
@@ -808,6 +923,7 @@ export async function threadSummaries(ctx: Ctx, review: ReviewRow, opts: Summary
     list.push(c);
     byThread.set(c.thread_id, list);
   }
+  const restores = restoresOf(ctx, comments.map((c) => c.id));
   const reads = new Map(
     ctx.store.db
       .query<{ thread_id: number; seen_seq: number }, [string]>("SELECT thread_id, seen_seq FROM reads WHERE reader = ?")
@@ -865,16 +981,22 @@ export async function threadSummaries(ctx: Ctx, review: ReviewRow, opts: Summary
       anchorSha: t.anchor_sha,
       anchor,
       excerpt: t.region ? [] : JSON.parse(t.anchor_lines),
-      title: firstLine(root.body),
+      title: firstLine(root.body) || titleOf(restores.get(root.id)),
       author: { role: root.role, name: root.author },
       createdAt: t.created_at,
       commentCount: list.length,
       unread,
       needsReply: t.status === "open" && last ? (last.role === "reviewer" ? "agent" : "reviewer") : null,
-      last: last ? { role: last.role, name: last.author, at: last.created_at, intent: last.intent, preview: firstLine(last.body) } : null,
+      last: last ? lastDto(last, restores.get(last.id)) : null,
     });
   }
   return result;
+}
+
+const titleOf = (r: RestoreDto | undefined) => (r ? restoreTitle(r) : "");
+
+function lastDto(c: CommentRow, restore: RestoreDto | undefined): NonNullable<ThreadSummary["last"]> {
+  return { role: c.role, name: c.author, at: c.created_at, intent: c.intent, preview: firstLine(c.body) || titleOf(restore), ...(restore ? { restore } : {}) };
 }
 
 export interface ThreadFilter {
@@ -1020,7 +1142,8 @@ export async function threadDetail(
   const stepOf = assignSteps(rows, rows[0]!.id, steps, versionNumbers);
   const seen =
     ctx.store.db.query<{ seen_seq: number }, [string, number]>("SELECT seen_seq FROM reads WHERE reader = ? AND thread_id = ?").get(readerOf(ctx), t.id)?.seen_seq ?? 0;
-  const comments = rows.map((c) => commentDto(ctx, c, versionNumbers, stepOf.get(c.id) ?? 0, seen));
+  const restores = restoresOf(ctx, rows.map((c) => c.id));
+  const comments = rows.map((c) => commentDto(ctx, c, versionNumbers, stepOf.get(c.id) ?? 0, seen, restores));
   for (const c of comments) steps[c.step]!.commentIds.push(c.id);
 
   const lastStep = steps[steps.length - 1]!;

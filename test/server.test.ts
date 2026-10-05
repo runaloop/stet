@@ -171,3 +171,15 @@ test("blame names each line's version, at the latest one or at the pinned now", 
   expect((await api("/api/blame?path=a.kt&from=1&at=base")).status).toBe(400);
   expect((await api("/api/blame?path=gone.kt&from=1")).status).toBe(404);
 });
+
+test("a restore request through the API is a draft with the old lines, in a new thread or in a given one", async () => {
+  const post = (b: unknown) => api("/api/restore", { method: "POST", body: JSON.stringify(b) });
+  const c = await (await post({ from: "base", path: "a.kt", start: 3, end: 4, at: "1" })).json();
+  expect(c).toMatchObject({ draft: true, body: "", restore: { path: "a.kt", range: { start: 3, end: 4 }, version: "base", text: "line 3\nline 4" } });
+  const reply = await (await post({ from: "1", path: "a.kt", start: 21, end: 21, thread: c.threadId, body: "this one too" })).json();
+  expect(reply).toMatchObject({ threadId: c.threadId, parentId: c.id, body: "this one too", restore: { version: 1, text: "line 21" } });
+  const drafts = await (await api("/api/drafts")).json();
+  expect(drafts.filter((d: { restore?: unknown }) => d.restore)).toHaveLength(2);
+  expect((await post({ from: "now", path: "a.kt", start: 1, end: 1 })).status).toBe(400);
+  expect((await api(`/api/comments/${c.id}`, { method: "DELETE" })).status).toBe(200);
+});

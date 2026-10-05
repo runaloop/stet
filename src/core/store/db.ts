@@ -78,6 +78,16 @@ export interface CommentRow {
   updated_at: string | null;
 }
 
+/** A comment that asks to put lines back as they were in a version (`version_id`), or in the base when it is null. */
+export interface RestoreRow {
+  comment_id: number;
+  version_id: number | null;
+  path: string;
+  start_line: number;
+  end_line: number;
+  text: string;
+}
+
 export interface EventRow {
   seq: number;
   review_id: number;

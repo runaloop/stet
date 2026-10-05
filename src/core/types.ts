@@ -91,7 +91,15 @@ export interface ThreadSummary {
   commentCount: number;
   unread: boolean;
   needsReply: Role | null;
-  last: { role: Role; name: string; at: string; intent: Intent | null; preview: string } | null;
+  last: { role: Role; name: string; at: string; intent: Intent | null; preview: string; restore?: RestoreDto } | null;
+}
+
+/** Put back exactly `text`, lines `range` of `path` in `version` (or in the base), in place of the thread's lines. */
+export interface RestoreDto {
+  path: string;
+  range: Range;
+  version: number | "base";
+  text: string;
 }
 
 export interface CommentDto {
@@ -110,6 +118,8 @@ export interface CommentDto {
   step: number;
   /** Published by the other side after your last read of the thread. */
   unread: boolean;
+  /** Set when the comment asks to restore old lines; its body may then be empty. */
+  restore?: RestoreDto;
 }
 
 export interface Excerpt {

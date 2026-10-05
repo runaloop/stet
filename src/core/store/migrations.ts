@@ -152,4 +152,14 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE submissions ADD COLUMN verdict TEXT NOT NULL DEFAULT 'changes' CHECK(verdict IN ('changes','approved'));
   `,
+  `
+  CREATE TABLE restores(
+    comment_id INTEGER PRIMARY KEY REFERENCES comments(id) ON DELETE CASCADE,
+    version_id INTEGER REFERENCES versions(id),
+    path TEXT NOT NULL,
+    start_line INTEGER NOT NULL,
+    end_line INTEGER NOT NULL CHECK(end_line >= start_line),
+    text TEXT NOT NULL
+  );
+  `,
 ];

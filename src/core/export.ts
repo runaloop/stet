@@ -245,7 +245,9 @@ function commentEntry(c: CommentDto, root: number | undefined): string[] {
   const meta = [`${c.role}${c.intent ? `, ${c.intent}` : ""}`, when(c.createdAt)];
   if (c.version !== null) meta.push(`at v${c.version}`);
   if (c.parentId !== null && c.parentId !== root) meta.push(`in reply to #${c.parentId}`);
-  return [`**#${c.id} ${c.author}** (${meta.join(" · ")})`, "", quote(c.body)];
+  const r = c.restore;
+  const restore = r ? ["", `Restore as in ${r.version === "base" ? "base" : `v${r.version}`}, \`${r.path}:${lineRange(r.range)}\`:`, "", ...fenced(r.text.split("\n"))] : [];
+  return [`**#${c.id} ${c.author}** (${meta.join(" · ")})`, ...(c.body.trim() ? ["", quote(c.body)] : []), ...restore];
 }
 
 function excerptBlock(e: Excerpt): string[] {

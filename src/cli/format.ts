@@ -14,6 +14,8 @@ const cyan = c("36");
 
 const range = (r: { start: number; end: number }) => (r.start === r.end ? `${r.start}` : `${r.start}-${r.end}`);
 
+const versionText = (v: number | "base") => (v === "base" ? "base" : `v${v}`);
+
 function stateBadge(t: ThreadSummary): string {
   const a = t.anchor;
   if (a.state === "ok") return "";
@@ -28,6 +30,7 @@ export function formatThreadLine(t: ThreadSummary): string {
     t.draft ? yellow("draft") : "",
     t.unread ? cyan("new") : "",
     t.needsReply ? `needs ${t.needsReply}` : "",
+    t.last?.restore ? yellow(`restore ${versionText(t.last.restore.version)}`) : "",
   ].filter(Boolean).join(" ");
   const where = t.region ? `${t.path} [image area ${regionText(t.region)}]` : `${t.path}:${range(t.range)}`;
   return `${bold(`#${t.id}`)} ${status} ${where} ${stateBadge(t)} ${flags} ${dim(`(${t.commentCount})`)} ${t.title}`
@@ -58,7 +61,12 @@ function commentTree(comments: CommentDto[]): string[] {
       const pad = "  ".repeat(depth);
       const head = `${pad}${bold(cm.author)} ${dim(`(${cm.role}${cm.intent ? `, ${cm.intent}` : ""}${cm.draft ? ", draft" : ""}) #${cm.id} · step ${cm.step}`)}`;
       out.push(head);
-      for (const line of cm.body.split("\n")) out.push(`${pad}  ${line}`);
+      if (cm.body) for (const line of cm.body.split("\n")) out.push(`${pad}  ${line}`);
+      const r = cm.restore;
+      if (r) {
+        out.push(`${pad}  ${yellow(`restore as in ${versionText(r.version)}, ${r.path}:${range(r.range)}:`)}`);
+        for (const line of r.text.split("\n")) out.push(`${pad}  ${dim("|")} ${line}`);
+      }
       walk(cm.id, depth + 1);
     }
   };
