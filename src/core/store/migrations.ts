@@ -162,4 +162,32 @@ export const MIGRATIONS: string[] = [
     text TEXT NOT NULL
   );
   `,
+  `
+  CREATE TABLE guides(
+    version_id INTEGER PRIMARY KEY REFERENCES versions(id) ON DELETE CASCADE,
+    title TEXT,
+    intro TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE guide_steps(
+    version_id INTEGER NOT NULL REFERENCES guides(version_id) ON DELETE CASCADE,
+    position INTEGER NOT NULL CHECK(position >= 1),
+    text TEXT NOT NULL,
+    PRIMARY KEY(version_id, position)
+  );
+
+  CREATE TABLE guide_refs(
+    version_id INTEGER NOT NULL,
+    step INTEGER NOT NULL,
+    position INTEGER NOT NULL CHECK(position >= 1),
+    path TEXT NOT NULL,
+    start_line INTEGER,
+    end_line INTEGER,
+    PRIMARY KEY(version_id, step, position),
+    FOREIGN KEY(version_id, step) REFERENCES guide_steps(version_id, position) ON DELETE CASCADE,
+    CHECK((start_line IS NULL) = (end_line IS NULL)),
+    CHECK(start_line IS NULL OR (start_line >= 1 AND end_line >= start_line))
+  );
+  `,
 ];

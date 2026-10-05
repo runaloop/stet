@@ -108,7 +108,7 @@ export function formatThreadDetail(d: ThreadDetail): string {
 export function formatStatus(s: StatusDto, url?: string | null): string {
   const out: string[] = [];
   out.push(`${bold(s.review.branch)} ${dim(`(review ${s.review.id}, ${s.review.source === "index" ? "staged changes" : "working tree"}, base ${s.review.baseRef ?? "none"})`)}`);
-  out.push(`versions: ${s.versions}${s.latest ? `, latest v${s.latest.number}${s.latest.label ? ` "${s.latest.label}"` : ""}` : ""}`);
+  out.push(`versions: ${s.versions}${s.latest ? `, latest v${s.latest.number}${s.latest.label ? ` "${s.latest.label}"` : ""}${s.latest.guide ? dim(" (guide: stet guide)") : ""}` : ""}`);
   if (s.now) out.push(`now: ${s.now.changedSinceLatest ? yellow("changed since latest version") : "same as latest version"}${s.now.excluded.length ? dim(` (${s.now.excluded.length} files excluded from snapshots)`) : ""}`);
   const k = s.counts;
   out.push(
@@ -126,7 +126,7 @@ export function formatStatus(s: StatusDto, url?: string | null): string {
 export function formatVersions(vs: VersionDto[]): string {
   if (vs.length === 0) return dim("no versions");
   return vs
-    .map((v) => `${bold(`v${v.number}`)} ${dim(v.snapshot.slice(0, 10))} ${v.createdAt.replace("T", " ").slice(0, 16)} ${v.role}/${v.author}${v.label ? ` "${v.label}"` : ""}`)
+    .map((v) => `${bold(`v${v.number}`)} ${dim(v.snapshot.slice(0, 10))} ${v.createdAt.replace("T", " ").slice(0, 16)} ${v.role}/${v.author}${v.label ? ` "${v.label}"` : ""}${v.guide ? ` ${cyan("guide")}` : ""}`)
     .join("\n");
 }
 

@@ -37,6 +37,33 @@ export interface VersionDto {
   author: string;
   createdAt: string;
   files?: number | null;
+  /** Set when the agent wrote a guide to this version (experimental): `stet guide <N>`. */
+  guide?: true;
+}
+
+/** Lines `range` of `path` in the guide's version, or the file's whole change when `range` is null. */
+export interface GuideRefDto {
+  path: string;
+  range: Range | null;
+}
+
+export interface GuideStepDto {
+  /** From 1, in the order the agent chose. */
+  index: number;
+  /** Markdown. */
+  text: string;
+  refs: GuideRefDto[];
+  /** Threads the text names as `#12`. */
+  threads: number[];
+}
+
+/** The agent's guide to a version (experimental): its change as a few steps, in the order that explains it best. */
+export interface GuideDto {
+  version: number;
+  title: string | null;
+  /** Markdown before the first step; often empty. */
+  intro: string;
+  steps: GuideStepDto[];
 }
 
 export interface SubmissionDto {

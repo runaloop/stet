@@ -39,6 +39,8 @@ export interface VersionRow {
   role: Role;
   author: string;
   created_at: string;
+  /** 1 when the version has a guide; only `versionRows` reads it. */
+  guide?: number;
 }
 
 export interface ThreadRow {

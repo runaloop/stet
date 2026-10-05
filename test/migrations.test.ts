@@ -99,6 +99,40 @@ test("restore requests come to a database that has comments, and go with a disca
   }
 });
 
+test("guides come to a database that has versions, and go with their version", () => {
+  const dir = mkdtempSync(join(tmpdir(), "stet-mig-"));
+  const path = join(dir, "review.db");
+  try {
+    const old = new Database(path, { create: true, strict: true });
+    const at = before("CREATE TABLE guides");
+    for (const sql of MIGRATIONS.slice(0, at)) old.exec(sql);
+    old.exec(`PRAGMA user_version = ${at}`);
+    old.exec(`
+      INSERT INTO reviews(id, branch, created_at) VALUES (1, 'feat', 't');
+      INSERT INTO snapshots(sha, tree, created_at) VALUES ('s', 't', 't');
+      INSERT INTO versions(id, review_id, number, snapshot, role, author, created_at) VALUES (1, 1, 1, 's', 'agent', 'claude', 't');
+    `);
+    old.close();
+
+    const store = new Store(path);
+    expect(columns(store.db, "guides")).toEqual(["version_id", "title", "intro", "created_at"]);
+    expect(columns(store.db, "guide_refs")).toEqual(["version_id", "step", "position", "path", "start_line", "end_line"]);
+    expect(store.db.query("SELECT number FROM versions").all()).toEqual([{ number: 1 }]);
+    store.db.run("INSERT INTO guides(version_id, title, created_at) VALUES (1, 'T', 't')");
+    store.db.run("INSERT INTO guide_steps(version_id, position, text) VALUES (1, 1, 'step')");
+    store.db.run("INSERT INTO guide_refs(version_id, step, position, path, start_line, end_line) VALUES (1, 1, 1, 'a.ts', 2, 3)");
+    store.db.run("INSERT INTO guide_refs(version_id, step, position, path) VALUES (1, 1, 2, 'b.ts')");
+    expect(() => store.db.run("INSERT INTO guide_refs(version_id, step, position, path, start_line) VALUES (1, 1, 3, 'c.ts', 2)")).toThrow();
+    expect(() => store.db.run("INSERT INTO guide_refs(version_id, step, position, path, start_line, end_line) VALUES (1, 1, 3, 'c.ts', 3, 2)")).toThrow();
+    expect(() => store.db.run("INSERT INTO guide_refs(version_id, step, position, path) VALUES (1, 2, 1, 'c.ts')")).toThrow();
+    store.db.run("DELETE FROM versions WHERE id = 1");
+    for (const t of ["guides", "guide_steps", "guide_refs"]) expect(store.db.query(`SELECT count(*) AS n FROM ${t}`).get()).toEqual({ n: 0 });
+    store.db.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("a fresh database has no origin columns", () => {
   const store = new Store(":memory:");
   for (const table of ["threads", "comments"]) {

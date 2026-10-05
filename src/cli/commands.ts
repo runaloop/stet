@@ -15,6 +15,7 @@ import {
   type Ctx,
 } from "../core/context.ts";
 import { unifiedPatch } from "../core/diff.ts";
+import { guideMarkdown, parseGuide, requireGuide } from "../core/guide.ts";
 import * as svc from "../core/service.ts";
 import type { Intent, ResolveReason, Role } from "../core/store/db.ts";
 import type { SubmittedDto } from "../core/types.ts";
@@ -40,9 +41,14 @@ Review
   review close | review move --to <branch>
 
 Versions
-  version create [--label <text>] [--allow-empty] [--at <commit>]
-                                                a version of the working tree (or the index), or of a commit
+  version create [--label <text>] [--allow-empty] [--at <commit>] [--guide <file>]
+                                                a version of the working tree (or the index), or of a commit;
+                                                --guide (experimental): a Markdown file that explains the
+                                                change in numbered steps, each ending in its lines, one per
+                                                line: path (the file's whole change) or path:a-b. The version
+                                                is refused when a path or range is not in it
   versions list
+  guide [<N>|latest]                            print a version's guide (default: the latest version's)
   versions diff <a> <b> [--patch]               refs: base, 1..N, latest, now, empty, <sha>
   blame <path>[:<a>[-<b>]] [--at N|latest|now]  where each line came from: the version that brought it (or
                                                 base, or now), the round it answered and the threads that
@@ -121,6 +127,13 @@ async function context(p: Parsed, defaultRole?: Role): Promise<Ctx> {
   });
 }
 
+async function readGuide(file: string): Promise<string> {
+  if (file === "-") return Bun.stdin.text();
+  const f = Bun.file(file);
+  if (!(await f.exists())) throw usage(`--guide: no file ${file}`);
+  return f.text();
+}
+
 let pending: Promise<unknown> = Promise.resolve();
 
 function out(text: string, stream: typeof Bun.stdout = Bun.stdout): void {
@@ -167,12 +180,26 @@ const commands: Record<string, { options: Options; run: (p: Parsed) => Promise<n
   },
 
   "version create": {
-    options: { label: { type: "string" }, "allow-empty": { type: "boolean" }, at: { type: "string" } },
+    options: { label: { type: "string" }, "allow-empty": { type: "boolean" }, at: { type: "string" }, guide: { type: "string" } },
     async run(p) {
+      const file = str(p, "guide");
+      const guide = file ? parseGuide(await readGuide(file)) : undefined;
       const ctx = await context(p);
       const review = await ensureReview(ctx, str(p, "branch"));
-      const v = await svc.createVersion(ctx, review, { label: str(p, "label"), allowEmpty: bool(p, "allow-empty"), at: str(p, "at") });
-      emit(p, { version: v }, () => `created v${v.number} (${v.snapshot.slice(0, 10)})`);
+      const v = await svc.createVersion(ctx, review, { label: str(p, "label"), allowEmpty: bool(p, "allow-empty"), at: str(p, "at"), guide });
+      emit(p, { version: v }, () => `created v${v.number} (${v.snapshot.slice(0, 10)})${guide ? ` with a guide of ${guide.steps.length} step${guide.steps.length === 1 ? "" : "s"}` : ""}`);
+    },
+  },
+
+  guide: {
+    options: {},
+    async run(p) {
+      const ctx = await context(p);
+      const review = await requireReview(ctx, str(p, "branch"));
+      const at = await svc.resolveRef(ctx, review, p.positionals[0] ?? "latest");
+      if (!at.version) throw usage(`a guide belongs to a version, not to '${p.positionals[0]}'`);
+      const g = requireGuide(ctx, review.id, at.version.number);
+      emit(p, g, () => guideMarkdown(g));
     },
   },
 

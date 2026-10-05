@@ -183,3 +183,22 @@ test("a restore request through the API is a draft with the old lines, in a new 
   expect((await post({ from: "now", path: "a.kt", start: 1, end: 1 })).status).toBe(400);
   expect((await api(`/api/comments/${c.id}`, { method: "DELETE" })).status).toBe(200);
 });
+
+test("a version's guide through the API, and which versions have one", async () => {
+  const file = join(f.root, "..", `${f.root.split("/").pop()}-guide.md`);
+  await Bun.write(file, "# Longer\n\n1. One more line, for #1.\n   a.kt:22\n");
+  f.write("a.kt", lines(22));
+  try {
+    await ok(stet(["version", "create", "--guide", file], { cwd: f.root }));
+  } finally {
+    Bun.spawnSync(["rm", "-f", file]);
+  }
+  const versions = (await (await api("/api/review")).json()).versionsList;
+  const n = versions.length as number;
+  expect(versions[n - 1].guide).toBe(true);
+  expect(versions[0].guide).toBeUndefined();
+  const g = await (await api(`/api/guide?version=${n}`)).json();
+  expect(g).toEqual({ version: n, title: "Longer", intro: "", steps: [{ index: 1, text: "One more line, for #1.", refs: [{ path: "a.kt", range: { start: 22, end: 22 } }], threads: [1] }] });
+  expect((await api("/api/guide?version=1")).status).toBe(404);
+  expect((await api("/api/guide")).status).toBe(400);
+});

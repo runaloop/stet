@@ -17,6 +17,7 @@ import {
 } from "./context.ts";
 import { diffTreeRaw, NULL_BLOB, numstat, type Hunk } from "./diff.ts";
 import { blobIdAt, git, Lru, readBlobById } from "./git.ts";
+import { checkGuide, saveGuide, type ParsedGuide } from "./guide.ts";
 import { imageType, isPng, sizeOf } from "./image.ts";
 import { direct, fileChange, linesAt, trace, type TimelinePoint } from "./placement.ts";
 import { mapLine, specAt, type AnchorSpec, type AnchorState } from "./reanchor.ts";
@@ -83,7 +84,9 @@ export function listReviews(ctx: Ctx, includeClosed = false): ReviewDto[] {
 
 export function versionRows(ctx: Ctx, reviewId: number): VersionRow[] {
   return ctx.store.db
-    .query<VersionRow, [number]>("SELECT * FROM versions WHERE review_id = ? ORDER BY number")
+    .query<VersionRow, [number]>(
+      "SELECT v.*, EXISTS(SELECT 1 FROM guides g WHERE g.version_id = v.id) AS guide FROM versions v WHERE v.review_id = ? ORDER BY v.number",
+    )
     .all(reviewId);
 }
 
@@ -116,6 +119,7 @@ export function versionDto(v: VersionRow): VersionDto {
     role: v.role,
     author: v.author,
     createdAt: v.created_at,
+    ...(v.guide ? { guide: true as const } : {}),
   };
 }
 
@@ -126,16 +130,23 @@ function snapshotTree(ctx: Ctx, sha: string): string | null {
 export async function createVersion(
   ctx: Ctx,
   review: ReviewRow,
-  opts: { label?: string; allowEmpty?: boolean; at?: string } = {},
+  opts: { label?: string; allowEmpty?: boolean; at?: string; guide?: ParsedGuide } = {},
 ): Promise<VersionDto> {
+  // with a guide the snapshot is kept only once the guide fits it
+  const keep = !opts.guide;
   const snap = opts.at
-    ? await registerCommitSnapshot(ctx, opts.at, { keep: true })
-    : await takeNow(ctx, review, { keep: true, fresh: true });
+    ? await registerCommitSnapshot(ctx, opts.at, { keep })
+    : await takeNow(ctx, review, { keep, fresh: true });
   const latest = latestVersion(ctx, review.id);
   if (latest && !opts.allowEmpty && snapshotTree(ctx, latest.snapshot) === snap.tree) {
     throw conflict(`nothing changed since version ${latest.number}`);
   }
   const baseSha = review.base_ref ? await baseBelow(ctx.repo.cwd, review.base_ref, snap.sha) : null;
+  if (opts.guide) {
+    const base = baseSha ?? (await resolveRef(ctx, review, "base", { baseFor: snap.sha }).catch(() => null))?.sha;
+    await checkGuide(ctx, opts.guide, snap.sha, "this version", [base, latest?.snapshot].filter((x): x is string => !!x));
+    await promote(ctx, snap.sha);
+  }
   const row = ctx.store.tx(() => {
     const max = ctx.store.db
       .query<{ n: number | null }, [number]>("SELECT max(number) AS n FROM versions WHERE review_id = ?")
@@ -146,10 +157,11 @@ export async function createVersion(
       [review.id, number, snap.sha, baseSha, opts.label ?? null, ctx.role, ctx.author, nowIso()],
     );
     const id = Number(r.lastInsertRowid);
+    if (opts.guide) saveGuide(ctx, id, opts.guide);
     ctx.store.addEvent({ review_id: review.id, type: "version.created", role: ctx.role, thread_id: null, comment_id: null, version_id: id, submission_id: null });
     return versionById(ctx, id)!;
   });
-  return versionDto(row);
+  return versionDto({ ...row, guide: opts.guide ? 1 : 0 });
 }
 
 export interface ResolvedRef {

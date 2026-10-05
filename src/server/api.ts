@@ -7,6 +7,7 @@ import * as svc from "../core/service.ts";
 import { takeNow } from "../core/snapshot.ts";
 import type { Intent, ResolveReason, ReviewRow, Verdict } from "../core/store/db.ts";
 import { gitState } from "../core/gitstate.ts";
+import { requireGuide } from "../core/guide.ts";
 import type { Watcher } from "./watch.ts";
 
 export interface ServerState {
@@ -230,6 +231,8 @@ route("GET", "/api/compare", async (s, _req, url) => {
   const to = url.searchParams.get("to") ?? "now";
   return svc.compare(s.ctx, r, from, to, { pinnedNow: await pinned(s, r) });
 });
+
+route("GET", "/api/guide", async (s, _req, url) => requireGuide(s.ctx, review(s, url).id, num(url.searchParams.get("version") ?? undefined, "version")));
 
 route("GET", "/api/commits", async (s, _req, url) => {
   const limit = url.searchParams.get("limit");
