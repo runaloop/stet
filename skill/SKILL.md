@@ -107,6 +107,11 @@ the reviewer that the thread waits for them.
 Make the code changes in the working tree as usual. Reply `fixed` only after the change is
 actually in the files.
 
+A comment with `restore` (`{ path, range, version, text }`) asks you to put back exactly `restore.text`, the
+lines `range` of `path` as they were in that version (or the base), in place of the thread's lines: the
+thread's anchor tells where they are now. If bringing them back would break something done later (the build,
+a fix asked in another thread), do not restore; reply `question` and explain.
+
 Before you change lines that an earlier round may have fixed, run `stet blame <path>:<a>-<b>`. It names
 the version that brought each line and the threads that version answered (`fixed #12`); read those with
 `stet thread show <id>` first, so your change does not undo a fix the reviewer asked for.
