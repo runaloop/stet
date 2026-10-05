@@ -84,7 +84,8 @@ fixes before handing over the next version.
 
 ## CLI
 
-All commands print JSON when piped or with `--json`. Run `stet --help` for the full list.
+All commands print JSON when piped or with `--json`, except `stet export`, which prints Markdown. Run
+`stet --help` for the full list.
 
 | Command | What it does |
 |---|---|
@@ -102,6 +103,7 @@ All commands print JSON when piped or with `--json`. Run `stet --help` for the f
 | `stet wait --for review\|reply\|version\|any [--timeout 30m]` | block until there is something to do (exit 5 on timeout) |
 | `stet open <id>` | open the editor at the thread |
 | `stet prune` | drop snapshot refs nothing points at |
+| `stet export [--all] [--out <file>]` | the review as Markdown, drafts left out: one line per thread with its outcome and place (fixed in v2, answered, won't fix, waits for the agent), for a merge request description; `--all` adds the code then and now, every conversation and timeline, the versions and each review's verdict, for an archive or another agent. A closed review too: the branch's last one, or `--review <id>` |
 | `stet skill install` / `stet skill show` | install the agent's skill / print it |
 
 Roles: the CLI acts as the agent by default. Use `--as reviewer` or `STET_ROLE=reviewer` to act as the
