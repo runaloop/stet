@@ -1074,6 +1074,17 @@ try {
       .replace("block facing block", "next to each other")
       .replace("Threads are on lines here too.", "Threads are on lines.")
       .replace(/\nSearch reads the rendered text[^]*?\n\n/, "\n");
+    // a README: two small changes far apart, a list and a table in the long unchanged middle
+    const readmeMd = (v: number) => {
+      const out = ["# Project", "", `Intro paragraph, version ${v === 1 ? "one" : "two"} of the project page.`, ""];
+      for (let i = 1; i <= 60; i++) {
+        out.push(`## Section ${i}`, "", `Text of section ${i}, the same in every version, long enough to wrap onto a second line in a narrow column of the page.`, "");
+        if (i === 20) out.push(...Array.from({ length: 8 }, (_, k) => `- item ${k + 1} of the list in section ${i}`), "");
+        if (i === 40) out.push("| Key | Value |", "|---|---|", ...Array.from({ length: 8 }, (_, k) => `| key${k + 1} | value ${k + 1} |`), "");
+      }
+      out.push("## Last", "", `Closing paragraph, version ${v === 1 ? "one" : "two"}.`, "");
+      return out.join("\n");
+    };
     const listMd = (v: number) =>
       (v === 1
         ? ["- Cart with items", "- Pay by card", "- Order history", "", "| Setting | Default |", "|---|---|", "| port | 8080 |", "| cache | off |", ""]
@@ -1082,11 +1093,13 @@ try {
     writeFileSync(join(repo, "docs/long.md"), longMd(1));
     writeFileSync(join(repo, "docs/list.md"), listMd(1));
     writeFileSync(join(repo, "docs/ui.md"), uiThen);
+    writeFileSync(join(repo, "docs/readme.md"), readmeMd(1));
     run(repo, ["git", "add", "-A"]);
     run(repo, ["bun", CLI, "version", "create", "--label", "long page", "--json"]);
     writeFileSync(join(repo, "docs/long.md"), longMd(2));
     writeFileSync(join(repo, "docs/list.md"), listMd(2));
     writeFileSync(join(repo, "docs/ui.md"), uiNow);
+    writeFileSync(join(repo, "docs/readme.md"), readmeMd(2));
     run(repo, ["git", "add", "-A"]);
     run(repo, ["bun", CLI, "version", "create", "--label", "long page changed", "--json"]);
     const longV = JSON.parse(run(repo, ["bun", CLI, "status", "--json"])).versions as number;
@@ -1205,7 +1218,7 @@ try {
       const cursorAfter = await b.eval(`__cursorAt(${JSON.stringify(file)})`);
       drifts[name] = { toCode, toRendered, ...(far ? { cursor: [cursorBefore, cursorCode, cursorAfter] } : {}) };
       console.log(`drift ${name}: ${JSON.stringify(drifts[name])}`);
-      held &&= toCode.ok && toRendered.ok && (!far || (cursorBefore === "block 1" && cursorAfter === "block 1" && cursorCode !== null));
+      held &&= toCode.ok && toRendered.ok && (!far || (cursorBefore !== null && cursorAfter === cursorBefore && cursorCode !== null));
     }
     check(
       "switching a long Markdown file between rendered and code keeps the first text in view where it was (a block's top, the middle of a tall paragraph, a table row), without shaking; a cursor far away stays where it is",
@@ -1244,7 +1257,7 @@ try {
         focus: v ? [...v.querySelectorAll(".md-thread-focus")].map(e => e.closest(".md-cell").dataset.side + ":" + e.textContent.trim().slice(0, 11)) : [],
         marker: !!v?.querySelector(".md-threads .thread-marker"),
         words: v ? [...v.querySelectorAll(".md-thread-focus :is(del, ins)")].map(e => e.tagName.toLowerCase() + ":" + e.textContent) : [],
-        folds: v ? v.querySelectorAll(".md-skip").length : 0,
+        folds: v ? v.querySelectorAll(".md-fold").length : 0,
       }; })()`);
     const stepButton = (state: string) => `[...document.querySelectorAll(".timeline .step:not(.fold)")].find(s => s.querySelector(".step-state")?.textContent === "${state}")?.querySelector("button")`;
     await b.eval(`location.hash = "#/thread/${mdThread}"; true`);
@@ -1273,6 +1286,123 @@ try {
         changed.rendered && changed.split === true && JSON.stringify(changed.focus) === JSON.stringify(["old:Paragraph 3", "new:Paragraph 3"]) &&
         JSON.stringify(changed.words) === JSON.stringify(["del:1", "ins:2"]),
       { threadOpened, codeThere, written, changed },
+    );
+
+    // A long Markdown file with two small changes far apart. Rendered, it shows the changes with the lines around them
+    // and folds the rest; the bars open it a piece at a time, and what one view opens the other shows too.
+    const rd = `document.querySelector('.md-view[data-file="docs/readme.md"]')`;
+    const readmeItem = `[...document.querySelectorAll(".codeview-host diffs-container")].find(c => c.shadowRoot?.querySelector("[data-title]")?.textContent === "docs/readme.md")`;
+    const toFile = async (name: string) => {
+      await b.eval(`[...document.querySelectorAll(".side-tabs button")].find(x => x.textContent.startsWith("Files")).click(); true`);
+      await sleep(150);
+      await b.eval(`[...document.querySelectorAll(".file-row")].find(r => r.querySelector(".file-name")?.textContent === ${JSON.stringify(name)}).querySelector(".file-link").click(); true`);
+    };
+    const readmeBars = () => b.eval(`[...(${rd}?.querySelectorAll(".md-fold .md-fold-text") ?? [])].map(e => e.textContent)`) as Promise<string[]>;
+    const codeLines = () => b.eval(`(() => { const c = ${readmeItem}; return c ? [...new Set([...c.shadowRoot.querySelectorAll("code[data-additions] > [data-content] > [data-line], code[data-unified] > [data-content] > [data-line]")].map(e => +e.getAttribute("data-line")))] : null; })()`) as Promise<number[] | null>;
+    const readmeToggle = async (to: "code" | "rendered") => {
+      await b.eval(`${toggleOf("docs/readme.md")}.click(); true`);
+      await waitFor(to === "code" ? `!${rd} && (${readmeItem})?.shadowRoot?.querySelector("[data-line]")` : `${rd}?.querySelector("[data-stop]")`, 8000);
+      await sleep(700);
+    };
+    await b.eval(`location.hash = "#/compare/${longV - 1}..${longV}"; true`);
+    await sleep(800);
+    await toFile("readme.md");
+    await waitFor(`${rd}?.querySelector("[data-stop]")`, 10000);
+    await sleep(1000);
+    const foldedAtFirst = { bars: await readmeBars(), blocks: await b.eval(`[...${rd}.querySelectorAll('.md-cell[data-side="new"] > [data-start]')].map(e => +e.dataset.start)`) };
+    // full file on its header: the whole file in both views; off again, both fold back
+    const wholeOf = `[...document.querySelectorAll(".md-whole")].find(t => t.closest("diffs-container")?.shadowRoot?.querySelector("[data-title]")?.textContent === "docs/readme.md")`;
+    const separators = `(${readmeItem})?.shadowRoot?.querySelectorAll("[data-unmodified-lines]").length`;
+    await b.eval(`${wholeOf}.click(); true`);
+    await sleep(800);
+    const wholeRendered = { bars: (await readmeBars()).length, on: await b.eval(`${wholeOf}.classList.contains("on")`) };
+    await readmeToggle("code");
+    const wholeCode = await b.eval(separators);
+    await b.eval(`${wholeOf}.click(); true`);
+    const partCode = await waitFor(`${separators} || null`, 4000);
+    await readmeToggle("rendered");
+    const beforeBelow = await readmeBars();
+    await b.eval(`[...${rd}.querySelectorAll(".md-fold button")].find(x => x.dataset.act === "below").click(); true`);
+    await sleep(700);
+    const afterBelow = await readmeBars();
+    await readmeToggle("code");
+    const codeAfterBelow = await codeLines();
+    await b.screenshot(join(OUT, "shots", "ui-check-readme-code.png"));
+    // a "show more" of the code: the rendered view shows those lines too
+    await b.eval(`(${readmeItem}).shadowRoot.querySelector("[data-expand-up]").click(); true`);
+    await sleep(900);
+    const codeAfterExpand = await codeLines();
+    await readmeToggle("rendered");
+    const afterCodeExpand = await readmeBars();
+    await b.eval(`[...${rd}.querySelectorAll(".md-fold button")].find(x => x.dataset.act === "above").click(); true`);
+    await sleep(700);
+    const afterAbove = await readmeBars();
+    await b.screenshot(join(OUT, "shots", "ui-check-readme-folds.png"));
+    const foldedN = (bars: string[]) => (bars.length === 1 ? Number(/(\d+) lines folded/.exec(bars[0]!)?.[1]) : NaN);
+    check(
+      "a long Markdown file shows its changes rendered with the lines around them and folds the rest; full file shows all of it in both views; show below and show above open it a piece at a time, and what one view opens the other shows too",
+      foldedN(foldedAtFirst.bars) === 257 && JSON.stringify(foldedAtFirst.blocks) === JSON.stringify([1, 3, 5, 265, 267]) &&
+        wholeRendered.bars === 0 && wholeRendered.on && wholeCode === 0 && (partCode ?? 0) > 0 && foldedN(beforeBelow) < 257 &&
+        foldedN(afterBelow) < foldedN(beforeBelow) && foldedN(afterBelow) >= foldedN(beforeBelow) - 30 && !!codeAfterBelow && [243, 250, 264].every((l) => codeAfterBelow.includes(l)) &&
+        !!codeAfterExpand && codeAfterExpand.includes(20) && foldedN(afterCodeExpand) < foldedN(afterBelow) && foldedN(afterAbove) < foldedN(afterCodeExpand),
+      { foldedAtFirst, wholeRendered, wholeCode, partCode, beforeBelow, afterBelow, codeAfterBelow: codeAfterBelow?.join(" "), codeAfterExpand: codeAfterExpand?.join(" "), afterCodeExpand, afterAbove },
+    );
+
+    // reading in the middle of what was folded, the switch keeps that text where it was, both ways, and every time
+    await b.eval(`[...${rd}.querySelectorAll(".md-fold button")].find(x => x.dataset.act === "all").click(); true`);
+    await sleep(800);
+    const shownAll = await readmeBars();
+    const middle = {} as Record<string, unknown>;
+    let middleHeld = shownAll.length === 0;
+    for (const [name, text, frac] of [
+      ["a paragraph", "Text of section 30,", 0],
+      ["a list item", "item 5 of the list in section 20", 0.2],
+      ["a table row", "key4", 0.3],
+    ] as const) {
+      await b.eval(`(() => { const e = [...${rd}.querySelectorAll('.md-cell[data-side="new"] [data-stop]')].reverse().find(x => x.textContent.trim().startsWith(${JSON.stringify(text)})); const r = e.getBoundingClientRect(); __h().scrollTop += r.top - __band() + ${frac} * r.height; return true; })()`);
+      await sleep(600);
+      const rounds = [];
+      for (let round = 0; round < 2; round++) {
+        const a = await b.eval(`__rtop("docs/readme.md")`);
+        await readmeToggle("code");
+        const toCode = await b.eval(`(() => { const c = ${readmeItem}; const r = [...c.shadowRoot.querySelectorAll("code[data-${a.side}] > [data-content] > [data-line]")].find(x => +x.getAttribute("data-line") === ${a.line}); return r ? Math.round(r.getBoundingClientRect().top - __h().getBoundingClientRect().top - ${a.y}) : null; })()`);
+        const c = await b.eval(`__ctop("docs/readme.md")`);
+        await readmeToggle("rendered");
+        const toRendered = await b.eval(`(() => { const y = __share("docs/readme.md", "${c.side}", ${c.line}); return y === null ? null : Math.round(y - ${c.y}); })()`);
+        rounds.push({ line: a.line, toCode, toRendered, bars: (await readmeBars()).length });
+        middleHeld &&= toCode !== null && Math.abs(toCode) <= 4 && toRendered !== null && Math.abs(toRendered) <= 4;
+      }
+      middle[name] = rounds;
+      console.log(`drift docs/readme.md, ${name}: ${JSON.stringify(rounds)}`);
+    }
+    check(
+      "reading what was folded between two changes far apart, switching rendered and code keeps the text where it was, both ways and again (nothing folds back)",
+      middleHeld,
+      middle,
+    );
+
+    // on a thread's page the same bars, and what they open shows in the thread's code too
+    const readmeThread = JSON.parse(run(repo, ["bun", CLI, "comment", "add", "--file", "docs/readme.md", "--range", "3-3", "--at", String(longV - 1), "--body", "is the intro right?", "--as", "reviewer", "--json"])).id as number;
+    await b.eval(`location.hash = "#/thread/${readmeThread}"; true`);
+    await waitFor(`document.querySelector(".code-area .md-view .md-thread-focus")`, 10000);
+    await sleep(600);
+    const threadBars = () => b.eval(`[...document.querySelectorAll(".code-area .md-fold")].map(e => e.querySelector(".md-fold-text").textContent + ":" + [...e.querySelectorAll("button")].map(x => x.dataset.act).join("/"))`) as Promise<string[]>;
+    const threadCodeLines = () => b.eval(`(() => { const c = document.querySelector(".code-area diffs-container"); return c ? [...new Set([...c.shadowRoot.querySelectorAll("[data-content] > [data-line]")].map(e => +e.getAttribute("data-line")))].sort((a, b) => a - b) : null; })()`) as Promise<number[] | null>;
+    const onPage = await threadBars();
+    await b.eval(`[...document.querySelectorAll(".code-area .md-fold button")].find(x => x.dataset.act === "above").click(); true`);
+    await sleep(700);
+    const openedThere = await threadBars();
+    await b.eval(`document.querySelector(".code-label .md-toggle").click(); true`);
+    await waitFor(`!document.querySelector(".code-area .md-view") && document.querySelector(".code-area diffs-container")?.shadowRoot?.querySelector("[data-line]")`, 8000);
+    await sleep(600);
+    const threadCode = await threadCodeLines();
+    await b.eval(`document.querySelector(".code-label .md-toggle").click(); true`);
+    await waitFor(`document.querySelector(".code-area .md-view [data-stop]")`, 8000);
+    check(
+      "a thread's page folds its rendered file the same way, with the same bars; what they open shows in the thread's code",
+      onPage.length === 1 && onPage[0]!.includes("above/below/all") && openedThere.length === 1 && foldedN(openedThere.map((x) => x.split(":")[0]!)) < foldedN(onPage.map((x) => x.split(":")[0]!)) &&
+        !!threadCode && threadCode.includes(20) && threadCode.includes(1),
+      { onPage, openedThere, threadCode: threadCode?.join(" ") },
     );
 
     await b.eval(`location.hash = "#/compare/${imgV - 1}..${imgV}"; true`);

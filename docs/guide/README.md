@@ -110,8 +110,9 @@ A Markdown file of the diff shows rendered (`stet config set compare.markdown co
 **‹/› code** on its header switches one file, keeping your place on the screen). In split view the old version and
 the new one stand side by side, block facing block, so a reader sees what changed in the text as it reads, not in
 the markup: the words that changed are marked, items and rows of a changed list or table face each other, and an
-added one faces an empty slot. Pictures of the repository load at the version of their side; pictures from the web
-are not loaded, raw HTML stays text.
+added one faces an empty slot. Like the code, it shows the changes with the text around them and folds the rest into
+bars that open it a piece at a time; what you open shows in the code too, and **full file** shows all of it. Pictures
+of the repository load at the version of their side; pictures from the web are not loaded, raw HTML stays text.
 
 ![The old and the new README side by side, with the changed words and a thread on a block](markdown-1.png)
 
