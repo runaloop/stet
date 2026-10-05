@@ -185,6 +185,29 @@ describe("routes", () => {
     expect(parseHash("#/compare/base..3")).toEqual({ name: "compare", from: "base", to: "3" });
   });
 
+  test("a compare link can carry a range of lines: start-end, one number for one line", () => {
+    const r = { name: "compare" as const, from: "1", to: "2", file: "a.md", line: 40, end: 55, side: "old" as const, review: 3 };
+    expect(routeHash(r)).toBe("#/compare/1..2?file=a.md&line=40-55&side=old&review=3");
+    expect(parseHash(routeHash(r))).toEqual(r);
+    expect(routeHash({ name: "compare", from: "1", to: "2", file: "a.md", line: 40, end: 40 })).toBe("#/compare/1..2?file=a.md&line=40");
+    expect(routeHash({ name: "compare", from: "1", to: "2", file: "a.md", line: 40, end: 30 })).toBe("#/compare/1..2?file=a.md&line=40");
+    expect(parseHash("#/compare/1..2?file=a.md&line=40-40")).toEqual({ name: "compare", from: "1", to: "2", file: "a.md", line: 40 });
+  });
+
+  test("a reversed range is turned around, a broken one is dropped and the file still opens", () => {
+    const at = (line: string) => {
+      const r = parseHash(`#/compare/1..2?file=a.md&line=${line}`);
+      return r.name === "compare" ? [r.file, r.line, r.end] : null;
+    };
+    expect(at("55-40")).toEqual(["a.md", 40, 55]);
+    expect(at("0-5")).toEqual(["a.md", undefined, undefined]);
+    expect(at("40-")).toEqual(["a.md", undefined, undefined]);
+    expect(at("-40")).toEqual(["a.md", undefined, undefined]);
+    expect(at("4e1")).toEqual(["a.md", undefined, undefined]);
+    expect(at("a-b")).toEqual(["a.md", undefined, undefined]);
+    expect(at("40-55-60")).toEqual(["a.md", undefined, undefined]);
+  });
+
   test("the token leaves the URL, the review and the page stay", () => {
     expect(takeToken("#token=ab12")).toEqual({ token: "ab12", hash: "#/" });
     expect(takeToken("#/?review=2&token=ab12")).toEqual({ token: "ab12", hash: "#/?review=2" });

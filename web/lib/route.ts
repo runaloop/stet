@@ -2,7 +2,7 @@ export type Route = (
   | { name: "home" }
   | { name: "overview" }
   | { name: "thread"; id: number }
-  | { name: "compare"; from: string; to: string; file?: string; line?: number; side?: "old" | "new" }
+  | { name: "compare"; from: string; to: string; file?: string; line?: number; end?: number; side?: "old" | "new" }
   | { name: "drafts" }
 ) & { review?: number };
 
@@ -21,8 +21,12 @@ export function parseHash(hash: string): Route {
     const file = params.get("file");
     if (file) {
       r.file = file;
-      const line = Number(params.get("line"));
-      if (Number.isInteger(line) && line > 0) r.line = line;
+      const lines = /^(\d+)(?:-(\d+))?$/.exec(params.get("line") ?? "");
+      const [a, b] = lines ? [Number(lines[1]), Number(lines[2] ?? lines[1])] : [0, 0];
+      if (Math.min(a, b) > 0) {
+        r.line = Math.min(a, b);
+        if (a !== b) r.end = Math.max(a, b);
+      }
       if (params.get("side") === "old") r.side = "old";
     }
     return withReview(r);
@@ -43,7 +47,7 @@ export function routeHash(r: Route, review?: number | null): string {
       path = `/compare/${encodeURIComponent(r.from)}..${encodeURIComponent(r.to)}`;
       if (r.file) {
         params.set("file", r.file);
-        if (r.line) params.set("line", String(r.line));
+        if (r.line) params.set("line", r.end && r.end > r.line ? `${r.line}-${r.end}` : String(r.line));
         if (r.side === "old") params.set("side", "old");
       }
       break;
