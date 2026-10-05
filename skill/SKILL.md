@@ -35,6 +35,24 @@ stopped after a time limit, and the review UI dies with them in the middle of th
 `version create` exits with code 3 when nothing changed since the last version: that is fine
 if you only answered questions.
 
+For the first version of a task, and for a round where you changed more than the threads asked for, add a
+guide (experimental, optional): `--guide <file>`, a Markdown file outside the repository that explains the
+change as a few steps, in the order that makes it easiest to understand. Skip it for a small or obvious version.
+
+```markdown
+# <what the version does>
+
+1. <what this step does and why; Markdown, over as many lines as it needs>
+   src/store/migrations.ts:140-152
+2. <the next step; in a round, name the threads it answers as #12>
+   src/cli/commands.ts:316-330
+   test/verdict.test.ts
+```
+
+Each step ends with its lines, one reference per line: `path:a-b` for lines of the file in this version, or
+`path` alone for the file's whole change. stet refuses the version when a path or a range is not in it: fix
+the guide and run the command again.
+
 ## 2. End your turn
 
 Do not wait for the review. End your turn after handing over the version. The human reviews when they can,
@@ -119,7 +137,7 @@ the version that brought each line and the threads that version answered (`fixed
 ## 5. Hand over the next version
 
 ```bash
-stet version create --label "fixes for review <N>"
+stet version create --label "fixes for review <N>"   # --guide <file> when you changed more than the threads asked for
 ```
 
 Report to the human: how many threads fixed / answered / disagreed / questions, and the
