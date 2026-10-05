@@ -114,6 +114,7 @@ picture) is one stop:
 | `]u` / `[u` · `n` / `N` | next / previous unread thread · next / previous search match (unread when there is no search) |
 | `V` then `j` / `k`, `o` | select lines, jump to the other end of the selection |
 | `i` · `a` · `c` · `gcc` | comment on the cursor line or the selection |
+| `Space g Y` | copy a link to the cursor line or the selection ([links](#links)) |
 | `zo` / `zc` / `za`, `zR` / `zM` | open / close the file under the cursor, all files |
 | `/` · `Space /` | search the diff · search all files of the version |
 | `*` · `Space s w` · double-click | find where the selected word (or the double-clicked name) is used, in all files |
@@ -206,6 +207,19 @@ Every thread, version, file and search hit is a real link: a middle click or `Ct
 new tab, and the link carries the file and line (and the review when there are several). A new tab of
 the same browser needs no token in the link: the first visit sets an `HttpOnly`, `SameSite=Strict`
 session cookie from which the page gets the token.
+
+A link to the Changes page can name a range of lines: `#/compare/2..3?file=src/Cache.kt&line=40-55`
+(`line=40` for one line, `side=old` for lines on the old side). Opening it puts the cursor on the first line
+and highlights the lines; a range scrolls in from near the top, one line to the middle. The highlight stays
+while the cursor is on those lines and goes once it leaves them (keys, a click on another line or block). In a
+rendered Markdown file the blocks that hold the lines are highlighted, and lines the diff folds open first.
+Other lines the diff does not show (another file, or one not in the diff) open in the file's preview.
+
+To share lines, select them (a drag, `+`, or `V` and `i` on the keyboard) and press **Copy link** on the comment
+box, or press `Space g Y`: in visual mode it copies the selection, otherwise the line or rendered block under
+the cursor. The link is the full address with the range of versions, the review, the file, the lines and the
+side, and no token: like the other links, it opens in the browser that opened the URL `stet serve` printed,
+through the session cookie.
 
 ## Folded test files
 

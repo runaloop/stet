@@ -19,7 +19,8 @@ Where to click, with arrows. The screenshots are taken on small demo repositorie
 ## Navigation
 
 Three pages (Round, Changes, Drafts) and a thread page. Everything has a key; the mouse works too, and
-every thread, file and version is a real link (middle click opens a new tab).
+every thread, file and version is a real link (middle click opens a new tab). **Copy link** on the box of
+selected lines, or `Space g Y`, copies a link that opens the Changes page at exactly those lines, highlighted.
 
 ![The Changes page: pages, versions, the cursor, threads and files](navigation-1.png)
 
