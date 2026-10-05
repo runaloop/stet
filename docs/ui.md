@@ -70,7 +70,10 @@ are highlighted.
 
 Threads are on lines here too. A thread shows on the blocks its lines are in, with its card under the last of
 them (and its lines on the card when it covers only part of a block); a thread on blank lines shows on the
-block before them. A click on a block puts the cursor on it; **+** beside a block (or `i` on the cursor's
+block before them. A thread on a table row or a list item breaks the table or the list after its last row or item,
+so the card stands right under it; the table goes on below with its header again, an ordered list from the next
+number, and in split view the other side breaks at the facing row, with an empty slot as tall as the card. The box
+for a new comment opens at the same place. A click on a block puts the cursor on it; **+** beside a block (or `i` on the cursor's
 block, `V` with `j` / `k` for several) starts a thread on the block's lines, on its side, and **‹/›** beside it
 shows those lines in the code where the block was, with the cursor on them. A link to another file opens it in the
 preview.
