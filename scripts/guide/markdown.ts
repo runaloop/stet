@@ -148,7 +148,7 @@ export async function markdownGuide() {
       await p.sleep(800);
       const inline = await p.need(".md-one .md-cell[data-side='new'] p.md-words");
       const was = await p.need(".md-one .md-cell[data-side='old']", "Order history");
-      const now = await p.need(".md-one .md-cell[data-side='new'] ul");
+      const now = await p.need(".md-one .md-cell[data-side='new'] li", "Promo codes");
       await p.shot("markdown-3.png", [
         { html: "Unified view: one column. A block with a few words changed shows once, with the changes in its text", at: { x: inline.x + inline.w + 30, y: inline.y - 40 }, to: { x: inline.x + inline.w + 4, y: inline.y + inline.h / 2 }, ring: inline, w: 360 },
         { html: "Items added: the old version, marked “was”, stands above the new one", at: { x: was.x + was.w + 30, y: was.y + 20 }, to: { x: was.x + was.w - 20, y: was.y + was.h / 2 }, ring: { x: was.x, y: was.y, w: was.w, h: now.y + now.h - was.y }, w: 360 },
