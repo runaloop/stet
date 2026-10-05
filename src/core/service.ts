@@ -1061,7 +1061,7 @@ export async function placementsAt(
   review: ReviewRow,
   sha: string,
   path: string | null,
-  opts: { pinnedNow?: string | null } = {},
+  opts: { pinnedNow?: string | null; ids?: number[] } = {},
 ): Promise<{ threadId: number; path: string; range: { start: number; end: number }; state: AnchorState }[]> {
   const versions = versionRows(ctx, review.id);
   const placer = makePlacer(ctx, versions, opts.pinnedNow ?? null);
@@ -1069,8 +1069,9 @@ export async function placementsAt(
   const target: Target =
     placer.now && (placer.now.sha === sha || sha === opts.pinnedNow) ? placer.now : { sha, label: v ? `v${v.number}` : short(sha), version: v, isNow: false };
   const out: { threadId: number; path: string; range: { start: number; end: number }; state: AnchorState }[] = [];
+  const want = opts.ids ? new Set(opts.ids) : null;
   for (const t of visibleThreadRows(ctx, review, true)) {
-    if (t.side !== "new") continue;
+    if (t.side !== "new" || (want && !want.has(t.id))) continue;
     const p = await placer.place(t, target);
     if (p.state === "outdated" || !p.spec || (path !== null && p.spec.path !== path)) continue;
     out.push({ threadId: t.id, path: p.spec.path, range: { start: p.spec.start, end: p.spec.end }, state: p.state });

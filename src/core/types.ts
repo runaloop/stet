@@ -319,3 +319,46 @@ export interface CommitsDto {
   commits: CommitDto[];
   more: boolean;
 }
+
+export interface BlameOriginDto {
+  /** `base`: unchanged since the review's base, or brought by a newer base; `now`: in the working tree only, in no version yet. */
+  kind: "base" | "version" | "now";
+  version: number | null;
+  label: string | null;
+  createdAt: string | null;
+}
+
+/** The reviewer's review that the code answers: review `index`, counted from 1 as in `submissions`. */
+export interface BlameRoundDto {
+  index: number;
+  at: string;
+  verdict: Verdict;
+  /** The version that review was about. */
+  version: number | null;
+}
+
+/** A thread the agent answered `fixed` with the code of this origin, anchored on the line there. */
+export interface BlameThreadDto {
+  id: number;
+  title: string;
+  status: "open" | "resolved";
+  /** The agent's `fixed` reply, its body cut short. */
+  reply: { id: number; body: string; at: string };
+}
+
+/** Consecutive lines with the same origin and the same threads. */
+export interface BlameRunDto {
+  start: number;
+  end: number;
+  origin: BlameOriginDto;
+  round: BlameRoundDto | null;
+  threads: BlameThreadDto[];
+}
+
+export interface BlameDto {
+  path: string;
+  at: { ref: string; sha: string; label: string };
+  /** Null for an empty file. */
+  range: Range | null;
+  runs: BlameRunDto[];
+}
