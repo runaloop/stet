@@ -147,6 +147,15 @@ at step, `p` diff base, `r` reply, `x` / `X` resolve / reopen, `e` editor, `Spac
 shown, `/` search all
 files at the step shown, `*` find the selected word, `Space u l` the conversation left / right of the code, `Esc` close
 the preview, then back to the changes.
+The thread's code has the Changes page's cursor, but `j`, `k` and the rest act on it only while the code has the
+focus, so they keep stepping through threads and messages otherwise. A click on a line or a rendered block (or a
+comment started with the mouse) gives the code the focus; so do `V` (select lines from the cursor, which starts on the
+thread's first line) and `i` / `a` / `c` / `gcc` (comment on the cursor line). The code column then has a blue frame,
+and the Changes page's keys work in it: `j` / `k`, `gg` / `G`, `Ctrl+d` / `Ctrl+u`, `]c` / `[c`, `]h` / `[h`, `zz`, `V`
+with `j` / `k` and `o`, `i` / `a` / `c` / `gc` / `gcc`, `Space g Y`, and counts (`3j`). The thread's other keys keep
+working there (`x`, `r`, `[` / `]`, `t`, `n`, …; `[` and `]` wait a moment for a `c` or an `h`). `Esc` closes the
+preview, the selection, then the comment box, and then leaves the code; a click outside the framed box (its tabs and
+scope buttons do not count) or `r` into the reply box leaves it too. The cursor stays where it was for the next time.
 In its messages: `}` / `{` next / previous message, `gg` / `G` first / last, `Ctrl+d` / `Ctrl+u` half a
 page, `za` fold or unfold the message under the cursor (`zR` / `zM` all of them), and `r` replies to the
 message under the cursor once you moved it there (with these keys or a click), otherwise to the thread.
@@ -183,8 +192,13 @@ The compare highlights every line of each thread; hovering a thread card highlig
 
 A thread page shows the code around the thread the same way in Diff, Then and At step: the commented
 lines with a few lines around them, the ⋯ bars expand more, and "whole file" / "all changes in this
-file" switch the scope; a line above the code says what is shown. Selecting lines there starts a new
-thread or quotes them into the reply; lines of an older version can be [restored](#restore-as-in-vn). A Markdown file shows rendered here too (by `compare.markdown`), with the same
+file" switch the scope; a line above the code says what is shown. Comments start there as on the Changes
+page, in the code and in rendered Markdown alike: a click on a line or a block puts the cursor on it, `+`
+beside it, a drag over the line numbers or the keys below open the same box under the lines. It starts a new
+thread on them (on the version shown, the old side's lines on the old version), and offers **❝ Quote in
+reply** (the lines with their path and numbers go into this thread's reply box), **Copy link** (the Changes
+page of the versions shown, at those lines) and, on an older version, [restore](#restore-as-in-vn) in this
+thread. A Markdown file shows rendered here too (by `compare.markdown`), with the same
 **‹/› code** / **¶ rendered** button, which stays as you pick steps in the timeline: the blocks the code shows for
 the scope picked ("around the thread", "all changes in this file", "whole file"), the rest folded into the same bars as
 on the Changes page, shared with the thread's code; the thread's blocks marked; and two versions old beside new (or
@@ -218,8 +232,8 @@ Drafts page or in its thread.
   of the new side that now stand where the old ones were (on the old lines when the file is gone there), and takes
   what you typed in the box as its words.
 - On a thread page, Then and At step on an older version show the button above the code: it asks, in that thread, for
-  the thread's lines as they were then. Lines selected on an older version (the old side of Diff, or Then) offer it
-  next to **Quote in reply**.
+  the thread's lines as they were then. Lines picked on an older version (the old side of Diff, or Then) offer it
+  in their comment box, next to **Quote in reply**, with what you typed in the box.
 
 A comment with a restore request shows the old text as a small code block labelled "Restore as in v2 · lines 40–44",
 in the thread and on the Drafts page. The agent gets it as `restore: { path, range, version, text }` on the comment
@@ -260,7 +274,8 @@ To share lines, select them (a drag, `+`, or `V` and `i` on the keyboard) and pr
 box, or press `Space g Y`: in visual mode it copies the selection, otherwise the line or rendered block under
 the cursor. The link is the full address with the range of versions, the review, the file, the lines and the
 side, and no token: like the other links, it opens in the browser that opened the URL `stet serve` printed,
-through the session cookie.
+through the session cookie. In a thread's code the link names the versions it shows; lines of Then or At step (one
+version) open in that file's preview.
 
 ## Folded test files
 
