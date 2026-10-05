@@ -337,13 +337,19 @@ export interface BlameRoundDto {
   version: number | null;
 }
 
-/** A thread the agent answered `fixed` with the code of this origin, anchored on the line there. */
+/**
+ * A thread the agent answered with the code of this origin. `match`, strongest first: `anchor`, a `fixed`
+ * reply on a thread anchored on the line there; `named`, a `fixed` or `answered` reply that names the file
+ * (and the line, when it gives lines); `file`, a `fixed` reply on a thread anchored in the same file.
+ * A line gets the threads of its strongest kind only.
+ */
 export interface BlameThreadDto {
   id: number;
   title: string;
   status: "open" | "resolved";
-  /** The agent's `fixed` reply, its body cut short. */
-  reply: { id: number; body: string; at: string };
+  match: "anchor" | "named" | "file";
+  /** The agent's reply that matched, its body cut short. */
+  reply: { id: number; intent: "fixed" | "answered"; body: string; at: string };
 }
 
 /** Consecutive lines with the same origin and the same threads. */

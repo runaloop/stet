@@ -6,7 +6,7 @@ import { linesAt } from "./placement.ts";
 import { firstLine, placementsAt, resolveRef, submissionTimes, threadSummaries, versionRows } from "./service.ts";
 import { getSnapshot } from "./snapshot.ts";
 import type { CommentRow, ReviewRow, VersionRow } from "./store/db.ts";
-import type { BlameDto, BlameOriginDto, BlameRoundDto, BlameRunDto, BlameThreadDto, SubmissionDto } from "./types.ts";
+import type { BlameDto, BlameOriginDto, BlameRoundDto, BlameRunDto, BlameThreadDto, Range, SubmissionDto, ThreadSummary } from "./types.ts";
 
 /**
  * Snapshots sit on the branch HEAD of their time, not on each other, so `git blame` on one cannot tell the
@@ -133,11 +133,11 @@ function parsePorcelain(text: string): Blamed[] {
 }
 
 /**
- * The versions an agent's `fixed` reply may have brought: the next one, as on the thread's timeline ("now"
- * before it exists), and also the version it was written on when the code was that version's, for an agent
- * that handed over the version before replying.
+ * The versions an agent's reply may have brought: the next one, as on the thread's timeline ("now" before it
+ * exists), and also the version it was written on when the code was that version's, for an agent that handed
+ * over the version before replying.
  */
-function fixedIn(ctx: Ctx, versions: VersionRow[], c: CommentRow): string[] {
+function landedIn(ctx: Ctx, versions: VersionRow[], c: CommentRow): string[] {
   const on = versions.find((v) => v.id === c.version_id) ?? null;
   const next = versions.find((v) => v.number > (on?.number ?? 0));
   const out = [next ? `v${next.number}` : "now"];
@@ -146,23 +146,108 @@ function fixedIn(ctx: Ctx, versions: VersionRow[], c: CommentRow): string[] {
   return out;
 }
 
-/** The last published `fixed` reply of each thread, by the origin (`vN`, `now`) it may have brought. */
-function fixesByOrigin(ctx: Ctx, review: ReviewRow, versions: VersionRow[]): Map<string, Map<number, CommentRow>> {
+/** The agent's published `fixed` and `answered` replies by the origin (`vN`, `now`) they may have brought, then by thread, oldest first. */
+function repliesByOrigin(ctx: Ctx, review: ReviewRow, versions: VersionRow[]): Map<string, Map<number, CommentRow[]>> {
   const rows = ctx.store.db
     .query<CommentRow, [number]>(
       `SELECT c.* FROM comments c JOIN threads t ON t.id = c.thread_id
-       WHERE t.review_id = ? AND c.role = 'agent' AND c.intent = 'fixed' AND c.published_seq IS NOT NULL ORDER BY c.id`,
+       WHERE t.review_id = ? AND c.role = 'agent' AND c.intent IN ('fixed', 'answered') AND c.published_seq IS NOT NULL ORDER BY c.id`,
     )
     .all(review.id);
-  const out = new Map<string, Map<number, CommentRow>>();
+  const out = new Map<string, Map<number, CommentRow[]>>();
   for (const c of rows) {
-    for (const key of fixedIn(ctx, versions, c)) {
-      const byThread = out.get(key) ?? new Map<number, CommentRow>();
-      byThread.set(c.thread_id, c);
+    for (const key of landedIn(ctx, versions, c)) {
+      const byThread = out.get(key) ?? new Map<number, CommentRow[]>();
+      byThread.set(c.thread_id, [...(byThread.get(c.thread_id) ?? []), c]);
       out.set(key, byThread);
     }
   }
   return out;
+}
+
+const NAME_EDGE = /[\p{L}\p{N}_./-]/u;
+const NAME_GOES_ON = /^([\p{L}\p{N}_/-]|\.[\p{L}\p{N}_])/u;
+
+/**
+ * Where `body` names a file by one of `names`: the line ranges written right after a name (`a.md:8`,
+ * `a.md:8-14`), an empty list for names without lines, null when it does not name the file.
+ */
+export function mentionedLines(body: string, names: string[]): Range[] | null {
+  let named = false;
+  const ranges: Range[] = [];
+  for (const name of names) {
+    for (let i = body.indexOf(name); i >= 0; i = body.indexOf(name, i + 1)) {
+      const rest = body.slice(i + name.length);
+      if (NAME_EDGE.test(body[i - 1] ?? "") || NAME_GOES_ON.test(rest)) continue;
+      named = true;
+      const m = /^:(\d+)(?:\s*[-–]\s*(\d+))?/.exec(rest);
+      if (!m) continue;
+      const a = Number(m[1]);
+      const b = m[2] ? Number(m[2]) : a;
+      ranges.push({ start: Math.min(a, b), end: Math.max(a, b) });
+    }
+  }
+  return named ? ranges : null;
+}
+
+/** The names a reply may use for `path`: the path, and its basename when no other file at that commit has it. */
+async function namesOf(cwd: string, sha: string, path: string, basenames: Map<string, Promise<Map<string, number>>>): Promise<string[]> {
+  const base = path.slice(path.lastIndexOf("/") + 1);
+  if (base === path || base.length < 3) return [path];
+  let counts = basenames.get(sha);
+  if (!counts) {
+    counts = git(["ls-tree", "-r", "-z", "--name-only", "--full-tree", sha], { cwd }).then((out) => {
+      const m = new Map<string, number>();
+      for (const p of out.split("\0")) if (p) m.set(p.slice(p.lastIndexOf("/") + 1), (m.get(p.slice(p.lastIndexOf("/") + 1)) ?? 0) + 1);
+      return m;
+    });
+    basenames.set(sha, counts);
+  }
+  return (await counts).get(base) === 1 ? [path, base] : [path];
+}
+
+interface OriginThreads {
+  replies: Map<number, CommentRow[]>;
+  titles: Map<number, ThreadSummary>;
+  /** Where each thread is anchored at the origin; absent when its code is gone there. */
+  placed: Map<number, { path: string; start: number; end: number }>;
+  names: Map<string, string[]>;
+}
+
+function threadDto(t: ThreadSummary, c: CommentRow, match: BlameThreadDto["match"]): BlameThreadDto {
+  return {
+    id: t.id,
+    title: t.title,
+    status: t.status,
+    match,
+    reply: { id: c.id, intent: c.intent as "fixed" | "answered", body: gist(c.body) ?? firstLine(c.body), at: c.created_at },
+  };
+}
+
+/** The threads of the strongest kind that match a line: anchored on it, else naming it, else in its file. */
+function matchLine(o: OriginThreads, path: string, line: number, mentions: (c: CommentRow, names: string[]) => Range[] | null): BlameThreadDto[] {
+  const kinds: BlameThreadDto[][] = [[], [], []];
+  for (const [id, replies] of o.replies) {
+    const t = o.titles.get(id);
+    if (!t) continue;
+    const fix = replies.findLast((c) => c.intent === "fixed");
+    const at = o.placed.get(id);
+    if (fix && at && at.path === path && at.start <= line && line <= at.end) {
+      kinds[0]!.push(threadDto(t, fix, "anchor"));
+      continue;
+    }
+    const names = o.names.get(path) ?? [path];
+    const naming = replies.findLast((c) => {
+      const ranges = mentions(c, names);
+      return ranges !== null && (!ranges.length || ranges.some((r) => r.start <= line && line <= r.end));
+    });
+    if (naming) {
+      kinds[1]!.push(threadDto(t, naming, "named"));
+      continue;
+    }
+    if (fix && (at?.path ?? t.path) === path) kinds[2]!.push(threadDto(t, fix, "file"));
+  }
+  return (kinds.find((k) => k.length) ?? []).sort((a, b) => a.id - b.id);
 }
 
 function roundOf(submissions: SubmissionDto[], at: string | null): BlameRoundDto | null {
@@ -237,38 +322,39 @@ export async function blame(ctx: Ctx, review: ReviewRow, input: BlameInput): Pro
     return o;
   };
 
-  const fixes = fixesByOrigin(ctx, review, versions);
-  const threadsAt = new Map<string, { thread: BlameThreadDto; path: string; start: number; end: number }[]>();
+  const answers = repliesByOrigin(ctx, review, versions);
+  const basenames = new Map<string, Promise<Map<string, number>>>();
+  const threadsAt = new Map<string, OriginThreads>();
   for (const summary of new Set(blamed.map((b) => b.summary))) {
     const o = originOf(summary);
-    const replies = fixes.get(summary);
+    const replies = answers.get(summary);
     if (o.origin.kind === "base" || !o.sha || !replies) continue;
     const ids = [...replies.keys()];
     const placed = await placementsAt(ctx, review, o.sha, null, { pinnedNow: o.origin.kind === "now" ? o.sha : null, ids });
-    const titles = new Map((await threadSummaries(ctx, review, { ids, withAnchor: false })).map((t) => [t.id, t]));
-    const list: { thread: BlameThreadDto; path: string; start: number; end: number }[] = [];
-    for (const p of placed) {
-      const t = titles.get(p.threadId);
-      const reply = replies.get(p.threadId)!;
-      if (!t) continue;
-      list.push({
-        thread: { id: t.id, title: t.title, status: t.status, reply: { id: reply.id, body: gist(reply.body) ?? firstLine(reply.body), at: reply.created_at } },
-        path: p.path,
-        start: p.range.start,
-        end: p.range.end,
-      });
+    const names = new Map<string, string[]>();
+    for (const path of new Set(blamed.filter((b) => b.summary === summary).map((b) => b.origPath))) {
+      names.set(path, await namesOf(cwd, o.sha, path, basenames));
     }
-    list.sort((a, b) => a.thread.id - b.thread.id);
-    threadsAt.set(summary, list);
+    threadsAt.set(summary, {
+      replies,
+      titles: new Map((await threadSummaries(ctx, review, { ids, withAnchor: false })).map((t) => [t.id, t])),
+      placed: new Map(placed.map((p) => [p.threadId, { path: p.path, start: p.range.start, end: p.range.end }])),
+      names,
+    });
   }
+  const mentionMemo = new Map<string, Range[] | null>();
+  const mentions = (c: CommentRow, names: string[]) => {
+    const k = `${c.id}\0${names[0]}`;
+    if (!mentionMemo.has(k)) mentionMemo.set(k, mentionedLines(c.body, names));
+    return mentionMemo.get(k)!;
+  };
 
   let key = "";
   for (const b of blamed) {
     const o = originOf(b.summary);
-    const threads = (threadsAt.get(b.summary) ?? [])
-      .filter((t) => t.path === b.origPath && t.start <= b.origLine && b.origLine <= t.end)
-      .map((t) => t.thread);
-    const k = `${b.summary}|${threads.map((t) => t.id).join(",")}`;
+    const at = threadsAt.get(b.summary);
+    const threads = at ? matchLine(at, b.origPath, b.origLine, mentions) : [];
+    const k = `${b.summary}|${threads.map((t) => `${t.id}${t.match}`).join(",")}`;
     const last = dto.runs[dto.runs.length - 1];
     if (last && k === key && last.end === b.line - 1) {
       last.end = b.line;

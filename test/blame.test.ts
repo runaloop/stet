@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { blame } from "../src/core/blame.ts";
+import { blame, mentionedLines } from "../src/core/blame.ts";
 import { ensureReview, openContext, type Ctx } from "../src/core/context.ts";
 import { addReply, addThread, createVersion, submitReview } from "../src/core/service.ts";
 import { clearNowCache } from "../src/core/snapshot.ts";
@@ -13,7 +13,7 @@ const brief = (d: BlameDto) =>
   d.runs.map((r) => {
     const from = r.origin.kind === "version" ? `v${r.origin.version}` : r.origin.kind;
     const round = r.round ? ` r${r.round.index}` : "";
-    const threads = r.threads.length ? ` #${r.threads.map((t) => t.id).join(",#")}` : "";
+    const threads = r.threads.length ? ` ${r.threads.map((t) => `#${t.id}${t.match === "anchor" ? "" : `:${t.match}`}`).join(",")}` : "";
     return `${r.start}-${r.end} ${from}${round}${threads}`;
   });
 
@@ -73,7 +73,7 @@ describe("blame across versions and rounds", () => {
     expect(fix.origin).toMatchObject({ kind: "version", version: 3, label: "fixes for review 2" });
     expect(fix.round).toMatchObject({ index: 2, verdict: "changes", version: 2 });
     expect(fix.threads).toEqual([
-      { id: second, title: "cache invalidation on logout", status: "open", reply: { id: expect.any(Number), body: "Only the user's entry goes now. The rest stays.", at: expect.any(String) } },
+      { id: second, title: "cache invalidation on logout", status: "open", match: "anchor", reply: { id: expect.any(Number), intent: "fixed", body: "Only the user's entry goes now. The rest stays.", at: expect.any(String) } },
     ]);
   });
 
@@ -137,6 +137,89 @@ describe("blame across versions and rounds", () => {
     await expect(blame(agent, review, { path: "a.kt", start: 30, end: 31 })).rejects.toThrow("outside 'a.kt'");
     await expect(blame(agent, review, { path: "nope.kt", start: 1, end: 1 })).rejects.toThrow("text file 'nope.kt' at v4 not found");
     await expect(blame(agent, review, { path: "a.kt", start: 1, end: 1, at: "base" })).rejects.toThrow("--at takes a version number");
+  });
+});
+
+describe("mentionedLines", () => {
+  test("a name with lines after it, a name alone, and names that only look alike", () => {
+    expect(mentionedLines("See `B-verdict.md:8-14` and B-verdict.md:20.", ["B-verdict.md"])).toEqual([{ start: 8, end: 14 }, { start: 20, end: 20 }]);
+    expect(mentionedLines("Fixed (Foo.kt:42).", ["Foo.kt"])).toEqual([{ start: 42, end: 42 }]);
+    expect(mentionedLines("lines a.md:14–8", ["a.md"])).toEqual([{ start: 8, end: 14 }]);
+    expect(mentionedLines("В начале `B-verdict.md` записано то же.", ["docs/B-verdict.md", "B-verdict.md"])).toEqual([]);
+    expect(mentionedLines("in docs/B-verdict.md.", ["docs/B-verdict.md"])).toEqual([]);
+    expect(mentionedLines("in old/B-verdict.md and B-verdict.md.bak and xB-verdict.md", ["B-verdict.md"])).toBeNull();
+    expect(mentionedLines("nothing here", ["a.md"])).toBeNull();
+  });
+});
+
+describe("threads matched away from their anchor", () => {
+  const f = new Fixture();
+  let agent: Ctx;
+  let review: ReviewRow;
+  const ids: Record<string, number> = {};
+
+  beforeAll(async () => {
+    f.write("docs/B-verdict.md", lines(80, "verdict"));
+    f.write("docs/00-overview.md", lines(20, "overview"));
+    f.write("docs/notes.md", lines(5, "notes"));
+    f.write("archive/notes.md", lines(5, "old notes"));
+    f.commit("base");
+    f.git(["checkout", "-q", "-b", "docs"]);
+    const reviewer = await openContext({ cwd: f.root, role: "reviewer", author: "alice" });
+    agent = await openContext({ cwd: f.root, role: "agent", author: "claude" });
+    review = await ensureReview(agent);
+    f.write("docs/B-verdict.md", edit(lines(80, "verdict"), (l) => (l[76] = "verdict: B")));
+    await createVersion(agent, review);
+    const thread = async (key: string, path: string, start: number, end: number, body: string) => {
+      ids[key] = (await addThread(reviewer, review, { path, start, end, at: "1", body, draft: true })).id;
+    };
+    await thread("verdict", "docs/B-verdict.md", 76, 78, "Why B? Write the decision down");
+    await thread("overview", "docs/00-overview.md", 5, 5, "Is the table in sync with the verdict?");
+    await thread("row", "docs/00-overview.md", 15, 15, "Wrong row");
+    submitReview(reviewer, review);
+
+    f.write("docs/B-verdict.md", edit(lines(80, "verdict"), (l) => {
+      l[76] = "verdict: B";
+      for (let i = 7; i < 14; i++) l[i] = `decision ${i + 1}`;
+    }));
+    f.write("docs/00-overview.md", edit(lines(20, "overview"), (l) => {
+      for (let i = 2; i < 7; i++) l[i] = `table ${i + 1}`;
+      l[14] = "right row";
+    }));
+    f.write("docs/notes.md", edit(lines(5, "notes"), (l) => (l[1] = "a note")));
+    clearNowCache();
+    await addReply(agent, review, ids.verdict!, { body: "Wrote the decision at the top.", intent: "fixed" });
+    await addReply(agent, review, ids.overview!, {
+      body: "В начале `B-verdict.md:8-10` и в таблице `00-overview.md` записано то же; see notes.md.",
+      intent: "answered",
+    });
+    await addReply(agent, review, ids.row!, { body: "Fixed the row.", intent: "fixed" });
+    await createVersion(agent, review);
+  }, 60_000);
+
+  afterAll(() => f.cleanup());
+
+  test("named lines win over the same file; the rest of the fix's file is `file`", async () => {
+    const d = await blame(agent, review, { path: "docs/B-verdict.md", start: 7, end: 15 });
+    expect(brief(d)).toEqual(["7-7 base", `8-10 v2 r1 #${ids.overview}:named`, `11-14 v2 r1 #${ids.verdict}:file`, "15-15 base"]);
+    expect(d.runs[1]!.threads[0]).toMatchObject({ match: "named", reply: { intent: "answered" } });
+    expect(d.runs[2]!.threads[0]).toMatchObject({ match: "file", reply: { intent: "fixed", body: "Wrote the decision at the top." } });
+  });
+
+  test("a name without lines covers the whole file, and an anchor wins over it", async () => {
+    const d = await blame(agent, review, { path: "docs/00-overview.md", start: 3, end: 15 });
+    expect(brief(d)).toEqual([`3-7 v2 r1 #${ids.overview}:named`, "8-14 base", `15-15 v2 r1 #${ids.row}`]);
+  });
+
+  test("a basename two files share names neither", async () => {
+    expect(brief(await blame(agent, review, { path: "docs/notes.md", start: 2, end: 2 }))).toEqual(["2-2 v2 r1"]);
+  });
+
+  test("the human output says how a thread matched when it is not its anchor", async () => {
+    const d = await blame(agent, review, { path: "docs/B-verdict.md", start: 8, end: 14 });
+    expect(formatBlame(d)).toBe(
+      [`8-10   v2 (round 1) · answered #${ids.overview} "Is the table in sync with the verdict?" (named)`, `11-14  v2 (round 1) · fixed #${ids.verdict} "Why B? Write the decision down" (same file)`].join("\n"),
+    );
   });
 });
 

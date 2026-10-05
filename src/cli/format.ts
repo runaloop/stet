@@ -122,6 +122,8 @@ export function formatVersions(vs: VersionDto[]): string {
     .join("\n");
 }
 
+const BLAME_MATCH = { anchor: "", named: dim(" (named)"), file: dim(" (same file)") } as const;
+
 export function formatBlame(d: BlameDto): string {
   if (!d.runs.length) return dim(`${d.path} is empty at ${d.at.label}`);
   const width = Math.max(...d.runs.map((r) => range(r).length));
@@ -129,7 +131,7 @@ export function formatBlame(d: BlameDto): string {
     .map((r) => {
       const o = r.origin;
       const from = o.kind === "version" ? bold(`v${o.version}`) + (r.round ? ` (round ${r.round.index})` : "") : o.kind === "now" ? yellow("now") : dim("base");
-      const threads = r.threads.map((t) => ` · fixed ${cyan(`#${t.id}`)} "${t.title}"`).join("");
+      const threads = r.threads.map((t) => ` · ${t.reply.intent} ${cyan(`#${t.id}`)} "${t.title}"${BLAME_MATCH[t.match]}`).join("");
       return `${range(r).padEnd(width)}  ${from}${threads}`;
     })
     .join("\n");
