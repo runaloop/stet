@@ -1,3 +1,5 @@
+import type { Region } from "./types.ts";
+
 const TYPES: Record<string, string> = {
   png: "image/png",
   jpg: "image/jpeg",
@@ -118,3 +120,6 @@ export function svgSize(text: string): ImageSize | null {
 export function sizeOf(path: string, bytes: Uint8Array): ImageSize | null {
   return isSvg(path) ? svgSize(new TextDecoder().decode(bytes.subarray(0, 64 * 1024))) : imageSize(bytes);
 }
+
+/** `w×h at x,y of iw×ih`, in pixels. */
+export const regionText = (r: Region) => `${r.w}×${r.h} at ${r.x},${r.y} of ${r.iw}×${r.ih}`;

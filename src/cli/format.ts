@@ -1,4 +1,7 @@
-import type { CommentDto, CompareDto, Region, StatusDto, ThreadDetail, ThreadSummary, VersionDto } from "../core/types.ts";
+import { regionText } from "../core/image.ts";
+import type { CommentDto, CompareDto, StatusDto, ThreadDetail, ThreadSummary, VersionDto } from "../core/types.ts";
+
+export { regionText };
 
 const tty = process.stdout.isTTY === true;
 const c = (code: string) => (s: string) => (tty && !process.env.NO_COLOR ? `\x1b[${code}m${s}\x1b[0m` : s);
@@ -10,9 +13,6 @@ const yellow = c("33");
 const cyan = c("36");
 
 const range = (r: { start: number; end: number }) => (r.start === r.end ? `${r.start}` : `${r.start}-${r.end}`);
-
-/** `w×h at x,y of iw×ih`, in pixels. */
-export const regionText = (r: Region) => `${r.w}×${r.h} at ${r.x},${r.y} of ${r.iw}×${r.ih}`;
 
 function stateBadge(t: ThreadSummary): string {
   const a = t.anchor;
