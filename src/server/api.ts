@@ -265,6 +265,18 @@ route("GET", "/api/placements", async (s, _req, url) => {
   return svc.placementsAt(s.ctx, r, sha, url.searchParams.get("path") || null, { pinnedNow: await pinned(s, r) });
 });
 
+route("GET", "/api/blame", async (s, _req, url) => {
+  const r = review(s, url);
+  const q = url.searchParams;
+  const path = q.get("path") ?? "";
+  if (!path || path.startsWith("/") || path.split("/").includes("..")) throw usage("bad path");
+  const from = q.get("from");
+  const to = q.get("to");
+  const start = from ? num(from, "from") : undefined;
+  const { blame } = await import("../core/blame.ts");
+  return blame(s.ctx, r, { path, start, end: to ? num(to, "to") : start, at: q.get("at") || undefined, pinnedNow: await pinned(s, r) });
+});
+
 route("GET", "/api/cursors", async (s, _req, url) => {
   const r = review(s, url);
   return { reviewed: svc.reviewed(s.ctx, r), viewed: svc.viewedKeys(s.ctx, r) };

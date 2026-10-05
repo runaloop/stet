@@ -155,3 +155,19 @@ test("an approval through the API keeps or resolves the open threads, and the re
   expect(s.lastSubmission).toMatchObject({ verdict: "approved", version: approved.version });
   expect(s.counts.open).toBe(0);
 });
+
+test("blame names each line's version, at the latest one or at the pinned now", async () => {
+  const runs = async (q: string) =>
+    ((await (await api(`/api/blame?${q}`)).json()).runs as { start: number; end: number; origin: { kind: string; version: number | null } }[]).map(
+      (r) => `${r.start}-${r.end} ${r.origin.kind === "version" ? `v${r.origin.version}` : r.origin.kind}`,
+    );
+  expect(await runs("path=a.kt&from=19&to=25")).toEqual(["19-20 base", "21-21 v1", "22-25 v2"]);
+  expect(await runs("path=a.kt&from=21&at=1")).toEqual(["21-21 v1"]);
+  f.write("a.kt", lines(26));
+  await api("/api/now/refresh", { method: "POST" });
+  expect(await runs("path=a.kt&from=25&to=26&at=now")).toEqual(["25-25 v2", "26-26 now"]);
+  expect((await api("/api/blame?path=../a.kt&from=1")).status).toBe(400);
+  expect((await api("/api/blame?path=a.kt&from=0")).status).toBe(400);
+  expect((await api("/api/blame?path=a.kt&from=1&at=base")).status).toBe(400);
+  expect((await api("/api/blame?path=gone.kt&from=1")).status).toBe(404);
+});
