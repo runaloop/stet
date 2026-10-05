@@ -7,7 +7,7 @@ import { useBlob } from "../components/useBlob.ts";
 import { ago, Badge, Kbd, rangeText, ThreadBadges, threadRefs, ThreadRef, StateBadge, whereText } from "../components/Bits.tsx";
 import { DiffView } from "../components/Code.tsx";
 import { ImageArea } from "../components/ImageView.tsx";
-import { RenderedMarkdown, type MdShown, type MdThread } from "../components/MarkdownView.tsx";
+import { RenderedMarkdown, spansOf, type MdThread } from "../components/MarkdownView.tsx";
 import { markdownView, type FileView } from "../compare.ts";
 import { Composer } from "../components/Composer.tsx";
 import { Conversation, unchangedSince } from "../components/Conversation.tsx";
@@ -21,6 +21,8 @@ import { latchNew, openAtNews } from "../msgs.ts";
 import { stepThread, stepUnread } from "../lib/nav.ts";
 import { isMarkdown } from "../lib/markdown.ts";
 import { filePatch, regionPatch } from "../lib/region.ts";
+import { CHUNK, expansionOf, NOTHING, revealedPatch, textLines, withSpan, type Reveal } from "../lib/reveal.ts";
+import type { Span } from "../lib/cursor.ts";
 import { clampStep, diffPair } from "../lib/timeline.ts";
 import {
   codeMode,
@@ -56,10 +58,6 @@ type Scope = "region" | "changes" | "file";
 /** A Markdown file's code rendered or as code, kept while you step through the timeline and go from thread to thread. */
 const mdView = signal<FileView | null>(null);
 
-const spansOf = (hunks: FileDiffMetadata["hunks"]): MdShown => ({
-  old: hunks.map((h) => ({ start: h.deletionStart, end: h.deletionStart + h.deletionCount - 1 })),
-  new: hunks.map((h) => ({ start: h.additionStart, end: h.additionStart + h.additionCount - 1 })),
-});
 type Anno = { kind: "marker" | "new" | "thread"; id: number; state: string };
 
 function hydrated(patch: string, key: string, oldFile: { name: string; contents: string }, newFile: { name: string; contents: string }): FileDiffMetadata | null {
@@ -109,12 +107,26 @@ function CodeBlock({ d, from, to, here }: { d: Detail; from: TimelineStepDto; to
     [region, oldFile, newFile],
   );
 
-  const rendered = !!to.path && isMarkdown(to.path) && (mdView.value ?? markdownView.value) === "rendered";
+  const md = !!to.path && isMarkdown(to.path);
+  const rendered = md && (mdView.value ?? markdownView.value) === "rendered";
+  // a Markdown file: every change of it, and the lines its code and its rendered text show alike, the scope's and
+  // those opened on the bars between them
+  const [opened, setOpened] = useState<Reveal>(NOTHING);
   const whole = useMemo(() => {
-    if (!rendered || oldText === null || newText === null || !from.path || !to.path) return null;
+    if (!md || oldText === null || newText === null || !from.path || !to.path) return null;
     const patch = single ? null : filePatch({ path: from.path, text: oldText }, { path: to.path, text: newText });
     return (patch ? parsePatchFiles(patch, `md-${d.thread.id}-${from.sha}-${to.sha}`)[0]?.files[0] : null) ?? { hunks: [] };
-  }, [rendered, oldText, newText, from.path, to.path, single]);
+  }, [md, oldText, newText, from.path, to.path, single]);
+  const shared = useMemo(() => {
+    if (!whole || !oldFile || !newFile || !from.path || !to.path || scope === "file") return null;
+    const base = scope === "region" ? (fileDiff ? spansOf(fileDiff.hunks) : null) : undefined;
+    if (base === null) return null;
+    const o = { path: from.path, text: oldFile.contents };
+    const n = { path: to.path, text: newFile.contents };
+    const patch = revealedPatch(o, n, whole.hunks, opened, base) ?? filePatch(o, n);
+    return patch ? hydrated(patch, `md-${d.thread.id}-${from.sha}-${to.sha}-${scope}-${JSON.stringify(base)}-${JSON.stringify(opened)}`, oldFile, newFile) : null;
+  }, [whole, oldFile, newFile, scope, fileDiff, opened]);
+  const open = (span: Span | null) => span && setOpened((r) => withSpan(r, span));
   const mdHost = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!rendered) return;
@@ -125,7 +137,8 @@ function CodeBlock({ d, from, to, here }: { d: Detail; from: TimelineStepDto; to
   const p = here.pending;
   const mine = p && p.diffSide && (single ? p.sha === to.sha : (p.side === "new" && p.sha === to.sha) || (p.side === "old" && p.sha === from.sha)) ? p : null;
   const toEnd = to.range?.end ?? 0;
-  const shownNew = scope === "region" && fileDiff ? fileDiff.hunks.map((h) => [h.additionStart, h.additionStart + h.additionCount - 1] as const) : null;
+  const shownHunks = shared ?? (scope === "region" ? fileDiff : null);
+  const shownNew = shownHunks ? shownHunks.hunks.map((h) => [h.additionStart, h.additionStart + h.additionCount - 1] as const) : null;
   const others = usePlacements(to.range ? to.sha : null, to.path).filter(
     (x) => x.threadId !== d.thread.id && (!shownNew || shownNew.some(([a, b]) => x.range.end >= a && x.range.end <= b)),
   );
@@ -202,7 +215,8 @@ function CodeBlock({ d, from, to, here }: { d: Detail; from: TimelineStepDto; to
     ...others.map((x) => ({ threadId: x.threadId, side: "additions" as const, range: x.range, state: x.state })),
   ];
   const cardOf = (x: MdThread) => (x.threadId !== d.thread.id ? <ThreadMini id={x.threadId} state={x.state} /> : x.side === "additions" ? <Marker id={d.thread.id} step={to} /> : null);
-  const shown = scope === "file" ? null : scope === "changes" ? (whole ? spansOf(whole.hunks) : null) : fileDiff ? spansOf(fileDiff.hunks) : null;
+  const expand = (hunk: number, direction: "up" | "down" | "both", count: number | undefined) =>
+    open(shared ? expansionOf(shared.hunks, textLines(newText).lines.length, hunk, direction, count ?? CHUNK) : null);
   const scopes: [Scope, string][] = [
     ["region", "around the thread"],
     ...(!single && oldText !== newText ? ([["changes", "all changes in this file"]] as [Scope, string][]) : []),
@@ -213,7 +227,7 @@ function CodeBlock({ d, from, to, here }: { d: Detail; from: TimelineStepDto; to
       <div class="code-label">
         <span>{label}</span>
         <span class="spacer" />
-        {scope !== "region" ? null : region?.complete && !rendered ? (
+        {scope !== "region" ? null : region?.complete || md ? (
           <span class="hint">the ⋯ bars above and below show more lines</span>
         ) : (
           <button class="btn ghost small" title="other changes in this file are left out; this shows more of the code around the thread" onClick={() => setMore(more + 20)}>
@@ -232,7 +246,7 @@ function CodeBlock({ d, from, to, here }: { d: Detail; from: TimelineStepDto; to
         ) : null}
       </div>
       {rendered ? (
-        whole && (scope !== "region" || fileDiff) ? (
+        whole && (scope === "file" || shared) ? (
           <div class="md-anno" ref={mdHost}>
             <RenderedMarkdown
               file={to.path}
@@ -241,13 +255,16 @@ function CodeBlock({ d, from, to, here }: { d: Detail; from: TimelineStepDto; to
               now={{ sha: to.sha, path: to.path, label: to.label }}
               split={!single && diffStyle.value === "split"}
               threads={mdThreads}
-              shown={shown}
+              shown={shared ? spansOf(shared.hunks) : null}
+              onReveal={open}
               cardOf={cardOf}
             />
           </div>
         ) : (
           <div class="note">loading…</div>
         )
+      ) : shared ? (
+        <DiffView {...common} fileDiff={shared} onExpand={expand} />
       ) : scope === "changes" ? (
         <DiffView {...common} oldFile={oldFile} newFile={newFile} />
       ) : scope === "file" && !region?.complete ? (

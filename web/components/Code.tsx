@@ -88,6 +88,8 @@ export interface DiffViewProps<M> {
   expandUnchanged?: boolean;
   focus?: { line: number; side: SelectionSide };
   scroll?: boolean;
+  /** Takes over the "show more" bars between hunks: the lines come back as context of `fileDiff`. */
+  onExpand?: (hunk: number, direction: "up" | "down" | "both", count: number | undefined) => void;
 }
 
 export function DiffView<M>(props: DiffViewProps<M>) {
@@ -127,6 +129,12 @@ export function DiffView<M>(props: DiffViewProps<M>) {
     const fd = virtualizer
       ? new VirtualizedFileDiff<M>(options, virtualizer, undefined, workerPool())
       : new FileDiff<M>(options, workerPool());
+    const own = fd.expandHunk;
+    fd.expandHunk = (hunk, direction, count) => {
+      const take = latest.current.onExpand;
+      if (take) take(hunk, direction, count);
+      else own(hunk, direction, count);
+    };
     inst.current = fd;
     return () => {
       fd.cleanUp();
