@@ -1,7 +1,7 @@
 import type { SelectedLineRange } from "@pierre/diffs";
 import { useState } from "preact/hooks";
 import { api } from "../api.ts";
-import { compareData, compareNav, type PendingLines } from "../compare.ts";
+import { compareData, compareNav, copyLinesUrl, type PendingLines } from "../compare.ts";
 import { guard, notify, reloadAll, reviewId, route } from "../state.ts";
 import { canQuote, quoteLines } from "../quote.ts";
 import { rangeText } from "./Bits.tsx";
@@ -88,6 +88,14 @@ export function PendingBox({ p }: { p: PendingLines }) {
     <div class="new-thread inline">
       <div class="note">
         New thread on {where} · lines {rangeText({ start: lo(p.range), end: hi(p.range) })}
+        {" · or "}
+        <button
+          class="btn small copy-link"
+          title="copy a link that opens the Changes page at these lines, highlighted (Space g Y)"
+          onClick={() => void copyLinesUrl({ path: p.path, side: p.range.side === "deletions" ? "deletions" : "additions", start: lo(p.range), end: hi(p.range) })}
+        >
+          Copy link
+        </button>
       </div>
       <Composer
         storageKey={`new:${reviewId.value}:${from}..${to}:${p.path}:${p.range.side}:${p.range.start}-${p.range.end}`}

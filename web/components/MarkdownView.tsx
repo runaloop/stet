@@ -13,6 +13,7 @@ import {
   grepHits,
   hoverThread,
   isWhole,
+  linkedLines,
   peek,
   pendingLines,
   searchQuery,
@@ -513,6 +514,19 @@ export function RenderedMarkdown({ file, fd, old, now, split: splitWanted, threa
     if (anchor?.path === file && anchor.row >= 0) for (let k = Math.min(anchor.row, c.row); k <= Math.max(anchor.row, c.row); k++) mark(k, "md-visual");
     mark(c.row, "md-cursor");
   }, [c, anchor, layout]);
+
+  const linked = live && linkedLines.value?.path === file ? linkedLines.value : null;
+  useLayoutEffect(() => {
+    const g = grid.current;
+    if (!g || !layout || !linked) return;
+    const side: MdSide = linked.side === "deletions" ? "old" : "new";
+    // like the cursor, on both columns of a block that did not change
+    const els = stopsOn(layout.stops, side, linked.start, linked.end).stops.flatMap((k) => [...g.querySelectorAll(`[data-stop="${k}"]`)]);
+    for (const el of els) el.classList.add("md-linked");
+    return () => {
+      for (const el of els) el.classList.remove("md-linked");
+    };
+  }, [layout, linked]);
 
   useLayoutEffect(() => {
     const g = grid.current;

@@ -412,3 +412,52 @@ describe("request changes or approve", () => {
     expect(submits).toEqual([{ body: "" }]);
   });
 });
+
+describe("links to lines", () => {
+  const path = "src/a.kt";
+  let compare: typeof import("../../web/compare.ts");
+  const copied: string[] = [];
+
+  beforeAll(async () => {
+    const { parsePatchFiles } = await import("@pierre/diffs");
+    compare = await import("../../web/compare.ts");
+    Object.defineProperty(navigator, "clipboard", { value: { writeText: async (t: string) => void copied.push(t) }, configurable: true });
+    state.route.value = { name: "compare", from: "1", to: "2" };
+    compare.compareData.value = { from: { ref: "1", sha: "s1", label: "v1" }, to: { ref: "2", sha: "s2", label: "v2" }, files: [], placements: [], outside: [] };
+    compare.baseFiles.value = parsePatchFiles(`diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -1,4 +1,4 @@\n a\n-b\n+B!\n c\n d\n`, "t").flatMap((p) => p.files);
+  });
+
+  afterAll(() => {
+    compare.baseFiles.value = null;
+    compare.compareData.value = null;
+    compare.cursor.value = null;
+  });
+
+  test("Space g Y copies a link to the cursor line, in visual mode to the selection; removed lines say side=old; no token", async () => {
+    const copy = async () => {
+      for (const k of [" ", "g", "Y"]) key(k);
+      await tick();
+      return copied.pop();
+    };
+    compare.cursor.value = { path, row: 2 };
+    expect(await copy()).toBe("http://127.0.0.1:4000/#/compare/1..2?file=src%2Fa.kt&line=2&review=1");
+    compare.visualAnchor.value = { path, row: 4 };
+    compare.cursor.value = { path, row: 2 };
+    expect(await copy()).toBe("http://127.0.0.1:4000/#/compare/1..2?file=src%2Fa.kt&line=2-4&review=1");
+    expect(compare.visualAnchor.value).toBeNull();
+    compare.cursor.value = { path, row: 1 };
+    expect(await copy()).toBe("http://127.0.0.1:4000/#/compare/1..2?file=src%2Fa.kt&line=2&side=old&review=1");
+    expect(state.toast.value?.text).toBe("copied a link to src/a.kt:2 (removed lines)");
+  });
+
+  test("linked lines are highlighted until the cursor leaves them", () => {
+    compare.cursor.value = { path, row: 2 };
+    compare.linkedLines.value = { path, side: "additions", start: 2, end: 3 };
+    expect(compare.marksByPath.value.get(path)?.find((m) => m.tag === "linked")).toEqual({ side: "additions", start: 2, end: 3, tag: "linked" });
+    compare.cursor.value = { path, row: 3 };
+    expect(compare.linkedLines.value).not.toBeNull();
+    compare.cursor.value = { path, row: 4 };
+    expect(compare.linkedLines.value).toBeNull();
+    expect(compare.marksByPath.value.get(path)?.some((m) => m.tag === "linked") ?? false).toBe(false);
+  });
+});

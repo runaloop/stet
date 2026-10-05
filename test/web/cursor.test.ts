@@ -45,6 +45,21 @@ describe("cursor over the diff", () => {
     expect(s.range({ path: "a.kt", row: 1 }, { path: "a.kt", row: 3 })).toEqual({ path: "a.kt", side: "deletions", start: 2, end: 3 });
     expect(s.range({ path: "a.kt", row: 6 }, { path: "b.kt", row: 1 })).toEqual({ path: "a.kt", side: "additions", start: 21, end: 21 });
   });
+
+  test("holds says whether the cursor is on linked lines, on their side, or on a rendered block with lines among them", () => {
+    const s = space();
+    const a = (row: number) => ({ path: "a.kt", row });
+    const added = { path: "a.kt", side: "additions" as const, start: 20, end: 21 };
+    expect([5, 6, 7, 8].map((r) => s.holds(a(r), added))).toEqual([true, true, false, false]);
+    expect(s.holds({ path: "b.kt", row: 0 }, added)).toBe(false);
+    const removed = { path: "a.kt", side: "deletions" as const, start: 2, end: 3 };
+    expect([0, 1, 2, 3].map((r) => s.holds(a(r), removed))).toEqual([false, true, false, true]);
+    const md = new CursorSpace([
+      { fd: fs[0]!, collapsed: false, blocks: [{ old: { start: 1, end: 4 }, new: { start: 1, end: 4 }, changed: false, group: 0 }, { old: null, new: { start: 6, end: 9 }, changed: true, group: 1 }] },
+    ]);
+    expect([0, 1].map((r) => md.holds(a(r), { path: "a.kt", side: "additions", start: 4, end: 6 }))).toEqual([true, true]);
+    expect([0, 1].map((r) => md.holds(a(r), { path: "a.kt", side: "deletions", start: 5, end: 9 }))).toEqual([false, false]);
+  });
 });
 
 describe("fuzzy file finder", () => {

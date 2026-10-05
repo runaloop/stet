@@ -601,6 +601,7 @@ a.img-frame:hover, a.img-frame.hover, a.img-frame.focused { border-width: 3px; b
 .md li:is(.md-changed, .md-thread)::before { left: calc(-2em - 11px); }
 .md :is(tr, thead, tbody):is(.md-changed, .md-thread) { box-shadow: none; }
 .md :is(.md-visual, .md-picked) { background: color-mix(in srgb, var(--accent) 13%, transparent); }
+.md .md-linked { background-image: linear-gradient(light-dark(rgb(130 80 220 / 0.17), rgb(170 130 255 / 0.2)), light-dark(rgb(130 80 220 / 0.17), rgb(170 130 255 / 0.2))); }
 .md .md-cursor { outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset: 2px; border-radius: 3px; }
 .md-gutter { position: absolute; z-index: 2; display: flex; flex-direction: column; gap: 3px; padding: 1px 0 0 5px; }
 .md-gutter button { width: 20px; height: 18px; padding: 0; font: 600 12px/16px var(--mono); color: var(--fg-soft); background: var(--bg); border: 1px solid var(--border); border-radius: 4px; }

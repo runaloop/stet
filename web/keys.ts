@@ -1,6 +1,7 @@
 import { signal } from "@preact/signals";
 import {
   compareNav,
+  copyLinesUrl,
   cursor,
   cursorSpace,
   fileOpen,
@@ -173,6 +174,16 @@ function comment(): boolean {
   return true;
 }
 
+function copyLink(): boolean {
+  const c = cursor.value ?? startCursor();
+  if (!c) return true;
+  const range = cursorSpace.value.range(visualAnchor.value ?? c, c);
+  visualAnchor.value = null;
+  if (!range) notify("put the cursor on a line of code or a rendered block (a collapsed file or a picture has none)");
+  else void copyLinesUrl(range);
+  return true;
+}
+
 function visual(): boolean {
   const c = cursor.value ?? startCursor();
   if (!c) return true;
@@ -304,6 +315,7 @@ export const BINDINGS: Binding[] = [
   { keys: "<F3>", desc: "next search match", where: "compare", run: () => stepHit(1) || true },
   { keys: "<S-F3>", desc: "previous search match", where: "compare", run: () => stepHit(-1) || true },
   { keys: "<Space>gc", desc: "commits: pick the two ends of the compare", where: "compare", run: toggle(() => (commitPicker.value = !commitPicker.value)) },
+  { keys: "<Space>gY", desc: "copy a link to the cursor line or the selection", where: "compare", visual: true, run: copyLink },
   { keys: "<Esc>", desc: "close the commits or the preview, the selection, then the comment box", where: "compare", visual: true, run: toggle(() => {
     if (commitPicker.value) commitPicker.value = false;
     else if (peek.value) peek.value = null;

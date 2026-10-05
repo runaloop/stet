@@ -27,6 +27,7 @@ import {
   groupsOpen,
   imagePending,
   isCollapsed,
+  linkedLines,
   setFileView,
   fileView,
   markdownView,
@@ -385,18 +386,21 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     else view.current?.scrollTo(target);
   };
 
-  // Images and rendered Markdown measure their height only when drawn, and the ones drawn around a jump move it:
-  // jump again once they are measured, unless the reader scrolls, clicks or types meanwhile.
-  const settleOn = (path: string) => {
-    if (!isPixelImage(path) && !drawnFiles.peek().has(path)) return;
+  // Images, rendered Markdown and the thread cards under lines measure their height only when drawn, and the ones
+  // drawn around a jump move it: jump again once they are measured, unless the reader scrolls, clicks or types meanwhile.
+  const settle = (target: CodeViewScrollTarget) => {
     let moved = false;
     const stop = () => (moved = true);
     const events = ["wheel", "pointerdown", "keydown"] as const;
     for (const ev of events) window.addEventListener(ev, stop, { capture: true, passive: true });
-    for (const ms of [250, 700, 1400]) setTimeout(() => moved || view.current?.scrollTo({ type: "item", id: path, align: "start" }), ms);
+    for (const ms of [250, 700, 1400]) setTimeout(() => moved || view.current?.scrollTo(target), ms);
     setTimeout(() => {
       for (const ev of events) window.removeEventListener(ev, stop, { capture: true });
     }, 1500);
+  };
+
+  const settleOn = (path: string) => {
+    if (isPixelImage(path) || drawnFiles.peek().has(path)) settle({ type: "item", id: path, align: "start" });
   };
 
   const scrollToThread = (id: number) => {
@@ -421,9 +425,11 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     return true;
   };
 
-  const scrollToLine = (path: string, side: Side, line: number) => {
+  const scrollToLine = (path: string, side: Side, line: number, align: "center" | "start" = "center") => {
     const switched = codeOf(path);
-    scrollOrQueue({ type: "line", id: path, lineNumber: line, side, align: "center" }, reveal(path, true) || switched);
+    const target: CodeViewScrollTarget = { type: "line", id: path, lineNumber: line, side, align, offset: align === "start" ? 60 : 0 };
+    scrollOrQueue(target, reveal(path, true) || switched);
+    return target;
   };
 
   // A search hit in a rendered Markdown file goes to its block when the rendered text has the match; a match only the
@@ -470,7 +476,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
 
   // A block of rendered Markdown, by its place among the file's blocks (`data-stop`): drawn inside the file's one row,
   // so pierre cannot scroll to it. It is kept in place while pictures around it load.
-  const revealBlock = (path: string, stop: number, align: "nearest" | "center", side: Side = "additions") => {
+  const revealBlock = (path: string, stop: number, align: "nearest" | "center" | "start", side: Side = "additions") => {
     const h = host.current;
     if (!h) return;
     const find = () => stopElement(path, stop, side);
@@ -480,7 +486,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     const now = box ? box.top - h.getBoundingClientRect().top : null;
     const head = 72;
     const centered = box ? Math.max(head, (height - box.height) / 2) : height / 3;
-    let y = centered;
+    let y = align === "start" ? head + 24 : centered;
     if (align === "nearest" && box && now !== null) y = now < head ? head : now + box.height + 24 > height ? Math.max(head, height - box.height - 24) : now;
     if (!el) view.current?.scrollTo({ type: "item", id: path, align: "start" });
     placeAt(h, find, y, 1200);
@@ -659,7 +665,10 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     return to === c.row ? null : { path: c.path, row: to };
   };
 
-  const openTarget = (path: string, line: number | null, side: Side) => {
+  // A link: its lines with the cursor on the first and all of them highlighted, a range from near the top of the
+  // screen; in a rendered Markdown file the blocks that hold them. Lines of a Markdown file the diff folds are opened
+  // first; other lines the diff does not show open in the file's preview.
+  const openTarget = (path: string, line: number | null, side: Side, end = line, opened = false) => {
     const fd = files?.find((x) => x.name === path);
     const at = side === "deletions" ? data?.from : data?.to;
     if (!fd) {
@@ -670,38 +679,68 @@ export function CompareView({ from, to }: { from: string; to: string }) {
       scrollToFile(path);
       return;
     }
-    if (diffRows(fd).some((r) => (side === "deletions" ? r.old : r.new) === line)) {
-      const switching = drawnFiles.peek().has(path);
-      scrollToLine(path, side, line);
-      const place = () => {
+    const lines: LineRange = { path, side, start: line, end: Math.max(line, end ?? line) };
+    const align = lines.end > lines.start ? "start" : "center";
+    const shown = diffRows(fd)
+      .flatMap((r) => (side === "deletions" ? (r.kind !== "add" ? [r.old] : []) : r.kind !== "del" ? [r.new] : []))
+      .filter((n): n is number => n !== null && n >= lines.start && n <= lines.end);
+    if (new Set(shown).size <= lines.end - lines.start && isMarkdown(path) && !opened) {
+      const toNew = (n: number) => (side === "additions" ? n : newLineOf(fd.hunks, n));
+      void changeReveal(path, (r) => withSpan(r, { start: toNew(lines.start), end: toNew(lines.end) })).then(() => {
+        const again = () => latest.current.openTarget(path, line, side, lines.end, true);
+        if (compareFiles.peek()?.find((f) => f.name === path) !== fd) afterDraw.current.push(again);
+        else again();
+      });
+      return;
+    }
+    if (isMarkdown(path) && drawnFiles.peek().has(path)) {
+      reveal(path, true);
+      whenLaidOut(path, () => {
         const c = cursorSpace.peek().locate(path, side, line);
         if (c) cursor.value = c;
-      };
-      // a file drawn as a picture or rendered has its lines in the cursor only once it is drawn as code
-      if (switching) afterDraw.current.push(place);
-      else place();
-    } else if (at) peek.value = { path, sha: at.sha, label: at.label, line };
+        linkedLines.value = lines;
+        if (c) revealBlock(path, c.row, align, side);
+      });
+      return;
+    }
+    const first = shown.length ? shown.reduce((a, b) => Math.min(a, b)) : null;
+    if (first === null) {
+      if (at) peek.value = { path, sha: at.sha, label: at.label, line };
+      return;
+    }
+    const switching = drawnFiles.peek().has(path);
+    settle(scrollToLine(path, side, first, align));
+    const place = () => {
+      const c = cursorSpace.peek().locate(path, side, first);
+      if (c) cursor.value = c;
+      linkedLines.value = lines;
+    };
+    // a file drawn as a picture has its lines in the cursor only once it is drawn as code
+    if (switching) afterDraw.current.push(place);
+    else place();
   };
 
   const latest = useRef({ data, pending, from, to, rid, order, visible, startThread, createThread, cancelPending, scrollToThread, scrollToLine, showHit, scrollToFile, revealCursor, startComment, pageRows, pageFrom, openTarget, switchView, wholeFile });
   latest.current = { data, pending, from, to, rid, order, visible, startThread, createThread, cancelPending, scrollToThread, scrollToLine, showHit, scrollToFile, revealCursor, startComment, pageRows, pageFrom, openTarget, switchView, wholeFile };
-
-  const r = route.value;
-  const targetKey = r.name === "compare" && r.file ? `${r.file}:${r.line ?? ""}:${r.side ?? ""}` : "";
-  const handledTarget = useRef(targetKey);
-  useEffect(() => {
-    if (!targetKey || handledTarget.current === targetKey || !files || r.name !== "compare") return;
-    handledTarget.current = targetKey;
-    latest.current.openTarget(r.file!, r.line ?? null, r.side === "old" ? "deletions" : "additions");
-  }, [targetKey, files]);
 
   const firstRange = useRef(`${from}..${to}`);
   useEffect(() => {
     if (firstRange.current === `${from}..${to}`) return;
     firstRange.current = `${from}..${to}`;
     imagePending.value = null;
+    linkedLines.value = null;
     if (sideTab.value === "threads") sideTab.value = "files";
   }, [from, to]);
+  useEffect(() => () => void (linkedLines.value = null), []);
+
+  const r = route.value;
+  const targetKey = r.name === "compare" && r.file ? `${r.file}:${r.line ?? ""}-${r.end ?? ""}:${r.side ?? ""}` : "";
+  const handledTarget = useRef(targetKey);
+  useEffect(() => {
+    if (!targetKey || handledTarget.current === targetKey || !files || r.name !== "compare") return;
+    handledTarget.current = targetKey;
+    latest.current.openTarget(r.file!, r.line ?? null, r.side === "old" ? "deletions" : "additions", r.end ?? r.line ?? null);
+  }, [targetKey, files]);
 
   useEffect(() => {
     const handle = {
@@ -920,7 +959,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
         requestAnimationFrame(() => view.current?.scrollTo({ type: "position", position: top }));
       } else if (target) {
         v.scrolled = true;
-        requestAnimationFrame(() => latest.current.openTarget(target.file!, target.line ?? null, target.side === "old" ? "deletions" : "additions"));
+        requestAnimationFrame(() => latest.current.openTarget(target.file!, target.line ?? null, target.side === "old" ? "deletions" : "additions", target.end ?? target.line ?? null));
       } else if (compareFocus.value !== null) {
         v.scrolled = true;
         const id = compareFocus.value;

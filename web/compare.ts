@@ -10,7 +10,8 @@ import { NOTHING, revealedPatch, type Reveal } from "./lib/reveal.ts";
 import { api } from "./api.ts";
 import { compileQuery, diffRows, flatHits, matchRanges, searchDiff, type Hit, type Side } from "./lib/search.ts";
 import { clampStep } from "./lib/timeline.ts";
-import { compareFocus, detail, fileOrder, guard, loading, markReviewed, noteJump, reviewedCursor, reviewId, route, selectedStep, showResolved, status, testGlobs, threads, viewedKeys } from "./state.ts";
+import { routeHash } from "./lib/route.ts";
+import { compareFocus, detail, fileOrder, guard, loading, markReviewed, noteJump, notify, reviewedCursor, reviewId, route, selectedStep, showResolved, status, testGlobs, threads, viewedKeys } from "./state.ts";
 
 export type SideTab = "threads" | "files" | "search";
 
@@ -408,6 +409,8 @@ export const marksByPath = computed(() => {
     else m.set(path, [mark]);
   };
   const focus = hoverThread.value ?? compareFocus.value;
+  const linked = linkedLines.value;
+  if (linked) push(linked.path, { side: linked.side, start: linked.start, end: linked.end, tag: "linked" });
   for (const p of shownPlacements.value) push(p.path, { side: p.side, start: p.range.start, end: p.range.end, tag: p.threadId === focus ? "focus" : "thread" });
   const grepCur = currentGrepHit.value;
   for (const h of grepHits.value) if (h.inDiff) push(h.path, { side: "additions", start: h.line, end: h.line, tag: "hit", ranges: h.ranges, current: h === grepCur });
@@ -565,6 +568,39 @@ export function cursorMarks(space: CursorSpace, c: Cursor | null, anchor: Cursor
 export function setCursor(c: Cursor | null, reveal = true): void {
   cursor.value = c;
   if (c && reveal) compareNav.current?.revealCursor(c);
+}
+
+/** The lines a link opened, highlighted until the cursor leaves them. */
+export const linkedLines = signal<LineRange | null>(null);
+
+effect(() => {
+  const c = cursor.value;
+  const lines = linkedLines.peek();
+  if (c && lines && !cursorSpace.peek().holds(c, lines)) linkedLines.value = null;
+});
+
+/** The address of lines on this Changes page, for another tab or another reader of the same browser. */
+export function linesUrl(lines: LineRange): string | null {
+  const r = route.peek();
+  const d = compareData.peek();
+  if (r.name !== "compare") return null;
+  const hash = routeHash(
+    { name: "compare", from: d?.from.ref ?? r.from, to: d?.to.ref ?? r.to, file: lines.path, line: lines.start, end: lines.end, ...(lines.side === "deletions" ? { side: "old" as const } : {}) },
+    reviewId.peek(),
+  );
+  return `${location.origin}${location.pathname}${hash}`;
+}
+
+export async function copyLinesUrl(lines: LineRange): Promise<void> {
+  const url = linesUrl(lines);
+  if (!url) return;
+  const what = `${lines.path}:${lines.start === lines.end ? lines.start : `${lines.start}–${lines.end}`}`;
+  try {
+    await navigator.clipboard.writeText(url);
+    notify(`copied a link to ${what}${lines.side === "deletions" ? " (removed lines)" : ""}`);
+  } catch {
+    notify(url);
+  }
 }
 
 export const cursorLayer = computed(() => cursorMarks(cursorSpace.value, cursor.value, visualAnchor.value));

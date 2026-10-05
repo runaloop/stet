@@ -164,6 +164,19 @@ export class CursorSpace {
     return r === -1 ? null : { path, row: r };
   }
 
+  /** Whether the cursor is on one of `lines`: a line of the range, or a rendered block with lines in it. */
+  holds(c: Cursor, lines: LineRange): boolean {
+    if (c.path !== lines.path) return false;
+    const block = this.block(c);
+    if (block) {
+      const span = lines.side === "deletions" ? block.old : block.new;
+      return !!span && span.start <= lines.end && lines.start <= span.end;
+    }
+    const r = this.row(c);
+    const n = !r ? null : lines.side === "deletions" ? (r.kind !== "add" ? r.old : null) : r.kind !== "del" ? r.new : null;
+    return n !== null && n >= lines.start && n <= lines.end;
+  }
+
   range(anchor: Cursor, head: Cursor): LineRange | null {
     const i = this.fileIndex(anchor.path);
     const a = this.row(anchor);

@@ -25,6 +25,8 @@ export const MARK_CSS = `
 [data-content] > [${ATTR}~="hit"] { background-image: linear-gradient(light-dark(rgb(60 140 255 / 0.1), rgb(90 160 255 / 0.12)), light-dark(rgb(60 140 255 / 0.1), rgb(90 160 255 / 0.12))); }
 [data-content] > [${ATTR}~="hit-current"] { outline: 2px solid light-dark(#e07b00, #ffae40); outline-offset: -2px; }
 [data-content] > [${ATTR}~="visual"] { background-image: linear-gradient(light-dark(rgb(47 111 221 / 0.16), rgb(110 162 255 / 0.2)), light-dark(rgb(47 111 221 / 0.16), rgb(110 162 255 / 0.2))); }
+[data-content] > [${ATTR}~="linked"] { background-image: linear-gradient(light-dark(rgb(130 80 220 / 0.17), rgb(170 130 255 / 0.2)), light-dark(rgb(130 80 220 / 0.17), rgb(170 130 255 / 0.2))); }
+[data-gutter] > [${ATTR}~="linked"] { box-shadow: inset 3px 0 0 light-dark(#8250df, #a78bfa), inset 0 0 0 100vmax light-dark(rgb(130 80 220 / 0.17), rgb(170 130 255 / 0.2)); }
 [data-content] > [${ATTR}~="cursor"] { outline: 1px solid light-dark(#2f6fdd, #6ea2ff); outline-offset: -1px; }
 [data-gutter] > [${ATTR}~="cursor"] { box-shadow: inset 3px 0 0 light-dark(#2f6fdd, #6ea2ff); }
 ::highlight(${HIT}) { background-color: light-dark(rgb(255 214 0 / 0.6), rgb(255 200 0 / 0.4)); }
