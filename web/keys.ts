@@ -51,6 +51,7 @@ import {
 } from "./state.ts";
 import { compareHandle, openFocusedCompareThread, stepCompareThread } from "./views/Compare.tsx";
 import { jumpBack, jumpForward } from "./jumps.ts";
+import { resetLayout, swapped, toggleSwap, type SwapPage } from "./layout.ts";
 import { findUsages } from "./usages.ts";
 import { question } from "./components/Choice.tsx";
 import { approveReview, submitReview } from "./views/Drafts.tsx";
@@ -252,6 +253,16 @@ function search(scope: "diff" | "files"): boolean {
   return true;
 }
 
+function swapColumns(page: SwapPage): boolean {
+  toggleSwap(page);
+  const handle = document.querySelector<HTMLElement>(page === "compare" ? ".side-splitter" : ".msgs-splitter");
+  if (!handle || getComputedStyle(handle).display !== "none") return true;
+  const on = swapped(page);
+  const where = page === "compare" ? `the side panel on the ${on ? "right" : "left"}` : `the conversation ${on ? "left" : "right"} of the code`;
+  notify(`${where} once the window is wide enough for the columns to stand side by side`);
+  return true;
+}
+
 const searching = () => (searchScope.value === "files" ? grepHits.value.length : searchHits.value.length) > 0;
 const toggle = (fn: () => void) => () => {
   fn();
@@ -396,6 +407,9 @@ export const BINDINGS: Binding[] = [
   { keys: "<Space>ud", desc: "split / unified diff", where: "everywhere", run: toggle(() => (diffStyle.value = diffStyle.value === "split" ? "unified" : "split")) },
   { keys: "<Space>ur", desc: "show / hide resolved threads", where: "everywhere", run: toggle(() => (showResolved.value = !showResolved.value)) },
   { keys: "<Space>ut", desc: "show / hide test files that only add code", where: "compare", run: toggle(() => (groupsOpen.value = { ...groupsOpen.value, tests: !groupsOpen.value.tests })) },
+  { keys: "<Space>ul", desc: "side panel left / right of the diff", where: "compare", run: () => swapColumns("compare") },
+  { keys: "<Space>ul", desc: "conversation left / right of the code", where: "thread", run: () => swapColumns("thread") },
+  { keys: "<Space>uL", desc: "reset the layout of this page: column order and widths", where: "everywhere", run: toggle(resetLayout) },
   { keys: "<Space>rd", desc: "drafts", where: "everywhere", run: toggle(() => navigate({ name: "drafts" })) },
   { keys: "<Space>rs", desc: "submit the review from the drafts page (approve when there are no drafts)", where: "everywhere", run: reviewAction },
   { keys: "<Space>rv", desc: "changes since you last looked", where: "everywhere", run: toggle(() => navigate({ name: "compare", ...defaultCompare() })) },

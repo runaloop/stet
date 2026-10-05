@@ -8,6 +8,7 @@ import { Help, Pickers, WhichKey } from "./components/KeyUi.tsx";
 import { Splitter, widthOf } from "./components/Splitter.tsx";
 import { refLabel } from "./components/VersionStrip.tsx";
 import { leftPage } from "./jumps.ts";
+import { layoutPage, swapped, toggleSwap } from "./layout.ts";
 import { takeToken } from "./lib/route.ts";
 import { installKeys, picker } from "./keys.ts";
 import {
@@ -319,9 +320,10 @@ function App() {
   if (loading.value) return <div class="boot">loading…</div>;
   if (fatal.value) return <div class="boot error">{fatal.value}</div>;
   const r = route.value;
-  const page = r.name === "thread" ? "thread" : r.name === "compare" ? "compare" : "other";
+  const page = layoutPage();
   const sideKey = `side.${page}`;
   const sideW = widthOf(sideKey);
+  const right = page === "compare" && swapped("compare");
   return (
     <>
       <Header />
@@ -337,11 +339,19 @@ function App() {
         </div>
       ) : null}
       <DraftBar />
-      <main style={sideW ? `--side-w: ${sideW}px` : ""}>
+      <main class={right ? "side-right" : ""} style={sideW ? `--side-w: ${sideW}px` : ""}>
         <aside ref={aside}>
           <SidePanel />
         </aside>
-        <Splitter id={sideKey} kind="side-splitter" target={() => aside.current} grows="right" min={220} max={() => Math.max(260, window.innerWidth - 520)} />
+        <Splitter
+          id={sideKey}
+          kind="side-splitter"
+          target={() => aside.current}
+          grows={right ? "left" : "right"}
+          min={220}
+          max={() => Math.max(260, window.innerWidth - 520)}
+          swap={page === "compare" ? { title: `side panel to the ${right ? "left" : "right"} of the diff · Space u l`, run: () => toggleSwap("compare") } : undefined}
+        />
         <section class="pane">
           {r.name === "thread" ? (
             <ThreadDetailView id={r.id} />

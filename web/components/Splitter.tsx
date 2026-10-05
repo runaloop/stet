@@ -26,7 +26,7 @@ export function setWidth(key: string, value: number | null): void {
   }
 }
 
-export function Splitter(props: { id: string; kind: string; target: () => HTMLElement | null; grows: "right" | "left"; min: number; max: () => number }) {
+export function Splitter(props: { id: string; kind: string; target: () => HTMLElement | null; grows: "right" | "left"; min: number; max: () => number; swap?: { title: string; run: () => void } }) {
   const down = (e: PointerEvent) => {
     const el = props.target();
     if (e.button !== 0 || !el) return;
@@ -53,6 +53,18 @@ export function Splitter(props: { id: string; kind: string; target: () => HTMLEl
   return (
     <div class={`splitter ${props.kind}`} role="separator" aria-orientation="vertical" title="drag to resize · double-click resets" onPointerDown={down} onDblClick={() => setWidth(props.id, null)}>
       <span class="grip" />
+      {props.swap ? (
+        <button
+          class="splitter-swap"
+          title={props.swap.title}
+          aria-label={props.swap.title}
+          onPointerDown={(e) => e.stopPropagation()}
+          onDblClick={(e) => e.stopPropagation()}
+          onClick={props.swap.run}
+        >
+          ⇄
+        </button>
+      ) : null}
     </div>
   );
 }

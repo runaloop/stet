@@ -17,6 +17,7 @@ import { Timeline } from "../components/Timeline.tsx";
 import { ThreadMini } from "../components/ThreadMini.tsx";
 import { usePlacements } from "../components/usePlacements.ts";
 import { apply, takeSpot } from "../jumps.ts";
+import { swapped, toggleSwap } from "../layout.ts";
 import { latchNew, openAtNews } from "../msgs.ts";
 import { stepThread, stepUnread } from "../lib/nav.ts";
 import { isMarkdown } from "../lib/markdown.ts";
@@ -469,9 +470,10 @@ export function ThreadDetailView({ id }: { id: number }) {
   const unread = stepUnread(ordered.value, t.id, 1);
   const back = lastCompare.value ? { name: "compare" as const, ...lastCompare.value } : { name: "home" as const };
   const msgsW = widthOf("msgs");
+  const left = swapped("thread");
 
   return (
-    <div class={`detail${t.status === "resolved" ? " resolved" : ""}`} ref={root} style={msgsW ? `--msgs-w: ${msgsW}px` : ""}>
+    <div class={`detail${t.status === "resolved" ? " resolved" : ""}${left ? " msgs-left" : ""}`} ref={root} style={msgsW ? `--msgs-w: ${msgsW}px` : ""}>
       <div class="detail-head">
         <h2>
           <span class="tid">#{t.id}</span> <span class="path">{t.anchor.path ?? t.path}</span>
@@ -521,7 +523,15 @@ export function ThreadDetailView({ id }: { id: number }) {
         <CodeArea key={t.id} d={d} />
         <PeekView />
       </div>
-      <Splitter id="msgs" kind="msgs-splitter" target={() => msgs.current} grows="left" min={300} max={() => Math.max(320, (root.current?.clientWidth ?? 1200) - 420)} />
+      <Splitter
+        id="msgs"
+        kind="msgs-splitter"
+        target={() => msgs.current}
+        grows={left ? "right" : "left"}
+        min={300}
+        max={() => Math.max(320, (root.current?.clientWidth ?? 1200) - 420)}
+        swap={{ title: `conversation to the ${left ? "right" : "left"} of the code · Space u l`, run: () => toggleSwap("thread") }}
+      />
       <div class="thread-msgs" ref={msgs}>
         <Conversation detail={d} />
         <Composer

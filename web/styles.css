@@ -93,6 +93,13 @@ aside { overflow: auto; background: var(--bg-soft); min-width: 0; }
 .splitter .grip { position: absolute; top: 50%; left: 1px; width: 5px; height: 36px; margin-top: -18px; border-radius: 3px; background: radial-gradient(circle, var(--fg-soft) 1px, transparent 1.5px) 0 0 / 5px 6px; opacity: 0.55; }
 .splitter:hover::before, body.resizing .splitter::before { left: 2px; width: 3px; background: var(--accent); }
 .splitter:hover .grip { opacity: 0; }
+.splitter-swap { position: absolute; top: 6px; left: -5px; width: 17px; height: 17px; padding: 0; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 50%; background: var(--bg); color: var(--fg-soft); font-size: 11px; line-height: 1; cursor: pointer; opacity: 0.6; }
+.splitter-swap:hover, .splitter-swap:focus-visible { opacity: 1; color: var(--accent); border-color: var(--accent); }
+@media (min-width: 801px) {
+  main.side-right { grid-template-columns: minmax(0, 1fr) 7px var(--side-w, minmax(300px, 30%)); }
+  main.side-right > .pane { order: -1; }
+  main.side-right > aside { order: 1; }
+}
 body.resizing { cursor: col-resize; user-select: none; }
 body.resizing iframe, body.resizing diffs-container { pointer-events: none; }
 
@@ -419,6 +426,11 @@ a.snip:not(.match):hover { opacity: 0.8; }
   .detail > .thread-code > .peek { position: absolute; inset: 0 10px 0 0; height: auto; margin: 0; }
   .thread-msgs .conversation { margin-top: 0; }
   .thread-msgs .conversation > .comment:first-child { margin-top: 0; }
+  .detail.msgs-left { grid-template-columns: var(--msgs-w, minmax(360px, 38%)) 7px minmax(0, 1fr); }
+  .detail.msgs-left > .thread-msgs { grid-column: 1; grid-row: 3; padding: 0 12px 24px 2px; }
+  .detail.msgs-left > .splitter.msgs-splitter { grid-row: 3; }
+  .detail.msgs-left > .thread-code { grid-column: 3; grid-row: 3; padding: 0 0 24px 10px; }
+  .detail.msgs-left > .thread-code > .peek { inset: 0 0 0 10px; }
 }
 
 .compare-head .range-title { margin: 0; font-size: 15px; font-weight: 600; }

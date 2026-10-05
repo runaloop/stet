@@ -106,6 +106,34 @@ describe("thread detail", () => {
     render(null, host);
   });
 
+  test("the conversation goes left of the code and back, remembered with its width; Space u L resets both", async () => {
+    const { setWidth } = await import("../../web/components/Splitter.tsx");
+    state.route.value = { name: "thread", id: 7 };
+    state.detail.value = detail;
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(<ThreadDetailView id={7} />, host);
+    await tick();
+    const swappedNow = () => host.querySelector(".detail")!.classList.contains("msgs-left");
+    expect(swappedNow()).toBe(false);
+    setWidth("msgs", 500);
+    (host.querySelector(".msgs-splitter .splitter-swap") as HTMLButtonElement).click();
+    await tick();
+    expect(swappedNow()).toBe(true);
+    expect(localStorage.getItem("stet.swap.thread")).toBe("1");
+    expect((host.querySelector(".detail") as HTMLElement).style.getPropertyValue("--msgs-w")).toBe("500px");
+    for (const k of [" ", "u", "l"]) key(k);
+    await tick();
+    expect(swappedNow()).toBe(false);
+    expect(localStorage.getItem("stet.swap.thread")).toBe(null);
+    for (const k of [" ", "u", "l", " ", "u", "L"]) key(k);
+    await tick();
+    expect(swappedNow()).toBe(false);
+    expect(localStorage.getItem("stet.swap.thread")).toBe(null);
+    expect(localStorage.getItem("stet.w.msgs")).toBe(null);
+    render(null, host);
+  });
+
   test("marks the thread read after it has been on screen", async () => {
     calls.length = 0;
     state.detail.value = { ...detail, thread: { ...detail.thread, unread: true } };
