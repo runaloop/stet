@@ -31,6 +31,8 @@ import { gitOpen } from "./components/GitState.tsx";
 import { edgeMsg, foldAllMsgs, foldMsg, halfPage, replyAtCursor, stepMsg } from "./msgs.ts";
 import { clampStep, diffPair } from "./lib/timeline.ts";
 import { openBlame } from "./components/Blame.tsx";
+import { openGuideStep, scrollGuide, stepGuide } from "./components/Guide.tsx";
+import { guideShown, toggleGuide } from "./guide.ts";
 import {
   banner,
   codeMode,
@@ -66,7 +68,7 @@ import { approveReview, submitReview } from "./views/Drafts.tsx";
 import { openExternal, reopenCurrent, resolveCurrent } from "./views/ThreadDetail.tsx";
 
 /** `code`: a thread's code while it has the focus; there these come before the thread's own keys. */
-export type Where = "compare" | "thread" | "code" | "drafts" | "everywhere";
+export type Where = "compare" | "guide" | "thread" | "code" | "drafts" | "everywhere";
 
 export interface Binding {
   keys: string;
@@ -407,6 +409,17 @@ export const BINDINGS: Binding[] = [
     else if (visualAnchor.value) visualAnchor.value = null;
     else compareHandle.current?.cancelPending();
   }) },
+  { keys: "<Space>ug", desc: "the agent's guide to the version on the right, or back to the diff (experimental)", where: "compare", visual: true, run: toggleGuide },
+
+  { keys: "<Space>ug", desc: "back to the diff", where: "guide", run: toggleGuide },
+  { keys: "<Esc>", desc: "back to the diff", where: "guide", run: toggleGuide },
+  { keys: "}", desc: "next step (3}: three steps)", where: "guide", run: (n) => stepGuide(1, n) },
+  { keys: "{", desc: "previous step", where: "guide", run: (n) => stepGuide(-1, n) },
+  { keys: "<CR>", desc: "open the step in the diff, at its first lines", where: "guide", run: openGuideStep },
+  { keys: "j", desc: "scroll down", where: "guide", run: (n) => scrollGuide(n, 1) },
+  { keys: "k", desc: "scroll up", where: "guide", run: (n) => scrollGuide(n, -1) },
+  { keys: "<C-d>", desc: "half a page down", where: "guide", run: () => scrollGuide("half", 1) },
+  { keys: "<C-u>", desc: "half a page up", where: "guide", run: () => scrollGuide("half", -1) },
 
   { keys: "j", desc: "next thread", where: "thread", run: () => go(stepThread(ordered.value, currentThreadId.value, 1)) },
   { keys: "k", desc: "previous thread", where: "thread", run: () => go(stepThread(ordered.value, currentThreadId.value, -1)) },
@@ -568,7 +581,13 @@ export function keyToken(e: KeyboardEvent): string | null {
 
 export function contexts(): Where[] {
   const r = route.value.name;
-  return r === "compare" ? ["compare", "everywhere"] : r === "thread" ? [...(codeFocus.value ? (["code"] as Where[]) : []), "thread", "everywhere"] : r === "drafts" ? ["drafts", "everywhere"] : ["everywhere"];
+  return r === "compare"
+    ? [guideShown.value ? "guide" : "compare", "everywhere"]
+    : r === "thread"
+      ? [...(codeFocus.value ? (["code"] as Where[]) : []), "thread", "everywhere"]
+      : r === "drafts"
+        ? ["drafts", "everywhere"]
+        : ["everywhere"];
 }
 
 /** The bindings of this page, the first context's first: a key bound twice does what the first one says. */
@@ -578,7 +597,7 @@ export function bindingsHere(): Binding[] {
 }
 
 function candidates(prefix: string[]): Binding[] {
-  const visualMode = !!visualAnchor.value && (onCompare() || inCode());
+  const visualMode = !!visualAnchor.value && (contexts().includes("compare") || inCode());
   const seen = new Set<string>();
   return bindingsHere().filter((b) => {
     if ((visualMode && !b.visual) || seen.has(b.keys)) return false;

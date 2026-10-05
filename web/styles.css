@@ -698,3 +698,24 @@ header.top .offline { flex: none; font-size: 12px; padding: 1px 8px; border: 1px
 .restore-code { margin: 0; padding: 4px 8px; font: 12px/1.45 var(--mono); white-space: pre; overflow: auto; max-height: 24em; }
 .restore-line::before { content: attr(data-n); display: inline-block; min-width: 3ch; margin-right: 10px; text-align: right; color: var(--fg-soft); user-select: none; }
 .btn.restore-lines { border-color: color-mix(in srgb, var(--warn) 55%, var(--border)); }
+.guide-tabs { display: inline-flex; gap: 2px; }
+.guide { position: absolute; inset: 0; z-index: 4; overflow: auto; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 0 16px 24px; }
+.guide-head { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin: 0 -16px 8px; padding: 6px 16px; border-bottom: 1px solid var(--border); background: var(--bg-soft); font-size: 13px; }
+.guide-head .subtle { font-size: 12px; }
+.guide-title { margin: 12px 0 8px; font-size: 18px; }
+.guide-intro { margin-bottom: 12px; }
+.guide-step { margin: 14px 0 22px; scroll-margin-top: 44px; }
+.guide-step.focused > .guide-step-text { box-shadow: -10px 0 0 -6px var(--accent); }
+.guide-step-text { display: flex; gap: 10px; align-items: baseline; margin-bottom: 8px; }
+.guide-step-text > .md { flex: 1; min-width: 0; }
+.guide-num { flex: none; min-width: 22px; height: 22px; line-height: 22px; border-radius: 11px; text-align: center; background: var(--accent); color: #fff; font: 600 12px var(--sans); }
+.guide-ref { margin: 0 0 10px 32px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.guide-ref-head { display: flex; gap: 8px; align-items: center; padding: 3px 8px; background: var(--bg-soft); border-bottom: 1px solid var(--border); font-size: 12px; }
+.guide-ref-head .path { font: 600 12px var(--mono); overflow-wrap: anywhere; }
+.guide-ref > .note { margin: 6px 8px; }
+.guide-thread { font-weight: 600; }
+.guide-rest { margin-top: 28px; padding-top: 10px; border-top: 1px solid var(--border); }
+.guide-rest h3 { margin: 0 0 6px; font-size: 14px; }
+.guide-rest-list { margin: 0; padding-left: 4px; list-style: none; }
+.guide-rest-list li { font: 12px/1.8 var(--mono); overflow-wrap: anywhere; }
+.guide-status { display: inline-block; width: 2ch; color: var(--fg-soft); }

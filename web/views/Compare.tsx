@@ -8,6 +8,7 @@ import { api } from "../api.ts";
 import { Kbd } from "../components/Bits.tsx";
 import { mount, workerPool } from "../components/Code.tsx";
 import { FileGitMarks } from "../components/GitState.tsx";
+import { GuideToggle, GuideView } from "../components/Guide.tsx";
 import { ImageDiff } from "../components/ImageView.tsx";
 import { MarkdownView } from "../components/MarkdownView.tsx";
 import { hi, lo, PendingBox } from "../components/NewThread.tsx";
@@ -1020,6 +1021,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
           {rangeTitle(from, to)}
           {data ? <span class="subtle"> · {data.files.length} file{data.files.length === 1 ? "" : "s"}</span> : null}
         </h2>
+        <GuideToggle />
         <ReviewedButton to={to} toSha={data?.to.sha ?? null} allViewed={allViewed} />
         <FoldSummary />
         <span class="spacer" />
@@ -1067,6 +1069,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
       ) : null}
       <div class="code-stack">
         <div class="codeview-host" ref={host} />
+        <GuideView from={from} to={to} />
         <PeekView />
       </div>
     </div>

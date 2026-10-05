@@ -15,7 +15,7 @@ export function keyLabel(keys: string): string {
   return tokens(keys).map(shown).join(" ");
 }
 
-const WHERE: Record<Where, string> = { compare: "changes", thread: "thread", code: "thread's code", drafts: "drafts", everywhere: "everywhere" };
+const WHERE: Record<Where, string> = { compare: "changes", guide: "guide", thread: "thread", code: "thread's code", drafts: "drafts", everywhere: "everywhere" };
 
 export function WhichKey() {
   const prefix = whichKey.value;
@@ -252,6 +252,7 @@ export function Pickers() {
 
 const SECTIONS: [Where, string][] = [
   ["compare", "Changes (the diff)"],
+  ["guide", "Changes: the Guide tab (experimental)"],
   ["thread", "Thread"],
   ["code", "Thread: in its code (after a click into it, V or i)"],
   ["drafts", "Drafts"],
