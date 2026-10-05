@@ -691,3 +691,8 @@ header.top .gitchip:hover, header.top .gitchip.on { background: var(--bg-hover);
 header.top .refresh.moved { font: 12px var(--mono); padding: 1px 6px; border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 header.top .refresh.moved:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
 header.top .offline { flex: none; font-size: 12px; padding: 1px 8px; border: 1px solid color-mix(in srgb, var(--bad) 50%, transparent); border-radius: 4px; color: var(--bad); white-space: nowrap; }
+.restore { margin-top: 6px; border: 1px solid var(--border); border-left: 3px solid var(--warn); border-radius: var(--radius); background: var(--bg-soft); overflow: hidden; }
+.restore-label { padding: 3px 8px; font-size: 12px; color: var(--fg-soft); border-bottom: 1px solid var(--border); }
+.restore-code { margin: 0; padding: 4px 8px; font: 12px/1.45 var(--mono); white-space: pre; overflow: auto; max-height: 24em; }
+.restore-line::before { content: attr(data-n); display: inline-block; min-width: 3ch; margin-right: 10px; text-align: right; color: var(--fg-soft); user-select: none; }
+.btn.restore-lines { border-color: color-mix(in srgb, var(--warn) 55%, var(--border)); }

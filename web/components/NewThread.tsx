@@ -5,7 +5,8 @@ import { compareData, compareNav, copyLinesUrl, type PendingLines } from "../com
 import { guard, notify, reloadAll, reviewId, route } from "../state.ts";
 import { canQuote, quoteLines } from "../quote.ts";
 import { rangeText } from "./Bits.tsx";
-import { Composer } from "./Composer.tsx";
+import { Composer, loadText, saveText } from "./Composer.tsx";
+import { askRestore, RESTORE_TITLE, restorable } from "./Restore.tsx";
 
 export interface NewHere {
   path: string;
@@ -51,7 +52,9 @@ export function useNewThread(scope: string): Here {
   };
 }
 
-export function NewHereBox({ here, p }: { here: Here; p: NewHere }) {
+/** `thread`: lines picked on a thread's page, where they can be restored in that thread from an older version. */
+export function NewHereBox({ here, p, thread }: { here: Here; p: NewHere; thread?: { id: number; newest: string } }) {
+  const old = thread && p.sha !== thread.newest ? restorable(p.label) : null;
   return (
     <div class="new-thread inline">
       <div class="note">
@@ -72,6 +75,23 @@ export function NewHereBox({ here, p }: { here: Here; p: NewHere }) {
             </button>
           </>
         ) : null}
+        {old && thread ? (
+          <>
+            {" · or "}
+            <button
+              class="btn small restore-lines"
+              title={`${RESTORE_TITLE}; in this thread, with what you typed below`}
+              onClick={async () => {
+                const key = here.storageKey(p);
+                if (!(await askRestore({ from: old, path: p.path, start: p.start, end: p.end, thread: thread.id, body: loadText(key) ?? "" }))) return;
+                saveText(key, "");
+                here.cancel();
+              }}
+            >
+              ↺ Restore as in {old}
+            </button>
+          </>
+        ) : null}
       </div>
       <Composer storageKey={here.storageKey(p)} autoFocus placeholder="What is wrong here?" onCancel={here.cancel} onSubmit={here.create} secondaryLabel="Send now" />
     </div>
@@ -84,6 +104,8 @@ export function PendingBox({ p }: { p: PendingLines }) {
   const r = route.value;
   const [from, to] = r.name === "compare" ? [r.from, r.to] : ["", ""];
   const where = p.range.side === "deletions" ? `${p.oldPath} · removed lines (${d?.from.label ?? from})` : `${p.path} (${d?.to.label ?? to})`;
+  const key = `new:${reviewId.value}:${from}..${to}:${p.path}:${p.range.side}:${p.range.start}-${p.range.end}`;
+  const old = p.range.side === "deletions" ? restorable(d?.from.label) : null;
   return (
     <div class="new-thread inline">
       <div class="note">
@@ -96,9 +118,20 @@ export function PendingBox({ p }: { p: PendingLines }) {
         >
           Copy link
         </button>
+        {old ? (
+          <button
+            class="btn small restore-lines"
+            title={`${RESTORE_TITLE}; what you typed below goes with it`}
+            onClick={async () => {
+              if (await compareNav.current?.restoreLines(loadText(key) ?? "")) saveText(key, "");
+            }}
+          >
+            ↺ Restore as in {old}
+          </button>
+        ) : null}
       </div>
       <Composer
-        storageKey={`new:${reviewId.value}:${from}..${to}:${p.path}:${p.range.side}:${p.range.start}-${p.range.end}`}
+        storageKey={key}
         autoFocus
         placeholder="What is wrong here?"
         onCancel={() => compareNav.current?.cancelComment()}

@@ -98,6 +98,8 @@ export const api = {
     call<ThreadSummary>("POST", "/api/threads", { query: { review }, body: b }),
   reply: (review: number, id: number, b: { body: string; parentId?: number | null; draft: boolean; intent?: Intent | null }) =>
     call<CommentDto>("POST", `/api/threads/${id}/comments`, { query: { review }, body: b }),
+  restore: (review: number, b: { from: string; path: string; start: number; end: number; at?: string; thread?: number; body: string }) =>
+    call<CommentDto>("POST", "/api/restore", { query: { review }, body: b }),
   editDraft: (review: number, id: number, body: string) => call("PATCH", `/api/comments/${id}`, { query: { review }, body: { body } }),
   discardDraft: (review: number, id: number) => call<{ thread: number; threadDeleted: boolean }>("DELETE", `/api/comments/${id}`, { query: { review } }),
   resolve: (review: number, id: number, reason: ResolveReason | null) => call("POST", `/api/threads/${id}/resolve`, { query: { review }, body: { reason } }),

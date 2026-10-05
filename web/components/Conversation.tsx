@@ -6,6 +6,7 @@ import { guard, reloadAll, reviewId, selectedStep } from "../state.ts";
 import { firstNew, isFolded, isLong, jumpToNew, msgCursor, msgOpen, newMark, replyTo } from "../msgs.ts";
 import { ago, Badge, Body, IntentBadge, Kbd } from "./Bits.tsx";
 import { Composer } from "./Composer.tsx";
+import { RestoreBlock } from "./Restore.tsx";
 
 function regionText(step: TimelineStepDto | undefined): string | null {
   const ex = step?.excerpt;
@@ -101,6 +102,7 @@ function CommentNode({ c, childrenOf, detail, depth, newId }: { c: CommentDto; c
               initial={c.body}
               primaryLabel="save draft"
               secondaryLabel={null}
+              allowEmpty={!!c.restore}
               onCancel={() => setEditing(false)}
               onSubmit={async (body) => {
                 const ok = await guard(api.editDraft(rid, c.id, body));
@@ -112,6 +114,7 @@ function CommentNode({ c, childrenOf, detail, depth, newId }: { c: CommentDto; c
           ) : (
             <Body text={c.body} />
           )}
+          {c.restore ? <RestoreBlock r={c.restore} /> : null}
           {folded ? <button class="unfold" title="za" onClick={fold}>▾ show the whole message</button> : null}
         </div>
         {replying ? (

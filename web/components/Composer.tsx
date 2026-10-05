@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Kbd } from "./Bits.tsx";
 
-function loadText(key: string | undefined): string | null {
+export function loadText(key: string | undefined): string | null {
   if (!key) return null;
   try {
     return localStorage.getItem(`stet.text.${key}`);
@@ -10,7 +10,7 @@ function loadText(key: string | undefined): string | null {
   }
 }
 
-function saveText(key: string | undefined, text: string): void {
+export function saveText(key: string | undefined, text: string): void {
   if (!key) return;
   try {
     if (text.trim()) localStorage.setItem(`stet.text.${key}`, text);
@@ -33,6 +33,8 @@ export interface ComposerProps {
   onCancel?: () => void;
   onEscape?: (el: HTMLTextAreaElement) => void;
   compact?: boolean;
+  /** Saving with no text is fine, e.g. a draft that carries a restore request. */
+  allowEmpty?: boolean;
 }
 
 export function Composer(props: ComposerProps) {
@@ -61,7 +63,7 @@ export function Composer(props: ComposerProps) {
   }, [props.append?.seq]);
 
   const send = async (mode: "draft" | "now") => {
-    if (!text.trim() || busy) return;
+    if ((!text.trim() && !props.allowEmpty) || busy) return;
     setBusy(true);
     const ok = await props.onSubmit(text, mode);
     setBusy(false);
@@ -129,7 +131,7 @@ export function Composer(props: ComposerProps) {
         {props.secondaryLabel !== null ? (
           <button class="btn" disabled={busy || !text.trim()} onClick={() => void send("now")}>{props.secondaryLabel ?? "Send now"}</button>
         ) : null}
-        <button class="btn primary" disabled={busy || !text.trim()} onClick={() => void send("draft")}>{props.primaryLabel ?? "Save draft"}</button>
+        <button class="btn primary" disabled={busy || (!text.trim() && !props.allowEmpty)} onClick={() => void send("draft")}>{props.primaryLabel ?? "Save draft"}</button>
       </div>
     </div>
   );

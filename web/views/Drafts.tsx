@@ -3,6 +3,7 @@ import { useEffect } from "preact/hooks";
 import { api } from "../api.ts";
 import { Body, Kbd } from "../components/Bits.tsx";
 import { ask } from "../components/Choice.tsx";
+import { RestoreBlock } from "../components/Restore.tsx";
 import { drafts, guard, lastCompare, link, loadDrafts, navigate, notify, reloadAll, reviewId, threads, versions } from "../state.ts";
 
 /** The summary for the whole review: kept while you move around, so S sends it too. */
@@ -116,6 +117,7 @@ export function DraftsView() {
               </button>
             </div>
             <Body text={c.body} />
+            {c.restore ? <RestoreBlock r={c.restore} /> : null}
           </div>
         );
       })}

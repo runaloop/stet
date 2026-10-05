@@ -1,6 +1,6 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import type { ThreadDetail } from "../../src/core/types.ts";
+import type { CommentDto, ThreadDetail } from "../../src/core/types.ts";
 import { thread } from "../helpers/threads.ts";
 
 const realFetch = globalThis.fetch;
@@ -487,5 +487,94 @@ describe("links to lines", () => {
     compare.cursor.value = { path, row: 4 };
     expect(compare.linkedLines.value).toBeNull();
     expect(compare.marksByPath.value.get(path)?.some((m) => m.tag === "linked") ?? false).toBe(false);
+  });
+});
+
+describe("restore as in a version", () => {
+  const restore = { path: "src/a.kt", range: { start: 2, end: 2 }, version: 1 as const, text: "b" };
+  const comment = (id: number, extra: Partial<CommentDto>): CommentDto => ({ id, threadId: 7, parentId: null, role: "reviewer", author: "alice", body: "", intent: null, draft: false, snapshot: "s0", version: 1, createdAt: "2026-09-23T00:00:00Z", updatedAt: null, step: 0, unread: false, ...extra });
+  const detail: ThreadDetail = {
+    thread: thread({ id: 7, path: "src/a.kt", range: { start: 2, end: 2 }, title: "Why?" }),
+    comments: [comment(1, { body: "Why `B`?" }), comment(2, { parentId: 1, draft: true, version: 2, step: 1, restore })],
+    events: [],
+    timeline: [
+      { index: 0, kind: "anchor", label: "v1", sha: "s0", version: 1, state: "ok", method: "identity", path: "src/a.kt", range: { start: 2, end: 2 }, excerpt: null, commentIds: [1] },
+      { index: 1, kind: "version", label: "v2", sha: "s1", version: 2, state: "changed", method: "boundary", path: "src/a.kt", range: { start: 2, end: 2 }, excerpt: null, commentIds: [2] },
+    ],
+    code: { then: { sha: "s0", path: "src/a.kt", start: 2, end: 2, firstLine: 1, lines: ["a", "b", "c"] }, now: null, interdiff: null },
+  };
+  const asked: Record<string, unknown>[] = [];
+  const host = document.createElement("div");
+
+  beforeAll(() => {
+    document.body.appendChild(host);
+    respond = (url, init) => {
+      if (url.startsWith("/api/restore")) {
+        asked.push(JSON.parse(String(init?.body)));
+        return Response.json(comment(3, { parentId: 1, draft: true, restore }));
+      }
+      if (url.startsWith("/api/threads/7")) return Response.json(detail);
+      if (url.startsWith("/api/threads?")) return Response.json([detail.thread]);
+      if (url.startsWith("/api/drafts")) return Response.json([]);
+      if (url.startsWith("/api/cursors")) return Response.json({ reviewed: null, viewed: [] });
+      return null;
+    };
+  });
+
+  afterAll(() => {
+    render(null, host);
+    respond = null;
+  });
+
+  test("a comment shows the old lines it asks for; the thread's lines in an older version are restored from the code's label", async () => {
+    state.route.value = { name: "thread", id: 7 };
+    state.detail.value = detail;
+    state.selectedStep.value = 0;
+    state.codeMode.value = "then";
+    render(<ThreadDetailView id={7} />, host);
+    await tick(50);
+    expect(host.querySelector(".comment .restore-label")!.textContent).toBe("Restore as in v1 · line 2");
+    expect(host.querySelector(".comment .restore-code")!.textContent).toBe("b\n");
+    const buttons = [...host.querySelectorAll<HTMLButtonElement>(".code-label .restore-lines")];
+    expect(buttons.map((b) => b.textContent)).toEqual(["↺ Restore as in v1"]);
+    buttons[0]!.click();
+    await tick(50);
+    expect(asked.pop()).toEqual({ from: "v1", path: "src/a.kt", start: 2, end: 2, thread: 7, body: "" });
+    expect(state.toast.value?.text).toContain("restore draft saved in #7");
+
+    state.selectedStep.value = 1;
+    state.codeMode.value = "now";
+    await tick(50);
+    expect(host.querySelector(".code-label .restore-lines")).toBeNull();
+  });
+
+  test("lines picked on the old side of a compare of versions: Restore sends them with what was typed", async () => {
+    const { PendingBox } = await import("../../web/components/NewThread.tsx");
+    const compare = await import("../../web/compare.ts");
+    const sent: string[] = [];
+    compare.compareNav.current = { restoreLines: async (body: string) => (sent.push(body), true) } as never;
+    state.route.value = { name: "compare", from: "1", to: "2" };
+    const show = (from: string, side: "deletions" | "additions") => {
+      compare.compareData.value = { from: { ref: from, sha: "s1", label: from }, to: { ref: "2", sha: "s2", label: "v2" }, files: [], placements: [], outside: [] };
+      render(<PendingBox p={{ path: "src/a.kt", oldPath: "src/a.kt", range: { start: 2, end: 3, side } }} />, host);
+      return host.querySelector<HTMLButtonElement>(".restore-lines");
+    };
+    try {
+      expect(show("v1", "additions")).toBeNull();
+      expect(show("1a2b3c4d5e", "deletions")).toBeNull();
+      const button = show("v1", "deletions")!;
+      expect(button.textContent).toBe("↺ Restore as in v1");
+      const box = host.querySelector("textarea")!;
+      box.value = "the old name was right";
+      box.dispatchEvent(new Event("input"));
+      button.click();
+      await tick();
+      expect(sent).toEqual(["the old name was right"]);
+      expect(show("base", "deletions")!.textContent).toBe("↺ Restore as in base");
+    } finally {
+      compare.compareNav.current = null;
+      compare.compareData.value = null;
+      render(null, host);
+    }
   });
 });

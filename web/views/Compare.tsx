@@ -11,6 +11,7 @@ import { FileGitMarks } from "../components/GitState.tsx";
 import { ImageDiff } from "../components/ImageView.tsx";
 import { MarkdownView } from "../components/MarkdownView.tsx";
 import { hi, lo, PendingBox } from "../components/NewThread.tsx";
+import { askRestore, restorable } from "../components/Restore.tsx";
 import { ThreadMini } from "../components/ThreadMini.tsx";
 import { CommitPicker } from "../components/CommitPicker.tsx";
 import { commitPicker, commits, isSha, loadCommits } from "../commits.ts";
@@ -358,6 +359,18 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     compareFocus.value = t.id;
     notify(mode === "draft" ? `draft #${t.id} saved · the agent sees it after you submit the review` : `thread #${t.id} sent to the agent`, "info", { label: `open #${t.id}`, route: { name: "thread", id: t.id } });
     await reloadAll();
+  };
+
+  const createRestore = async (body: string) => {
+    const pending = pendingLines.peek();
+    const from = restorable(data?.from.label);
+    if (!pending || !data || !from || pending.range.side !== "deletions") return false;
+    const c = await askRestore({ from, path: pending.oldPath, start: lo(pending.range), end: hi(pending.range), at: data.to.sha, body });
+    if (!c) return false;
+    setPending(null);
+    view.current?.clearSelectedLines();
+    compareFocus.value = c.threadId;
+    return true;
   };
 
   const reveal = (path: string, expand: boolean): boolean => {
@@ -743,8 +756,8 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     else place();
   };
 
-  const latest = useRef({ data, pending, from, to, rid, order, visible, startThread, createThread, cancelPending, scrollToThread, scrollToLine, showHit, scrollToFile, revealCursor, cursorElement, startComment, pageRows, pageFrom, openTarget, switchView, wholeFile });
-  latest.current = { data, pending, from, to, rid, order, visible, startThread, createThread, cancelPending, scrollToThread, scrollToLine, showHit, scrollToFile, revealCursor, cursorElement, startComment, pageRows, pageFrom, openTarget, switchView, wholeFile };
+  const latest = useRef({ data, pending, from, to, rid, order, visible, startThread, createThread, createRestore, cancelPending, scrollToThread, scrollToLine, showHit, scrollToFile, revealCursor, cursorElement, startComment, pageRows, pageFrom, openTarget, switchView, wholeFile });
+  latest.current = { data, pending, from, to, rid, order, visible, startThread, createThread, createRestore, cancelPending, scrollToThread, scrollToLine, showHit, scrollToFile, revealCursor, cursorElement, startComment, pageRows, pageFrom, openTarget, switchView, wholeFile };
 
   const firstRange = useRef(`${from}..${to}`);
   useEffect(() => {
@@ -789,6 +802,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
       cursorElement: (c: Cursor) => latest.current.cursorElement(c),
       startComment: (range: LineRange) => latest.current.startComment(range),
       submitComment: (body: string, mode: "draft" | "now") => latest.current.createThread(body, mode),
+      restoreLines: (body: string) => latest.current.createRestore(body),
       cancelComment: () => latest.current.cancelPending(),
       pageRows: () => latest.current.pageRows(),
       pageFrom: (c: Cursor, dir: 1 | -1) => latest.current.pageFrom(c, dir),

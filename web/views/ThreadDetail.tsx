@@ -12,6 +12,7 @@ import { markdownView, type FileView } from "../compare.ts";
 import { Composer } from "../components/Composer.tsx";
 import { Conversation, unchangedSince } from "../components/Conversation.tsx";
 import { hi, lo, NewHereBox, useNewThread, type Here } from "../components/NewThread.tsx";
+import { askRestore, RESTORE_TITLE, restorable } from "../components/Restore.tsx";
 import { Splitter, widthOf } from "../components/Splitter.tsx";
 import { Timeline } from "../components/Timeline.tsx";
 import { ThreadMini } from "../components/ThreadMini.tsx";
@@ -188,6 +189,8 @@ function CodeBlock({ d, from, to, here }: { d: Detail; from: TimelineStepDto; to
   if (newBlob === "loading" || (!single && oldBlob === "loading")) return <div class="note">loading…</div>;
   if (newText === null) return <div class="note">{to.path} is not a text file at {to.label}.</div>;
 
+  const newest = d.timeline[d.timeline.length - 1]!;
+  const restoreFrom = single && to.sha !== newest.sha ? restorable(to.label) : null;
   const lines = `lines ${rangeText(to.range)}`;
   const label =
     scope === "file"
@@ -222,7 +225,7 @@ function CodeBlock({ d, from, to, here }: { d: Detail; from: TimelineStepDto; to
     marks,
     annotations,
     renderAnnotation: (a: { metadata: Anno }) =>
-      a.metadata.kind === "thread" ? <ThreadMini id={a.metadata.id} state={a.metadata.state} /> : a.metadata.kind === "new" && mine ? <NewHereBox here={here} p={mine} /> : <Marker id={d.thread.id} step={to} />,
+      a.metadata.kind === "thread" ? <ThreadMini id={a.metadata.id} state={a.metadata.state} /> : a.metadata.kind === "new" && mine ? <NewHereBox here={here} p={mine} thread={{ id: d.thread.id, newest: newest.sha }} /> : <Marker id={d.thread.id} step={to} />,
     onSelect,
   };
   const mdThreads: MdThread[] = [
@@ -243,6 +246,15 @@ function CodeBlock({ d, from, to, here }: { d: Detail; from: TimelineStepDto; to
       <div class="code-label">
         <span>{label}</span>
         <span class="spacer" />
+        {restoreFrom ? (
+          <button
+            class="btn small restore-lines"
+            title={`the thread's lines as they were in ${restoreFrom}: ${RESTORE_TITLE}`}
+            onClick={() => void askRestore({ from: restoreFrom, path: to.path!, start: to.range!.start, end: to.range!.end, thread: d.thread.id })}
+          >
+            ↺ Restore as in {restoreFrom}
+          </button>
+        ) : null}
         {scope !== "region" ? null : region?.complete || md ? (
           <span class="hint">the ⋯ bars above and below show more lines</span>
         ) : (

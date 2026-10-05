@@ -321,6 +321,8 @@ export interface CompareHandle {
   cursorElement(c: Cursor): Element | null;
   startComment(range: LineRange): void;
   submitComment(body: string, mode: "draft" | "now"): Promise<boolean | void>;
+  /** The picked removed lines as a restore request: a draft on the lines that stand in their place. */
+  restoreLines(body: string): Promise<boolean>;
   cancelComment(): void;
   pageRows(): number;
   /** Half a screen from the cursor in a rendered file, or null to move by rows. */
