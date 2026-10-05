@@ -359,6 +359,8 @@ export interface BlameRunDto {
   origin: BlameOriginDto;
   round: BlameRoundDto | null;
   threads: BlameThreadDto[];
+  /** Where these lines are in the version (or "now") that brought them; null for `base`. */
+  source: { path: string; start: number; end: number } | null;
 }
 
 export interface BlameDto {

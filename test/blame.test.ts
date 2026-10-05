@@ -72,6 +72,8 @@ describe("blame across versions and rounds", () => {
     const fix = d.runs[1]!;
     expect(fix.origin).toMatchObject({ kind: "version", version: 3, label: "fixes for review 2" });
     expect(fix.round).toMatchObject({ index: 2, verdict: "changes", version: 2 });
+    expect(fix.source).toEqual({ path: "a.kt", start: 5, end: 5 });
+    expect(d.runs[0]!.source).toBeNull();
     expect(fix.threads).toEqual([
       { id: second, title: "cache invalidation on logout", status: "open", match: "anchor", reply: { id: expect.any(Number), intent: "fixed", body: "Only the user's entry goes now. The rest stays.", at: expect.any(String) } },
     ]);
@@ -297,7 +299,9 @@ describe("blame of renamed and deleted files", () => {
       f.rm("old.kt");
       f.write("new.kt", edit(lines(5), (l) => (l[1] = "v1 line")));
       await createVersion(agent, review);
-      expect(brief(await blame(agent, review, { path: "new.kt" }))).toEqual(["1-1 base", "2-2 v1", "3-5 base"]);
+      const renamed = await blame(agent, review, { path: "new.kt" });
+      expect(brief(renamed)).toEqual(["1-1 base", "2-2 v1", "3-5 base"]);
+      expect(renamed.runs[1]!.source).toEqual({ path: "old.kt", start: 2, end: 2 });
       f.rm("new.kt");
       await createVersion(agent, review);
       await expect(blame(agent, review, { path: "new.kt", start: 1, end: 1 })).rejects.toThrow("text file 'new.kt' at v3 not found");

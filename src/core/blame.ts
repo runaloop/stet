@@ -356,12 +356,14 @@ export async function blame(ctx: Ctx, review: ReviewRow, input: BlameInput): Pro
     const threads = at ? matchLine(at, b.origPath, b.origLine, mentions) : [];
     const k = `${b.summary}|${threads.map((t) => `${t.id}${t.match}`).join(",")}`;
     const last = dto.runs[dto.runs.length - 1];
-    if (last && k === key && last.end === b.line - 1) {
+    if (last && k === key && last.end === b.line - 1 && (!last.source || last.source.path === b.origPath)) {
       last.end = b.line;
+      if (last.source) last.source = { path: b.origPath, start: Math.min(last.source.start, b.origLine), end: Math.max(last.source.end, b.origLine) };
       continue;
     }
     key = k;
-    dto.runs.push({ start: b.line, end: b.line, origin: o.origin, round: o.round, threads } satisfies BlameRunDto);
+    const source = o.origin.kind === "base" ? null : { path: b.origPath, start: b.origLine, end: b.origLine };
+    dto.runs.push({ start: b.line, end: b.line, origin: o.origin, round: o.round, threads, source } satisfies BlameRunDto);
   }
   return dto;
 }
