@@ -895,39 +895,48 @@ try {
     const mdV = JSON.parse(run(repo, ["bun", CLI, "status", "--json"])).versions as number;
     await b.eval(`location.hash = "#/compare/${mdV - 1}..${mdV}"; true`);
     await waitFor(`document.querySelectorAll(".md-toggle").length === 3`, 10000);
-    await sleep(800);
     const toggleOf = (path: string) => `[...document.querySelectorAll(".md-toggle")].find(t => t.closest("diffs-container")?.shadowRoot?.querySelector("[data-title]")?.textContent === ${JSON.stringify(path)})`;
-    const brokenBefore = await b.eval(`[...document.querySelectorAll(".codeview-host diffs-container")].filter(c => c.shadowRoot?.textContent.includes("VirtualizedFile")).map(c => c.shadowRoot.querySelector("[data-title]")?.textContent ?? "?")`);
-    const mdToggle = await b.eval(`${toggleOf("docs/guide.md")}?.textContent`);
-    await b.eval(`${toggleOf("docs/guide.md")}.click(); true`);
+    const clickIn = async (sel: string) => {
+      for (let i = 0; i < 6; i++) {
+        await b.eval(`document.querySelector(${JSON.stringify(sel)})?.scrollIntoView({ block: "center" }); true`);
+        await sleep(350);
+        const r = await rect(sel);
+        if (r && r.y > 60 && r.y < 860) return click(sel);
+      }
+      return false;
+    };
     const md = `document.querySelector('.md-view[data-file="docs/guide.md"]')`;
+    const brokenBefore = await b.eval(`[...document.querySelectorAll(".codeview-host diffs-container")].filter(c => c.shadowRoot?.textContent.includes("VirtualizedFile")).map(c => c.shadowRoot.querySelector("[data-title]")?.textContent ?? "?")`);
     const pictures = await waitFor(`(() => { const i = [...${md}?.querySelectorAll("img") ?? []]; return i.length === 2 && i.every(x => x.complete && x.naturalWidth > 0) ? i.map(x => ({ side: x.closest(".md-cell").dataset.side, w: x.naturalWidth, src: x.getAttribute("src") })) : null; })()`, 10000);
+    const mdToggle = await b.eval(`${toggleOf("docs/guide.md")}?.textContent`);
     const lit = await waitFor(`!!${md}.querySelector("pre.shiki")`, 8000);
+    await sleep(500);
     const topOf = (sel: string) => `Math.round(${md}.querySelector(${JSON.stringify(sel)})?.getBoundingClientRect().top ?? -1)`;
     const rendered = await b.eval(`({
       changed: ["old", "new"].map(s => [...${md}.querySelectorAll('.md-cell[data-side="' + s + '"] .md-changed')].map(e => e.tagName.toLowerCase() + ":" + e.dataset.start)),
       level: [${topOf('.md-cell[data-side="old"] h2')}, ${topOf('.md-cell[data-side="new"] h2')}, ${topOf('.md-cell[data-side="old"] p[data-start="11"]')}, ${topOf('.md-cell[data-side="new"] p[data-start="9"]')}],
       facing: [...${md}.querySelector('.md-cell[data-side="old"] p[data-start="5"]').closest(".md-cell").nextElementSibling.classList].join(" "),
+      words: { del: [...${md}.querySelectorAll('.md-cell[data-side="old"] p[data-start="9"] del')].map(e => e.textContent), ins: [...${md}.querySelectorAll('.md-cell[data-side="new"] p[data-start="7"] ins')].map(e => e.textContent) },
       remote: ${md}.querySelector(".md-image-off")?.textContent, outside: ${md}.querySelectorAll('img[src^="http"]').length, broken: [...document.querySelectorAll(".codeview-host diffs-container")].filter(c => c.shadowRoot?.textContent.includes("VirtualizedFile")).map(c => c.shadowRoot.querySelector("[data-title]")?.textContent ?? "?"), csp: window.__csp })`);
     await b.screenshot(join(OUT, "shots", "ui-check-markdown.png"));
     check(
-      "a Markdown file switches to rendered, old and new side by side: unchanged blocks level, what was removed red on the old side, what was added green on the new, each side's picture from its own version",
-      mdToggle.includes("rendered") && lit === true && pictures?.length === 2 && pictures.every((p: { w: number }) => p.w === 240) &&
+      "a Markdown file opens rendered, old and new side by side: unchanged blocks level, what was removed red on the old side, what was added green on the new, the changed words marked, each side's picture from its own version",
+      mdToggle.includes("code") && lit === true && pictures?.length === 2 && pictures.every((p: { w: number }) => p.w === 240) &&
         pictures.some((p: { side: string; src: string }) => p.side === "old" && p.src.includes(`sha=${mdFrom}`)) && pictures.some((p: { side: string; src: string }) => p.side === "new" && p.src.includes(`sha=${mdTo}`)) &&
         JSON.stringify(rendered.changed) === JSON.stringify([["p:5", "p:9"], ["p:7", "p:11", "div:13"]]) && rendered.level[0] === rendered.level[1] && rendered.level[2] === rendered.level[3] && rendered.level[0] > 0 &&
+        JSON.stringify(rendered.words) === JSON.stringify({ del: ["."], ins: [", then open the card:"] }) &&
         rendered.facing.includes("md-empty") && rendered.broken.length + brokenBefore.length === 0 && (rendered.remote?.includes("https://example.com/remote.png") ?? false) && rendered.outside === 0 && rendered.csp.length === 0,
       { brokenBefore, mdToggle, pictures, mdFrom, mdTo, lit, rendered },
     );
 
-    await b.eval(`${toggleOf("docs/added.md")}.click(); ${toggleOf("docs/notes.md")}.click(); true`);
     const oneSide = await waitFor(`(() => { const a = document.querySelector('.md-view[data-file="docs/added.md"]'); const d = document.querySelector('.md-view[data-file="docs/notes.md"]'); return a && d ? { added: [...a.querySelectorAll(".md-cell")].map(c => c.dataset.side), deleted: [...d.querySelectorAll(".md-cell")].map(c => c.dataset.side) } : null; })()`, 8000);
     check("an added Markdown file renders its new side only, a deleted one its old side", JSON.stringify(oneSide) === JSON.stringify({ added: ["new", "new"], deleted: ["old"] }), oneSide);
 
     await b.eval(`[...document.querySelectorAll(".compare-head .btn")].find(x => x.textContent === "unified").click(); true`);
-    const unified = await waitFor(`(() => { const v = document.querySelector('.md-view.md-one[data-file="docs/guide.md"]'); return v ? [...v.querySelectorAll(".md-cell")].map(c => c.dataset.side + ":" + c.firstElementChild?.tagName.toLowerCase() + (c.firstElementChild?.dataset.start ?? "")) : null; })()`, 8000);
+    const unified = await waitFor(`(() => { const v = document.querySelector('.md-view.md-one[data-file="docs/guide.md"]'); return v ? { cells: [...v.querySelectorAll(".md-cell")].map(c => c.dataset.side + ":" + c.firstElementChild?.tagName.toLowerCase() + (c.firstElementChild?.dataset.start ?? "")), inline: v.querySelector('p[data-start="7"]')?.innerHTML } : null; })()`, 8000);
     check(
-      "in unified view one column: unchanged blocks once, a changed block's old version above its new one, a removed block in its place",
-      JSON.stringify(unified) === JSON.stringify(["new:h11", "new:p3", "old:p5", "new:h25", "old:p9", "new:p7", "new:p9", "new:p11", "new:div13"]),
+      "in unified view one column: unchanged blocks once, a block with a few words changed once with them struck through and inserted, a removed block in its place",
+      JSON.stringify(unified?.cells) === JSON.stringify(["new:h11", "new:p3", "old:p5", "new:h25", "new:p7", "new:p9", "new:p11", "new:div13"]) && unified.inline === "Run it<del>.</del><ins>, then open the card:</ins>",
       unified,
     );
     await b.eval(`[...document.querySelectorAll(".compare-head .btn")].find(x => x.textContent === "split").click(); true`);
@@ -936,7 +945,7 @@ try {
 
     await b.eval(`${md}.querySelector('.md-cell[data-side="new"] p[data-start="7"]').scrollIntoView({ block: "center" }); true`);
     await sleep(400);
-    await click(`.md-view[data-file="docs/guide.md"] .md-cell[data-side="new"] p[data-start="7"]`);
+    await clickIn(`.md-view[data-file="docs/guide.md"] .md-cell[data-side="new"] p[data-start="7"]`);
     const clicked = await waitFor(`(() => { const c = [...document.querySelectorAll(".md-view .md-cursor")].map(e => e.closest(".md-cell").dataset.side + ":" + e.dataset.start); return c.length ? c : null; })()`, 3000);
     const hoverAt = await rect(`.md-view[data-file="docs/guide.md"] .md-cell[data-side="new"] p[data-start="7"]`);
     await pointer([{ type: "pointerMove", x: hoverAt!.x, y: hoverAt!.y }]);
@@ -957,7 +966,7 @@ try {
     await b.eval(`document.activeElement?.blur(); true`);
     await b.eval(`${md}.querySelector('.md-cell[data-side="new"] h1').scrollIntoView({ block: "center" }); true`);
     await sleep(400);
-    await click(`.md-view[data-file="docs/guide.md"] .md-cell[data-side="new"] h1`);
+    await clickIn(`.md-view[data-file="docs/guide.md"] .md-cell[data-side="new"] h1`);
     await sleep(200);
     await keys("j");
     await sleep(200);
@@ -993,22 +1002,130 @@ try {
     await sleep(500);
     await b.eval(`${md}.querySelector('.md-cell[data-side="old"] p[data-start="5"]').scrollIntoView({ block: "center" }); true`);
     await sleep(400);
-    await click(`.md-view[data-file="docs/guide.md"] .md-cell[data-side="old"] p[data-start="5"]`);
+    await clickIn(`.md-view[data-file="docs/guide.md"] .md-cell[data-side="old"] p[data-start="5"]`);
     await keys("i");
     const oldBox = await waitFor(`document.querySelector(".md-view .new-thread .note")?.textContent ?? null`, 3000);
     await keys("");
     await sleep(150);
     await keys("");
     const mdClosed = await waitFor(`!document.querySelector(".md-view .new-thread")`, 3000);
+    const before7 = await b.eval(`Math.round(${md}.querySelector('.md-cell[data-side="new"] p[data-start="7"]').getBoundingClientRect().top)`);
     const jumpAt = await rect(`.md-view[data-file="docs/guide.md"] .md-cell[data-side="new"] p[data-start="7"]`);
     await pointer([{ type: "pointerMove", x: jumpAt!.x, y: jumpAt!.y }]);
     await waitFor(`document.querySelector(".md-gutter .md-jump")`, 3000);
     await click(".md-gutter .md-jump");
-    const jumped = await waitFor(`(() => { const c = [...document.querySelectorAll(".codeview-host diffs-container")].find(c => c.shadowRoot.textContent.includes("Run it, then open the card")); const rows = c ? [...c.shadowRoot.querySelectorAll('[data-content] > [data-stet-mark~="cursor"]')].map(r => r.getAttribute("data-line-type") + ":" + r.getAttribute("data-line")) : []; return rows.length ? { rows, toggle: ${toggleOf("docs/guide.md")}?.textContent } : null; })()`, 8000);
+    const jumped = await waitFor(`(() => { const c = [...document.querySelectorAll(".codeview-host diffs-container")].find(c => c.shadowRoot.textContent.includes("Run it, then open the card")); const rows = c ? [...c.shadowRoot.querySelectorAll('[data-content] > [data-stet-mark~="cursor"]')] : []; return rows.length ? { rows: rows.map(r => r.getAttribute("data-line-type") + ":" + r.getAttribute("data-line")), top: Math.round(rows.find(r => r.getAttribute("data-line") === "7")?.getBoundingClientRect().top ?? -1), toggle: ${toggleOf("docs/guide.md")}?.textContent } : null; })()`, 8000);
+    await sleep(600);
+    const jumpSettled = await b.eval(`(() => { const c = [...document.querySelectorAll(".codeview-host diffs-container")].find(c => c.shadowRoot.textContent.includes("Run it, then open the card")); const r = [...c.shadowRoot.querySelectorAll('[data-content] > [data-stet-mark~="cursor"]')].find(r => r.getAttribute("data-line") === "7"); return r ? Math.round(r.getBoundingClientRect().top) : null; })()`);
     check(
-      "i comments on the block under the cursor, on its side (a removed block: the old lines); its ‹/› shows the block's lines in the code with the cursor on them",
-      (oldBox?.includes("removed lines") ?? false) && (oldBox?.includes("lines 5") ?? false) && !!mdClosed && !!jumped && jumped.rows.includes("change-addition:7") && jumped.toggle.includes("rendered"),
-      { oldBox, mdClosed, jumped },
+      "i comments on the block under the cursor, on its side (a removed block: the old lines); its ‹/› shows the block's lines in the code where the block was, with the cursor on them",
+      (oldBox?.includes("removed lines") ?? false) && (oldBox?.includes("lines 5") ?? false) && !!mdClosed && !!jumped && jumped.rows.includes("change-addition:7") && jumped.toggle.includes("rendered") && Math.abs(jumpSettled - before7) <= 3,
+      { oldBox, mdClosed, jumped, before7, jumpSettled },
+    );
+
+    await b.eval(`document.activeElement?.blur(); ${toggleOf("docs/guide.md")}.click(); true`);
+    await waitFor(`${md}?.querySelector("[data-stop]")`, 8000);
+    const findIn = async (q: string) => {
+      await b.eval(`document.activeElement?.blur(); true`);
+      await keys("/");
+      await waitFor(`document.activeElement?.tagName === "INPUT"`, 3000);
+      await b.eval(`(() => { const i = document.activeElement; i.value = ${JSON.stringify(q)}; i.dispatchEvent(new Event("input", { bubbles: true })); return true; })()`);
+      await sleep(700);
+      await b.eval(`document.activeElement?.blur(); true`);
+      await keys("n");
+      await sleep(1200);
+      return b.eval(`({ cursor: [...document.querySelectorAll(".md-view .md-cursor")].map(e => e.closest(".md-view").dataset.file + ":" + e.closest(".md-cell").dataset.side + ":" + e.dataset.start), current: [...(CSS.highlights.get("stet-hit-current") ?? [])].map(r => r.toString() + (r.startContainer.parentElement?.closest(".md-view") ? "@rendered" : "@code")), rendered: !!${md}, toast: document.querySelector(".toast")?.textContent ?? null })`);
+    };
+    const inText = await findIn("open the card");
+    const inSource = await findIn("card.png");
+    check(
+      "search finds a match in the rendered text: it is highlighted there and the cursor goes to its block; a match only in the Markdown source (a picture's path) shows that file as code and says so",
+      JSON.stringify(inText.cursor) === JSON.stringify(["docs/guide.md:new:7"]) && inText.current.includes("open the card@rendered") && inText.rendered &&
+        !inSource.rendered && inSource.current.some((c: string) => c === "card.png@code") && (inSource.toast?.includes("Markdown source") ?? false),
+      { inText, inSource },
+    );
+
+    run(repo, ["bun", CLI, "config", "set", "compare.markdown", "code"]);
+    await b.navigate("about:blank");
+    await b.navigate(url);
+    await b.eval(`location.hash = "#/compare/${mdV - 1}..${mdV}"; true`);
+    await waitFor(`document.querySelectorAll(".md-toggle").length === 3`, 10000);
+    await sleep(800);
+    const asCode = await b.eval(`({ views: document.querySelectorAll(".md-view").length, toggle: ${toggleOf("docs/guide.md")}?.textContent })`);
+    run(repo, ["bun", CLI, "config", "set", "compare.markdown", "--unset"]);
+    await b.navigate("about:blank");
+    await b.navigate(url);
+    await b.eval(csp);
+    await b.eval(`location.hash = "#/compare/${mdV - 1}..${mdV}"; true`);
+    const asRendered = await waitFor(`document.querySelectorAll(".md-view").length === 3 ? ${toggleOf("docs/guide.md")}?.textContent : null`, 10000);
+    check("stet config set compare.markdown code opens Markdown files as code; unset, they open rendered", asCode.views === 0 && (asCode.toggle?.includes("rendered") ?? false) && (asRendered?.includes("code") ?? false), { asCode, asRendered });
+
+    const longMd = (v: number) =>
+      Array.from({ length: 40 }, (_, i) => [`## Part ${i + 1}`, "", `Paragraph ${i + 1} of the long page, version ${v}${i % 6 === 2 ? ", with a tail long enough to wrap onto a second line in a narrow column of the split view" : ""}.`, ""].join("\n")).join("\n");
+    const listMd = (v: number) =>
+      (v === 1
+        ? ["- Cart with items", "- Pay by card", "- Order history", "", "| Setting | Default |", "|---|---|", "| port | 8080 |", "| cache | off |", ""]
+        : ["- Cart with items", "- Pay by card or by invoice", "- Order history", "- Promo codes", "", "| Setting | Default |", "|---|---|", "| port | 8080 |", "| cache | 64 MB |", "| theme | dark |", ""]
+      ).join("\n");
+    writeFileSync(join(repo, "docs/long.md"), longMd(1));
+    writeFileSync(join(repo, "docs/list.md"), listMd(1));
+    run(repo, ["git", "add", "-A"]);
+    run(repo, ["bun", CLI, "version", "create", "--label", "long page", "--json"]);
+    writeFileSync(join(repo, "docs/long.md"), longMd(2));
+    writeFileSync(join(repo, "docs/list.md"), listMd(2));
+    run(repo, ["git", "add", "-A"]);
+    run(repo, ["bun", CLI, "version", "create", "--label", "long page changed", "--json"]);
+    const longV = JSON.parse(run(repo, ["bun", CLI, "status", "--json"])).versions as number;
+    const lmd = `document.querySelector('.md-view[data-file="docs/list.md"]')`;
+    await b.eval(`location.hash = "#/compare/${longV - 1}..${longV}?file=docs/list.md"; true`);
+    await waitFor(`${lmd}?.querySelector("[data-stop]")`, 10000);
+    await sleep(1800);
+    const lined = await b.eval(`(() => { const top = (s, t) => Math.round([...${lmd}.querySelectorAll('.md-cell[data-side="' + s + '"] li, .md-cell[data-side="' + s + '"] tr')].find(e => e.textContent.trim().startsWith(t))?.getBoundingClientRect().top ?? -1); return {
+      items: ["Cart with items", "Pay by card", "Order history"].map(t => top("new", t) > 0 && top("old", t) > 0 ? top("new", t) - top("old", t) : NaN),
+      rows: ["port", "cache"].map(t => top("new", t) > 0 && top("old", t) > 0 ? top("new", t) - top("old", t) : NaN),
+      gaps: [...${lmd}.querySelectorAll(".md-gap")].map(g => { const facing = [...${lmd}.querySelectorAll('.md-cell[data-side="new"] li, .md-cell[data-side="new"] tr')].find(e => e.textContent.trim().startsWith(g.tagName === "LI" ? "Promo" : "theme")); return g.tagName.toLowerCase() + ":" + Math.round(g.getBoundingClientRect().top - (facing?.getBoundingClientRect().top ?? NaN)) + ":" + g.parentElement.tagName; }),
+      words: [...${lmd}.querySelectorAll("del, ins")].map(e => e.tagName.toLowerCase() + ":" + e.textContent) }; })()`);
+    check(
+      "inside a changed list or table, items and rows face each other: level, the changed words marked, an added one facing an empty slot",
+      JSON.stringify(lined.items) === "[0,0,0]" && JSON.stringify(lined.rows) === "[0,0]" && JSON.stringify(lined.gaps) === JSON.stringify(["li:0:UL", "tr:0:TBODY"]) &&
+        JSON.stringify(lined.words) === JSON.stringify(["ins:or by invoice", "del:off", "ins:64 MB"]),
+      lined,
+    );
+
+    const long = `document.querySelector('.md-view[data-file="docs/long.md"]')`;
+    const longToggle = toggleOf("docs/long.md");
+    await b.eval(`location.hash = "#/compare/${longV - 1}..${longV}?file=docs/long.md"; true`);
+    await waitFor(`${long}?.querySelector("[data-stop]")`, 10000);
+    await sleep(1800);
+    await b.eval(`(() => { const el = [...${long}.querySelectorAll('.md-cell[data-side="new"] p')].find(p => p.textContent.startsWith("Paragraph 27 ")); const h = document.querySelector(".codeview-host"); h.scrollTop += el.getBoundingClientRect().top - h.getBoundingClientRect().top - 360; return true; })()`);
+    await sleep(500);
+    await click(`.md-view[data-file="docs/long.md"] .md-cell[data-side="new"] p[data-start="${27 * 4 - 1}"]`);
+    await sleep(200);
+    const hostTop = `document.querySelector(".codeview-host").getBoundingClientRect().top`;
+    const blockY = await b.eval(`Math.round(${long}.querySelector('.md-cell[data-side="new"] p[data-start="${27 * 4 - 1}"]').getBoundingClientRect().top - ${hostTop})`);
+    await b.eval(`${longToggle}.click(); true`);
+    await sleep(1600);
+    const codeRow = `(() => { const c = [...document.querySelectorAll(".codeview-host diffs-container")].find(c => c.shadowRoot?.querySelector("[data-title]")?.textContent === "docs/long.md"); const r = c ? [...c.shadowRoot.querySelectorAll('code[data-additions] > [data-content] > [data-line="${27 * 4 - 1}"]')][0] : null; return r ? { y: Math.round(r.getBoundingClientRect().top - ${hostTop}), cursor: r.getAttribute("data-stet-mark") } : null; })()`;
+    const asCodeRow = await b.eval(codeRow);
+    await b.eval(`${longToggle}.click(); true`);
+    await sleep(2200);
+    const longBack = await b.eval(`(() => { const e = ${long}?.querySelector('.md-cell[data-side="new"] p[data-start="${27 * 4 - 1}"]'); return e ? { y: Math.round(e.getBoundingClientRect().top - ${hostTop}), cursor: e.classList.contains("md-cursor") } : null; })()`);
+    check(
+      "switching a long Markdown file between rendered and code keeps the point you were at, at the same height, and the cursor on it",
+      !!asCodeRow && Math.abs(asCodeRow.y - blockY) <= 3 && (asCodeRow.cursor ?? "").includes("cursor") && !!longBack && Math.abs(longBack.y - blockY) <= 3 && longBack.cursor,
+      { blockY, asCodeRow, longBack },
+    );
+    await b.eval(`document.activeElement?.blur(); true`);
+    const docTop = (e: string) => `Math.round(${e}.getBoundingClientRect().top + document.querySelector(".codeview-host").scrollTop)`;
+    const halfFrom = await b.eval(`(() => { const e = ${long}.querySelector(".md-cursor"); return e ? ${docTop("e")} : null; })()`);
+    await chord([CTRL], "d");
+    await sleep(600);
+    const halfTo = await b.eval(`(() => { const e = ${long}.querySelector(".md-cursor"); return e ? { top: ${docTop("e")}, start: +e.dataset.start } : null; })()`);
+    const screen = await b.eval(`document.querySelector(".codeview-host").clientHeight`);
+    check(
+      "Ctrl+d in a rendered file moves the cursor about half a screen down, not a fixed number of blocks",
+      halfFrom !== null && !!halfTo && halfTo.start > 27 * 4 - 1 && halfTo.top - halfFrom >= screen / 2 - 10 && halfTo.top - halfFrom <= screen / 2 + 250,
+      { halfFrom, halfTo, screen },
     );
 
     await b.eval(`location.hash = "#/compare/${imgV - 1}..${imgV}"; true`);

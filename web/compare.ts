@@ -84,9 +84,12 @@ export type FileView = "picture" | "rendered" | "code";
 
 /**
  * Files the reader switched between their code and a picture (SVG) or the rendered text (Markdown). Without an entry
- * an SVG is a picture unless lines of it have threads, and Markdown is code.
+ * an SVG is a picture unless lines of it have threads, and Markdown is as `compare.markdown` says.
  */
 export const fileView = signal<Map<string, FileView>>(new Map());
+
+/** How a Markdown file opens: rendered unless `stet config set compare.markdown code`. */
+export const markdownView = computed<FileView>(() => (status.value?.ui?.markdown === "code" ? "code" : "rendered"));
 
 export function setFileView(path: string, view: FileView): void {
   fileView.value = new Map(fileView.value).set(path, view);
@@ -201,13 +204,19 @@ export function toggleFile(fd: FileDiffMetadata): void {
 export interface CompareHandle {
   scrollToFile(path: string): void;
   scrollToLine(path: string, side: Side, line: number): void;
+  /** A search hit: on its block in a rendered file when the rendered text has the match, else in the code. */
+  showHit(path: string, side: Side, line: number): void;
   /** The line in the diff with the cursor on it, or the file's preview at that line when the diff does not show it. */
   openLine(path: string, side: Side, line: number): void;
+  /** A rendered Markdown file as code, the block `stop` becoming its lines at the same height, with the cursor on them. */
+  showCode(path: string, stop: number, side: "old" | "new"): void;
   revealCursor(c: Cursor, align?: "nearest" | "center"): void;
   startComment(range: LineRange): void;
   submitComment(body: string, mode: "draft" | "now"): Promise<boolean | void>;
   cancelComment(): void;
   pageRows(): number;
+  /** Half a screen from the cursor in a rendered file, or null to move by rows. */
+  pageFrom(c: Cursor, dir: 1 | -1): Cursor | null;
   getScrollTop(): number;
   setScrollTop(top: number): void;
 }
@@ -235,7 +244,7 @@ export function goToHit(i: number): void {
   if (!h) return;
   noteJump();
   searchIndex.value = i;
-  compareNav.current?.scrollToLine(h.path, h.side, h.line);
+  compareNav.current?.showHit(h.path, h.side, h.line);
 }
 
 export function openSearch(): void {
@@ -405,7 +414,7 @@ export function goToGrepHit(i: number): void {
   grepIndex.value = i;
   if (h.inDiff) {
     peek.value = null;
-    compareNav.current?.scrollToLine(h.path, "additions", h.line);
+    compareNav.current?.showHit(h.path, "additions", h.line);
   } else peek.value = { path: h.path, sha: at.sha, label: at.label, line: h.line };
 }
 effect(() => {

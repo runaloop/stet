@@ -65,9 +65,13 @@ export function changesOf(fd: FileDiffMetadata): { old: SideChanges; new: SideCh
   return { old: { lines: removed, gaps: oldGaps }, new: { lines: added, gaps: newGaps } };
 }
 
-/** A rendered block and its source lines, 1-based and inclusive; `parent` is the index of the block around it, -1 at the top. */
+/**
+ * A rendered block and its source lines, 1-based and inclusive; `parent` is the index of the block around it, -1 at the
+ * top; `tag` the element it renders as (`code` for a code block).
+ */
 export interface Block extends Span {
   parent: number;
+  tag: string;
 }
 
 /** Blocks whose lines changed, or that the other side has lines inside of. */
@@ -75,6 +79,16 @@ export function hitBlocks(blocks: readonly Block[], changes: SideChanges): boole
   return blocks.map((b) => {
     for (let n = b.start; n <= b.end; n++) if (changes.lines.has(n)) return true;
     return changes.gaps.some((g) => b.start <= g && g < b.end);
+  });
+}
+
+/** Blocks whose own lines changed: the lines no block inside them holds. */
+export function ownHits(blocks: readonly Block[], changes: SideChanges): boolean[] {
+  return blocks.map((b, i) => {
+    const inner = blocks.filter((c) => c.parent === i);
+    const own = (n: number) => !inner.some((c) => c.start <= n && n <= c.end);
+    for (let n = b.start; n <= b.end; n++) if (own(n) && changes.lines.has(n)) return true;
+    return changes.gaps.some((g) => b.start <= g && g < b.end && !inner.some((c) => c.start <= g && g < c.end));
   });
 }
 
@@ -109,6 +123,10 @@ export interface RenderOptions {
 export interface Rendered {
   blocks: Block[];
   hit: boolean[];
+  /** Blocks whose own lines changed (see `ownHits`). */
+  own: boolean[];
+  /** The source, line by line (line 1 at index 0). */
+  lines: string[];
   /** HTML of each top-level block, by its index in `blocks`. */
   tops: { block: number; html: string }[];
   /** Languages of the fenced code blocks. */
@@ -132,7 +150,7 @@ md.renderer.rules.image = (tokens, idx, options, env, self) => {
   const ref = resolveRef(src, e.path);
   if ("path" in ref && imageType(ref.path)) {
     const title = t.attrGet("title");
-    return `<img src="${attr(e.imageUrl(ref.path))}" alt="${attr(alt)}" data-path="${attr(ref.path)}"${title ? ` title="${attr(title)}"` : ""}>`;
+    return `<img src="${attr(e.imageUrl(ref.path))}" alt="${attr(alt)}" data-path="${attr(ref.path)}" data-src="${attr(src)}"${title ? ` title="${attr(title)}"` : ""}>`;
   }
   const why = "path" in ref ? "not an image file" : "not loaded: the review loads no pictures from outside the repository";
   return `<span class="md-image-off" title="${attr(why)}">▧ ${alt ? `${escapeHtml(alt)} · ` : ""}<code>${escapeHtml(src)}</code></span>`;
@@ -141,8 +159,8 @@ md.renderer.rules.image = (tokens, idx, options, env, self) => {
 md.renderer.rules.link_open = (tokens, idx, _options, env) => {
   const href = String(tokens[idx]!.attrGet("href") ?? "");
   const ref = resolveRef(href, (env as RenderEnv).path);
-  if ("path" in ref) return `<a class="md-file" data-path="${attr(ref.path)}"${ref.line ? ` data-line="${ref.line}"` : ""} title="${attr(`${ref.path}: open it in the preview`)}">`;
-  return `<a class="md-outside" title="${attr(href)}">`;
+  if ("path" in ref) return `<a class="md-file" data-path="${attr(ref.path)}"${ref.line ? ` data-line="${ref.line}"` : ""} data-href="${attr(href)}" title="${attr(`${ref.path}: open it in the preview`)}">`;
+  return `<a class="md-outside" data-href="${attr(href)}" title="${attr(href)}">`;
 };
 
 md.renderer.rules.fence = (tokens, idx, _options, env, self) => {
@@ -179,7 +197,7 @@ export function renderMarkdown(text: string, opts: RenderOptions): Rendered {
     // a list item's lines run on over the blank lines after it
     let end = t.map[1];
     while (end > start && !lines[end - 1]!.trim()) end--;
-    blocks.push({ start, end, parent: stack[stack.length - 1]?.i ?? -1 });
+    blocks.push({ start, end, parent: stack[stack.length - 1]?.i ?? -1, tag: t.type === "fence" || t.type === "code_block" ? "code" : t.tag });
     owner.set(t, i);
     t.attrSet("data-b", i);
     t.attrSet("data-start", start);
@@ -187,6 +205,7 @@ export function renderMarkdown(text: string, opts: RenderOptions): Rendered {
     if (t.nesting === 1) stack.push({ i, level: t.level });
   }
   const hit = opts.changes ? hitBlocks(blocks, opts.changes) : blocks.map(() => false);
+  const own = opts.changes ? ownHits(blocks, opts.changes) : blocks.map(() => false);
   const changed = changedBlocks(blocks, hit);
   for (const [t, i] of owner) if (changed.has(i)) t.attrJoin("class", "md-changed");
   const tops: Rendered["tops"] = [];
@@ -198,7 +217,7 @@ export function renderMarkdown(text: string, opts: RenderOptions): Rendered {
     from = i + 1;
     if (block !== undefined) tops.push({ block, html });
   });
-  return { blocks, hit, tops, langs: [...env.langs] };
+  return { blocks, hit, own, lines, tops, langs: [...env.langs] };
 }
 
 /**
@@ -310,40 +329,176 @@ export interface Stop {
   nav: NavBlock;
 }
 
-export interface Layout {
-  rows: Row[];
-  stops: Stop[];
-}
-
-interface SideBlocks {
+export interface SideBlocks {
   blocks: readonly Block[];
   hit: readonly boolean[];
+  own: readonly boolean[];
+  lines?: readonly string[];
 }
 
 const topsOf = (s: SideBlocks | null) => (s ? s.blocks.flatMap((b, i) => (b.parent === -1 ? [i] : [])) : []);
 
-/** The subtree of the top-level block `i`: it and the blocks after it up to the next top-level one. */
+/** A block and all blocks inside it. */
 function subtree(blocks: readonly Block[], i: number): number[] {
   const out = [i];
-  for (let k = i + 1; k < blocks.length && blocks[k]!.parent !== -1; k++) out.push(k);
+  const inside = new Set([i]);
+  for (let k = i + 1; k < blocks.length && inside.has(blocks[k]!.parent); k++) {
+    out.push(k);
+    inside.add(k);
+  }
   return out;
 }
 
-/**
- * Old and new rendered next to each other: rows of top-level blocks (by block index), and the blocks the cursor stops
- * at in reading order: in a row, the old side's before the new side's; an unchanged row stops on its new side only.
- */
-export function layoutOf(old: SideBlocks | null, nw: SideBlocks | null, slots: Slots): Layout {
+const childrenOf = (blocks: readonly Block[], i: number) => blocks.flatMap((b, k) => (b.parent === i ? [k] : []));
+
+/** Old and new rendered next to each other: rows of top-level blocks, by block index. */
+export function rowsOf(old: SideBlocks | null, nw: SideBlocks | null, slots: Slots): Row[] {
   const oldTops = topsOf(old);
   const newTops = topsOf(nw);
   const span = (s: SideBlocks, i: number) => ({ start: s.blocks[i]!.start, end: s.blocks[i]!.end, hit: s.hit[i]! });
-  const aligned = alignTops(
+  return alignTops(
     oldTops.map((i) => span(old!, i)),
     newTops.map((i) => span(nw!, i)),
     slots,
-  );
-  const rows = aligned.map((r) => ({ kind: r.kind, old: r.old.map((i) => oldTops[i]!), new: r.new.map((j) => newTops[j]!) }));
+  ).map((r) => ({ kind: r.kind, old: r.old.map((i) => oldTops[i]!), new: r.new.map((j) => newTops[j]!) }));
+}
+
+/**
+ * Blocks of a changed row that face each other, by block index: one to one where the diff pairs them, one side only
+ * for what was added or removed, several to several where it rewrote them together. A pair of lists, list items,
+ * tables or quotes of the same kind pairs what is inside them (`children`); the item's own text then belongs to the
+ * pair itself.
+ */
+export interface Pair {
+  old: number[];
+  new: number[];
+  children: Pair[] | null;
+}
+
+const CONTAINERS = new Set(["ul", "ol", "li", "blockquote", "table", "thead", "tbody"]);
+
+/** How alike two blocks' sources are: the share of their words they have in common, from 0 to 1. */
+export function likeness(a: string, b: string): number {
+  const words = (s: string) => s.toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? [];
+  const x = words(a);
+  const y = words(b);
+  if (!x.length && !y.length) return 1;
+  const left = new Map<string, number>();
+  for (const w of x) left.set(w, (left.get(w) ?? 0) + 1);
+  let common = 0;
+  for (const w of y) {
+    const n = left.get(w) ?? 0;
+    if (n > 0) {
+      common++;
+      left.set(w, n - 1);
+    }
+  }
+  return (2 * common) / (x.length + y.length);
+}
+
+/** Blocks this alike, of the same kind, face each other inside a change that rewrote several of them together. */
+export const ALIKE = 0.3;
+
+/**
+ * Splits blocks that one change rewrote together into pairs in their order, the most alike first (a longest common
+ * subsequence weighted by likeness), and the rest one-sided. Without the sources it keeps them together.
+ */
+function split(os: number[], ns: number[], old: SideBlocks, nw: SideBlocks): { old: number[]; new: number[] }[] {
+  if (!old.lines || !nw.lines) return [{ old: os, new: ns }];
+  const text = (s: SideBlocks, i: number) => s.lines!.slice(s.blocks[i]!.start - 1, s.blocks[i]!.end).join("\n");
+  const sim = os.map((o) => ns.map((n) => (old.blocks[o]!.tag === nw.blocks[n]!.tag ? likeness(text(old, o), text(nw, n)) : 0)));
+  const best: number[][] = Array.from({ length: os.length + 1 }, () => new Array<number>(ns.length + 1).fill(0));
+  for (let i = 1; i <= os.length; i++)
+    for (let j = 1; j <= ns.length; j++) {
+      const s = sim[i - 1]![j - 1]!;
+      best[i]![j] = Math.max(best[i - 1]![j]!, best[i]![j - 1]!, s >= ALIKE ? best[i - 1]![j - 1]! + s : -Infinity);
+    }
+  const out: { old: number[]; new: number[] }[] = [];
+  let i = os.length;
+  let j = ns.length;
+  while (i > 0 || j > 0) {
+    const s = i > 0 && j > 0 ? sim[i - 1]![j - 1]! : 0;
+    if (i > 0 && j > 0 && s >= ALIKE && best[i]![j] === best[i - 1]![j - 1]! + s) out.push({ old: [os[--i]!], new: [ns[--j]!] });
+    else if (j > 0 && (i === 0 || best[i]![j] === best[i]![j - 1])) out.push({ old: [], new: [ns[--j]!] });
+    else out.push({ old: [os[--i]!], new: [] });
+  }
+  out.reverse();
+  return out.some((p) => p.old.length && p.new.length) ? out : [{ old: os, new: ns }];
+}
+
+export function pairsOf(row: Row, old: SideBlocks | null, nw: SideBlocks | null, slots: Slots): Pair[] {
+  const pair = (os: number[], ns: number[], depth: number): Pair[] => {
+    if (!old || !nw || !os.length || !ns.length) return [...os.map((o) => ({ old: [o], new: [], children: null })), ...ns.map((n) => ({ old: [], new: [n], children: null }))];
+    const span = (s: SideBlocks, i: number) => ({ start: s.blocks[i]!.start, end: s.blocks[i]!.end, hit: s.hit[i]! });
+    return alignTops(
+      os.map((i) => span(old, i)),
+      ns.map((i) => span(nw, i)),
+      slots,
+    ).flatMap((g) => {
+      const o = g.old.map((k) => os[k]!);
+      const n = g.new.map((k) => ns[k]!);
+      return o.length > 1 || n.length > 1 ? split(o, n, old, nw) : [{ old: o, new: n }];
+    }).map(({ old: o, new: n }): Pair => {
+      if (o.length === 1 && n.length === 1 && depth < 8) {
+        const tag = old.blocks[o[0]!]!.tag;
+        const co = childrenOf(old.blocks, o[0]!);
+        const cn = childrenOf(nw.blocks, n[0]!);
+        if (tag === nw.blocks[n[0]!]!.tag && CONTAINERS.has(tag) && co.length && cn.length) return { old: o, new: n, children: pair(co, cn, depth + 1) };
+      }
+      return { old: o, new: n, children: null };
+    });
+  };
+  return pair(row.old, row.new, 0);
+}
+
+export interface Layout {
+  rows: Row[];
+  pairs: Pair[][];
+  stops: Stop[];
+}
+
+/**
+ * The blocks the cursor stops at, in reading order. An unchanged row stops on its new side only (its old side is its
+ * twin). In split view a changed row stops pair by pair, an unchanged pair once and a changed one on its old side,
+ * then its new side; in unified view the old blocks of a changed row come first, then the new ones, except for a row
+ * in `merged`, drawn once with its changes in the text, which stops pair by pair on the new side.
+ */
+export function stopsOf(rows: readonly Row[], pairs: readonly Pair[][], old: SideBlocks | null, nw: SideBlocks | null, split: boolean, merged: ReadonlySet<number> = new Set()): Stop[] {
   const stops: Stop[] = [];
+  const span = (s: SideBlocks, i: number) => ({ start: s.blocks[i]!.start, end: s.blocks[i]!.end });
+  const one = (side: MdSide, s: SideBlocks, i: number, row: number, changed: boolean) =>
+    stops.push({ side, block: i, twin: null, row, nav: { old: side === "old" ? span(s, i) : null, new: side === "new" ? span(s, i) : null, changed, group: row } });
+  const twin = (o: number, n: number, row: number, changed: boolean) => stops.push({ side: "new", block: n, twin: o, row, nav: { old: span(old!, o), new: span(nw!, n), changed, group: row } });
+  const all = (side: MdSide, s: SideBlocks, list: readonly number[], row: number) => {
+    for (const top of list) for (const i of subtree(s.blocks, top)) if (isStop(s.blocks, i)) one(side, s, i, row, s.hit[i]!);
+  };
+  const walk = (p: Pair, row: number, once: boolean) => {
+    if (p.children) {
+      const o = p.old[0]!;
+      const n = p.new[0]!;
+      if (isStop(old!.blocks, o) && isStop(nw!.blocks, n)) {
+        const changed = old!.own[o]! || nw!.own[n]!;
+        if (once || !changed) twin(o, n, row, changed);
+        else {
+          one("old", old!, o, row, true);
+          one("new", nw!, n, row, true);
+        }
+      }
+      for (const c of p.children) walk(c, row, once);
+      return;
+    }
+    if (p.old.length === 1 && p.new.length === 1) {
+      const a = subtree(old!.blocks, p.old[0]!).filter((i) => isStop(old!.blocks, i));
+      const b = subtree(nw!.blocks, p.new[0]!).filter((i) => isStop(nw!.blocks, i));
+      const changed = a.some((i) => old!.hit[i]) || b.some((i) => nw!.hit[i]);
+      if (a.length === b.length && (once || !changed)) {
+        a.forEach((o, k) => twin(o, b[k]!, row, old!.hit[o]! || nw!.hit[b[k]!]!));
+        return;
+      }
+    }
+    if (old) all("old", old, p.old, row);
+    if (nw) all("new", nw, p.new, row);
+  };
   rows.forEach((r, row) => {
     if (r.kind === "same") {
       const o = r.old[0]!;
@@ -359,18 +514,21 @@ export function layoutOf(old: SideBlocks | null, nw: SideBlocks | null, slots: S
       return;
     }
     const first = stops.length;
-    for (const [side, s, list] of [["old", old, r.old], ["new", nw, r.new]] as const) {
-      for (const top of list) {
-        for (const i of subtree(s!.blocks, top)) {
-          if (!isStop(s!.blocks, i)) continue;
-          const { start, end } = s!.blocks[i]!;
-          stops.push({ side, block: i, twin: null, row, nav: { old: side === "old" ? { start, end } : null, new: side === "new" ? { start, end } : null, changed: s!.hit[i]!, group: row } });
-        }
-      }
+    if ((split || merged.has(row)) && r.kind === "changed") for (const p of pairs[row] ?? []) walk(p, row, merged.has(row));
+    else {
+      if (old) all("old", old, r.old, row);
+      if (nw) all("new", nw, r.new, row);
     }
     if (stops.length > first && !stops.slice(first).some((s) => s.nav.changed)) stops[first]!.nav.changed = true;
   });
-  return { rows, stops };
+  return stops;
+}
+
+/** Rows, pairs and stops of two rendered sides. */
+export function layoutOf(old: SideBlocks | null, nw: SideBlocks | null, slots: Slots, split = true, merged: ReadonlySet<number> = new Set()): Layout {
+  const rows = rowsOf(old, nw, slots);
+  const pairs = rows.map((r) => (r.kind === "changed" ? pairsOf(r, old, nw, slots) : []));
+  return { rows, pairs, stops: stopsOf(rows, pairs, old, nw, split, merged) };
 }
 
 /**

@@ -110,6 +110,16 @@ test("the reviewer's last pass and viewed marks live in the database", async () 
   expect(now.sha).toMatch(/^[0-9a-f]{40}$/);
 });
 
+test("compare.markdown takes rendered or code, and the page gets it with the review", async () => {
+  const bad = await stet(["config", "set", "compare.markdown", "pretty"], { cwd: f.root });
+  expect(bad.code).not.toBe(0);
+  expect(bad.stderr + bad.stdout).toContain("compare.markdown takes rendered or code");
+  await ok(stet(["config", "set", "compare.markdown", "code"], { cwd: f.root }));
+  expect((await (await api("/api/review")).json()).ui.markdown).toBe("code");
+  await ok(stet(["config", "set", "compare.markdown", "--unset"], { cwd: f.root }));
+  expect((await (await api("/api/review")).json()).ui.markdown).toBeNull();
+});
+
 test("the review lists how many files each version changed", async () => {
   const s = await (await api("/api/review")).json();
   expect(s.versionsList.map((v: { files: number | null }) => v.files)).toEqual([1, 1]);

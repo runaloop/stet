@@ -92,7 +92,7 @@ route("GET", "/api/review", async (s, _req, url) => {
   const now = await pinned(s, r);
   const status = await svc.status(s.ctx, r, { pinnedNow: now });
   const meta = (k: string) => s.ctx.store.meta(k);
-  const ui = { tests: meta("compare.tests"), skipMarkers: meta("compare.skip_markers"), collapse: meta("compare.collapse"), order: meta("compare.order") };
+  const ui = { tests: meta("compare.tests"), skipMarkers: meta("compare.skip_markers"), collapse: meta("compare.collapse"), order: meta("compare.order"), markdown: meta("compare.markdown") };
   const rows = svc.versionRows(s.ctx, r.id);
   const versionsList = await Promise.all(
     rows.map(async (v, i) => ({ ...svc.versionDto(v), files: await svc.filesBetween(s.ctx, i > 0 ? rows[i - 1]!.snapshot : await baseOf(s, r, v.snapshot), v.snapshot) })),

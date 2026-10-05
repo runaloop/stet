@@ -3,9 +3,30 @@ import { render } from "preact";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ComparePlacement } from "../../src/core/types.ts";
 import { rawUrl, type BlobDto } from "../api.ts";
-import { compareData, compareFiles, compareNav, cursor, hoverThread, peek, pendingLines, setCursor, setFileBlocks, shownPlacements, visualAnchor } from "../compare.ts";
-import { changesOf, layoutOf, renderMarkdown, slotsOf, stopsOn, type MdSide, type RowKind, type SideChanges, type Stop } from "../lib/markdown.ts";
-import { diffRows, type Side } from "../lib/search.ts";
+import {
+  compareData,
+  compareFiles,
+  compareNav,
+  currentGrepHit,
+  currentHit,
+  cursor,
+  grepHits,
+  hoverThread,
+  peek,
+  pendingLines,
+  searchQuery,
+  searchRegex,
+  searchResult,
+  searchScope,
+  setCursor,
+  setFileBlocks,
+  shownPlacements,
+  visualAnchor,
+} from "../compare.ts";
+import { paintTextHits } from "../lib/marks.ts";
+import { changesOf, pairsOf, renderMarkdown, rowsOf, slotsOf, stopsOf, stopsOn, type MdSide, type RowKind, type SideChanges, type Stop } from "../lib/markdown.ts";
+import { isSimple, markInline, markPairs, markWords, textOf as blockText, unitsOf } from "../lib/richdiff.ts";
+import { compileQuery, type Side } from "../lib/search.ts";
 import { compareFocus, diffStyle } from "../state.ts";
 import { rangeText } from "./Bits.tsx";
 import { hi, lo, PendingBox } from "./NewThread.tsx";
@@ -45,6 +66,7 @@ const diffSide = (side: MdSide): Side => (side === "old" ? "deletions" : "additi
 
 interface Cell {
   key: string;
+  row: number;
   side: MdSide;
   kind: RowKind;
   html: string;
@@ -68,6 +90,75 @@ function placeUnder(el: HTMLElement, box: HTMLElement, afterCards = false): void
   at.after(box);
 }
 
+/** The innermost stop whose lines on `side` hold `line`, or -1. */
+function holding(stops: readonly Stop[], side: Side, line: number): number {
+  let best = -1;
+  let size = Infinity;
+  stops.forEach((s, k) => {
+    const r = side === "deletions" ? s.nav.old : s.nav.new;
+    if (r && r.start <= line && line <= r.end && r.end - r.start < size) {
+      best = k;
+      size = r.end - r.start;
+    }
+  });
+  return best;
+}
+
+/** Where `re` matches the text a block shows. */
+function rangesOf(el: Element, re: RegExp): Range[] {
+  const t = blockText([el], true);
+  const out: Range[] = [];
+  re.lastIndex = 0;
+  for (let m = re.exec(t.text); m; m = re.exec(t.text)) {
+    if (!m[0]) {
+      re.lastIndex++;
+      continue;
+    }
+    const s = m.index;
+    const e = s + m[0].length;
+    const a = t.pieces.find((p) => p.start <= s && s < p.end);
+    const b = t.pieces.find((p) => p.start < e && e <= p.end);
+    if (!a || !b) continue;
+    const r = el.ownerDocument.createRange();
+    r.setStart(a.node, s - a.start);
+    r.setEnd(b.node, e - b.start);
+    out.push(r);
+  }
+  return out;
+}
+
+/** Moves the higher of two blocks down until their tops are level; margins that collapse may take a few steps. */
+function level(a: HTMLElement, b: HTMLElement): void {
+  for (let i = 0; i < 5; i++) {
+    const d = a.getBoundingClientRect().top - b.getBoundingClientRect().top;
+    if (Math.abs(d) < 0.5) return;
+    const up = d > 0 ? b : a;
+    up.style.marginTop = `${parseFloat(getComputedStyle(up).marginTop) + Math.abs(d)}px`;
+  }
+}
+
+/** Lines up the pairs of each changed row of a split view (`data-pair`), top to bottom, and sizes the empty slots. */
+function lineUp(g: HTMLElement): void {
+  for (const el of g.querySelectorAll<HTMLElement>("[data-pair]")) {
+    el.style.marginTop = "";
+    el.style.height = "";
+  }
+  for (const oldCell of g.querySelectorAll<HTMLElement>('.md-cell[data-side="old"]')) {
+    const newCell = g.querySelector<HTMLElement>(`.md-cell[data-side="new"][data-row="${oldCell.dataset.row}"]`);
+    if (!newCell) continue;
+    const facing = new Map([...newCell.querySelectorAll<HTMLElement>("[data-pair]")].map((el) => [el.dataset.pair!, el]));
+    for (const a of oldCell.querySelectorAll<HTMLElement>("[data-pair]")) {
+      const b = facing.get(a.dataset.pair!);
+      if (!b) continue;
+      const gap = a.classList.contains("md-gap") ? a : b.classList.contains("md-gap") ? b : null;
+      const real = gap === a ? b : a;
+      if (a.tagName !== "TR") level(a, b);
+      if (gap) gap.style.height = `${real.getBoundingClientRect().height}px`;
+      else if (a.tagName === "TR") a.style.height = b.style.height = `${Math.max(a.getBoundingClientRect().height, b.getBoundingClientRect().height)}px`;
+    }
+  }
+}
+
 function ThreadCards({ items }: { items: { p: ComparePlacement; partial: boolean }[] }) {
   return (
     <>
@@ -82,9 +173,11 @@ function ThreadCards({ items }: { items: { p: ComparePlacement; partial: boolean
 }
 
 /**
- * A Markdown file of the diff rendered: in split view the old and the new side next to each other, unchanged blocks
- * level; in unified view one column where a changed block's old version stands above its new one. Threads show on
- * the blocks their lines are in, and a block can be commented on like lines of code.
+ * A Markdown file of the diff rendered: in split view the old and the new side next to each other, block facing block
+ * and item facing item, the changed words marked; in unified view one column where a block with a few words changed
+ * shows once with the changes in it, and another changed block's old version stands above its new one. Threads show
+ * on the blocks their lines are in, a block can be commented on like lines of code, and search hits are highlighted
+ * in the text.
  */
 export function MarkdownView({ file }: { file: string }) {
   const d = compareData.value;
@@ -103,19 +196,46 @@ export function MarkdownView({ file }: { file: string }) {
       text !== null && sha ? renderMarkdown(text, { path, imageUrl: (p) => rawUrl(sha, p), changes: ch, highlight }) : null;
     return { old: side(oldText, oldSha, oldPath, changes?.old ?? null), new: side(newText, newSha, file, changes?.new ?? null) };
   }, [oldText, newText, oldSha, newSha, oldPath, file, changes, highlight]);
-  const layout = useMemo(() => (fd && (sides.old || sides.new) ? layoutOf(sides.old, sides.new, slotsOf(fd, lineCount(oldText), lineCount(newText))) : null), [fd, sides]);
   const split = diffStyle.value === "split" && !!sides.old && !!sides.new;
-  const cells = useMemo(() => {
-    if (!layout) return [];
+  const layout = useMemo(() => {
+    if (!fd || !(sides.old || sides.new)) return null;
+    const slots = slotsOf(fd, lineCount(oldText), lineCount(newText));
+    const rows = rowsOf(sides.old, sides.new, slots);
+    const pairs = rows.map((r) => (r.kind === "changed" ? pairsOf(r, sides.old, sides.new, slots) : []));
     const tops = { old: new Map(sides.old?.tops.map((t) => [t.block, t.html])), new: new Map(sides.new?.tops.map((t) => [t.block, t.html])) };
     const html = (side: MdSide, list: number[]) => list.map((b) => tops[side].get(b) ?? "").join("");
-    const out: Cell[] = [];
-    layout.rows.forEach((r, i) => {
-      if (split || (r.old.length && r.kind !== "same")) out.push({ key: `${i}o`, side: "old", kind: r.kind, html: html("old", r.old) });
-      if (split || r.new.length) out.push({ key: `${i}n`, side: "new", kind: r.kind, html: html("new", r.new) });
+    const parse = (h: string) => {
+      const t = document.createElement("template");
+      t.innerHTML = h;
+      return t;
+    };
+    const tagOf = (side: MdSide, i: number) => (side === "old" ? sides.old : sides.new)!.blocks[i]!.tag;
+    const cells: Cell[] = [];
+    const merged = new Set<number>();
+    rows.forEach((r, i) => {
+      const cell = (side: MdSide, h: string) => cells.push({ key: `${i}${side}`, row: i, side, kind: r.kind, html: h });
+      if (r.kind === "changed" && r.old.length && r.new.length) {
+        const a = parse(html("old", r.old));
+        const b = parse(html("new", r.new));
+        const units = unitsOf(a.content, b.content, pairs[i]!);
+        if (!split && isSimple(pairs[i]!, units, tagOf)) {
+          merged.add(i);
+          markInline(b.content, pairs[i]!, units);
+          cell("new", b.innerHTML);
+          return;
+        }
+        markWords(units);
+        if (split) markPairs(a.content, b.content, pairs[i]!);
+        cell("old", a.innerHTML);
+        cell("new", b.innerHTML);
+        return;
+      }
+      if (split || (r.old.length && r.kind !== "same")) cell("old", html("old", r.old));
+      if (split || r.new.length) cell("new", html("new", r.new));
     });
-    return out;
-  }, [layout, sides, split]);
+    return { rows, pairs, cells, merged, stops: stopsOf(rows, pairs, sides.old, sides.new, split, merged) };
+  }, [fd, sides, split]);
+  const cells = layout?.cells ?? [];
 
   const langs = [...new Set([...(sides.old?.langs ?? []), ...(sides.new?.langs ?? [])])].join(" ");
   useEffect(() => {
@@ -141,7 +261,7 @@ export function MarkdownView({ file }: { file: string }) {
     layout.stops.forEach((s, k) => {
       for (const el of [elementOf(g, s, "new", split), elementOf(g, s, "old", split)]) if (el) el.dataset.stop = String(k);
     });
-  }, [layout, cells]);
+  }, [layout]);
 
   const c = cursor.value;
   const anchor = visualAnchor.value;
@@ -153,7 +273,7 @@ export function MarkdownView({ file }: { file: string }) {
     const mark = (k: number, cls: string) => g.querySelectorAll(`[data-stop="${k}"]`).forEach((el) => el.classList.add(cls));
     if (anchor?.path === file && anchor.row >= 0) for (let k = Math.min(anchor.row, c.row); k <= Math.max(anchor.row, c.row); k++) mark(k, "md-visual");
     mark(c.row, "md-cursor");
-  }, [c, anchor, layout, cells]);
+  }, [c, anchor, layout]);
 
   const placed = shownPlacements.value.filter((p) => p.path === file);
   const placedKey = JSON.stringify(placed.map((p) => [p.threadId, p.side, p.range.start, p.range.end, p.state]));
@@ -192,7 +312,7 @@ export function MarkdownView({ file }: { file: string }) {
         delete el.dataset.threads;
       }
     };
-  }, [layout, cells, placedKey]);
+  }, [layout, placedKey]);
 
   const focus = hoverThread.value ?? compareFocus.value;
   useLayoutEffect(() => {
@@ -200,7 +320,7 @@ export function MarkdownView({ file }: { file: string }) {
     if (!g) return;
     for (const el of g.querySelectorAll(".md-thread-focus")) el.classList.remove("md-thread-focus");
     if (focus !== null) for (const el of g.querySelectorAll(`[data-threads~="${focus}"]`)) el.classList.add("md-thread-focus");
-  }, [focus, layout, cells, placedKey]);
+  }, [focus, layout, placedKey]);
 
   const pending = pendingLines.value;
   const mine = pending?.path === file ? pending : null;
@@ -222,13 +342,61 @@ export function MarkdownView({ file }: { file: string }) {
       box.remove();
       for (const el of els) el.classList.remove("md-picked");
     };
-  }, [layout, cells, pendingKey]);
+  }, [layout, pendingKey]);
+
+  // Search hits in the rendered text: each block that holds a line with a hit, and the hit the search is at.
+  const hits = searchScope.value === "files" ? grepHits.value.filter((h) => h.path === file && h.inDiff).map((h) => ({ side: "additions" as Side, line: h.line })) : (searchResult.value.files.find((f) => f.path === file)?.hits ?? []);
+  const current = searchScope.value === "files" ? currentGrepHit.value : currentHit.value;
+  const query = compileQuery(searchQuery.value, searchRegex.value);
+  const hitsKey = JSON.stringify([hits.map((h) => [h.side, h.line]), current?.path === file ? [current.line, "side" in current ? current.side : "additions"] : null, String(query)]);
+  useLayoutEffect(() => {
+    const g = grid.current;
+    if (!g) return;
+    const ranges: { range: Range; current: boolean }[] = [];
+    if (layout && query instanceof RegExp && hits.length) {
+      const seen = new Map<Element, boolean>();
+      for (const h of hits) {
+        const k = holding(layout.stops, h.side, h.line);
+        const el = k === -1 ? null : elementOf(g, layout.stops[k]!, h.side === "deletions" ? "old" : "new", split);
+        const now = current?.path === file && current.line === h.line && ("side" in current ? current.side : "additions") === h.side;
+        if (el) seen.set(el, (seen.get(el) ?? false) || now);
+      }
+      for (const [el, now] of seen) for (const range of rangesOf(el, query)) ranges.push({ range, current: now });
+    }
+    paintTextHits(g, ranges);
+    return () => paintTextHits(g, []);
+  }, [layout, hitsKey]);
+
+  // In split view the blocks of a changed row are lined up pair by pair, and empty slots get the height of what faces them.
+  useLayoutEffect(() => {
+    const g = grid.current;
+    if (!g || !split) return;
+    let frame = 0;
+    const again = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => lineUp(g));
+    };
+    lineUp(g);
+    let width = g.clientWidth;
+    const resized = new ResizeObserver(() => {
+      if (g.clientWidth === width) return;
+      width = g.clientWidth;
+      again();
+    });
+    resized.observe(g);
+    g.addEventListener("load", again, true);
+    return () => {
+      cancelAnimationFrame(frame);
+      resized.disconnect();
+      g.removeEventListener("load", again, true);
+    };
+  }, [layout, split, placedKey, pendingKey]);
 
   const [hover, setHover] = useState<{ stop: number; side: MdSide; top: number; left: number } | null>(null);
 
   if (!d || !fd) return null;
-  if ((oldSha && oldBlob === "loading") || (newSha && newBlob === "loading")) return <div class="note">loading…</div>;
-  if (!layout) return <div class="note">{file} is not a text file here.</div>;
+  if ((oldSha && oldBlob === "loading") || (newSha && newBlob === "loading")) return <div class="note" data-file={file}>loading…</div>;
+  if (!layout) return <div class="note" data-file={file}>{file} is not a text file here.</div>;
 
   const at = (side: MdSide) => (side === "old" ? { sha: d.from.sha, label: d.from.label } : { sha: d.to.sha, label: d.to.label });
   const sideOf = (el: Element): MdSide => ((el.closest(".md-cell") as HTMLElement | null)?.dataset.side === "old" ? "old" : "new");
@@ -240,14 +408,7 @@ export function MarkdownView({ file }: { file: string }) {
     compareNav.current?.startComment({ path: file, side: diffSide(side), start: r.start, end: r.end });
   };
 
-  const toCode = (k: number, side: MdSide) => {
-    const r = side === "old" ? layout.stops[k]?.nav.old : layout.stops[k]?.nav.new;
-    if (!r) return;
-    const shown = new Set(diffRows(fd).map((row) => (side === "old" ? (row.kind !== "add" ? row.old : null) : row.kind !== "del" ? row.new : null)));
-    let line = r.start;
-    while (line < r.end && !shown.has(line)) line++;
-    compareNav.current?.openLine(file, diffSide(side), shown.has(line) ? line : r.start);
-  };
+  const toCode = (k: number, side: MdSide) => compareNav.current?.showCode(file, k, side);
 
   const click = (e: MouseEvent) => {
     const el = e.target as Element;
@@ -297,7 +458,7 @@ export function MarkdownView({ file }: { file: string }) {
   const caption = split
     ? `${oldPath === file ? "" : `${oldPath} → ${file} · `}old and new side by side; unchanged blocks are level`
     : sides.old && sides.new
-      ? `${d.from.label} → ${d.to.label} · a changed block shows what was there above what is there now`
+      ? `${d.from.label} → ${d.to.label} · changed words are marked in the text; a rewritten block shows what was there above what is there now`
       : sides.new
         ? `added at ${d.to.label}`
         : `deleted after ${d.from.label}`;
@@ -319,6 +480,7 @@ export function MarkdownView({ file }: { file: string }) {
           <div
             key={cell.key}
             class={`md md-cell md-${cell.kind}${cell.html ? "" : " md-empty"}`}
+            data-row={cell.row}
             data-side={cell.side}
             data-label={at(cell.side).label}
             dangerouslySetInnerHTML={{ __html: cell.html }}
