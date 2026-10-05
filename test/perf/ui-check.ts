@@ -1166,17 +1166,27 @@ try {
       window.__share = (f, side, line) => { const b = __block(f, side, line); if (!b) return null; const r = b.e.getBoundingClientRect(); return r.top - __h().getBoundingClientRect().top + Math.min(1, (line - b.s) / (b.en - b.s + 1)) * r.height; };
       window.__cursorAt = (f) => { const e = __md(f)?.querySelector(".md-cursor"); if (e) return "block " + e.dataset.start; const r = __item(f)?.shadowRoot?.querySelector('[data-content] > [data-stet-mark~="cursor"]'); return r ? "line " + r.getAttribute("data-line") : null; };
       true`);
-    // every frame for 2 s after the click: the scroll position and where the anchored text is
+    // every frame for 2 s after the click: the scroll position, where the anchored text is, the copy of the old view
+    // laid over the switch (its opacity, -1 when there is none) and the time
+    type Frame = [number, number | null, number, number];
     const traced = (file: string, anchor: string) =>
       b.eval(`new Promise(done => {
         const t0 = performance.now();
         const rec = [];
-        const f = () => { const y = (() => { ${anchor} })(); rec.push([Math.round(__h().scrollTop), y === null || y === undefined ? null : Math.round(y)]); if (performance.now() - t0 < 2000) requestAnimationFrame(f); else done(rec); };
+        const f = () => { const y = (() => { ${anchor} })(); const o = document.querySelector(".view-fade"); rec.push([Math.round(__h().scrollTop), y === null || y === undefined ? null : Math.round(y), o ? Math.round(+getComputedStyle(o).opacity * 100) / 100 : -1, Math.round(performance.now() - t0)]); if (performance.now() - t0 < 2000) requestAnimationFrame(f); else done(rec); };
         ${toggleOf(file)}.click();
         requestAnimationFrame(f);
-      })`) as Promise<[number, number | null][]>;
+      })`) as Promise<Frame[]>;
+    // the copy is there from the first frame, fades for about 200 ms once the new view is placed, and is gone
+    const faded = (rec: Frame[]) => {
+      const on = rec.filter((r) => r[2] !== -1);
+      const start = rec.find((r) => r[2] !== -1 && r[2] < 1)?.[3] ?? null;
+      const gone = rec.find((r, i) => i > 0 && r[2] === -1 && rec[i - 1]![2] !== -1)?.[3] ?? null;
+      const ok = rec[0]![2] === 1 && start !== null && gone !== null && gone - start >= 150 && gone - start <= 300 && gone <= 700 && on.every((r) => r[3] < gone);
+      return { ok, start, gone };
+    };
     // after the frame that first shows the text where it was, the page may settle a little, but not shake
-    const steady = (rec: [number, number | null][], y: number) => {
+    const steady = (rec: Frame[], y: number) => {
       const first = rec.findIndex((r) => r[1] !== null && Math.abs(r[1] - y) <= 4);
       const later = rec.slice(Math.max(first, 0)).flatMap((r, i, a) => (i > 0 && r[0] !== a[i - 1]![0] ? [Math.abs(r[0] - a[i - 1]![0])] : []));
       const end = rec[rec.length - 1]![1];
@@ -1193,6 +1203,7 @@ try {
     ];
     const drifts: Record<string, unknown> = {};
     let held = true;
+    let fadedAll = true;
     for (const [file, name, text, frac, far] of places) {
       await b.eval(`[...document.querySelectorAll(".side-tabs button")].find(x => x.textContent.startsWith("Files")).click(); true`);
       await sleep(150);
@@ -1209,21 +1220,56 @@ try {
       await b.eval(`(() => { const e = [...__md(${JSON.stringify(file)}).querySelectorAll('.md-cell[data-side="new"] [data-stop]')].find(x => x.textContent.trim().startsWith(${JSON.stringify(text)})); const r = e.getBoundingClientRect(); __h().scrollTop += r.top - __band() + ${frac} * r.height; return true; })()`);
       await sleep(600);
       const a = await b.eval(`__rtop(${JSON.stringify(file)})`);
-      const toCode = steady(await traced(file, `const r = __row(${JSON.stringify(file)}, "${a.side}", ${a.line}); return r ? r.getBoundingClientRect().top - __h().getBoundingClientRect().top : null;`), a.y);
+      const toCodeFrames = await traced(file, `const r = __row(${JSON.stringify(file)}, "${a.side}", ${a.line}); return r ? r.getBoundingClientRect().top - __h().getBoundingClientRect().top : null;`);
+      const toCode = { ...steady(toCodeFrames, a.y), fade: faded(toCodeFrames) };
       await sleep(200);
       const cursorCode = await b.eval(`__cursorAt(${JSON.stringify(file)})`);
       const c = await b.eval(`__ctop(${JSON.stringify(file)})`);
-      const toRendered = steady(await traced(file, `return __share(${JSON.stringify(file)}, "${c.side}", ${c.line});`), c.y);
+      const toRenderedFrames = await traced(file, `return __share(${JSON.stringify(file)}, "${c.side}", ${c.line});`);
+      const toRendered = { ...steady(toRenderedFrames, c.y), fade: faded(toRenderedFrames) };
       await sleep(300);
       const cursorAfter = await b.eval(`__cursorAt(${JSON.stringify(file)})`);
       drifts[name] = { toCode, toRendered, ...(far ? { cursor: [cursorBefore, cursorCode, cursorAfter] } : {}) };
       console.log(`drift ${name}: ${JSON.stringify(drifts[name])}`);
       held &&= toCode.ok && toRendered.ok && (!far || (cursorBefore !== null && cursorAfter === cursorBefore && cursorCode !== null));
+      fadedAll &&= toCode.fade.ok && toRendered.fade.ok;
     }
     check(
       "switching a long Markdown file between rendered and code keeps the first text in view where it was (a block's top, the middle of a tall paragraph, a table row), without shaking; a cursor far away stays where it is",
       held,
       drifts,
+    );
+    check(
+      "a copy of the old view covers the switch from its first frame and fades out in about 200 ms once the new view is in place, then is gone",
+      fadedAll,
+      Object.fromEntries(Object.entries(drifts).map(([k, v]) => [k, [(v as { toCode: { fade: unknown } }).toCode.fade, (v as { toRendered: { fade: unknown } }).toRendered.fade]])),
+    );
+    // input reaches the new view at once and takes the copy away; with reduced motion there is no copy
+    const longFile = JSON.stringify("docs/long.md");
+    await b.eval(`[...document.querySelectorAll(".file-row")].find(r => r.querySelector(".file-name")?.textContent === "long.md").querySelector(".file-link").click(); true`);
+    await waitFor(`__md(${longFile})?.querySelector("[data-stop]")`, 10000);
+    await sleep(1000);
+    await clickIn(`.md-view[data-file="docs/long.md"] .md-cell[data-side="new"] [data-stop="12"]`);
+    await sleep(300);
+    await b.eval(`document.activeElement?.blur(); true`);
+    const keyFrom = await b.eval(`__cursorAt(${longFile})`);
+    await b.eval(`${toggleOf("docs/long.md")}.click(); true`);
+    const copyThere = await b.eval(`!!document.querySelector(".view-fade")`);
+    await keys("j");
+    const afterKey = await b.eval(`({ copy: !!document.querySelector(".view-fade"), cursor: __cursorAt(${longFile}) })`);
+    await sleep(600);
+    const keySettled = await b.eval(`__cursorAt(${longFile})`);
+    await keys("k");
+    await sleep(200);
+    const keyBack = await b.eval(`__cursorAt(${longFile})`);
+    await b.eval(`window.__matchMedia = window.matchMedia; window.matchMedia = (q) => /reduced-motion/.test(q) ? { matches: true, media: q, addEventListener() {}, removeEventListener() {} } : window.__matchMedia(q); true`);
+    const reduced = (await traced("docs/long.md", "return 0;")).filter((r) => r[2] !== -1).length;
+    await b.eval(`window.matchMedia = window.__matchMedia; true`);
+    await sleep(600);
+    check(
+      "a key right after the switch moves the cursor in the new view and takes the copy away; with prefers-reduced-motion there is no copy",
+      copyThere && !afterKey.copy && keySettled !== null && keyBack !== null && keyBack !== keySettled && /^line /.test(keySettled) && reduced === 0,
+      { copyThere, keyFrom, afterKey, keySettled, keyBack, reducedFrames: reduced },
     );
     const long = `document.querySelector('.md-view[data-file="docs/long.md"]')`;
     await b.eval(`[...document.querySelectorAll(".file-row")].find(r => r.querySelector(".file-name")?.textContent === "long.md").querySelector(".file-link").click(); true`);
@@ -1264,9 +1310,14 @@ try {
     await waitFor(`${tmd}?.querySelector(".md-thread-focus")`, 10000);
     await sleep(500);
     const threadOpened = await threadMd();
-    await b.eval(`document.querySelector(".code-label .md-toggle").click(); true`);
+    // the switch here is covered by a fading copy too, gone soon after
+    const threadFade = await b.eval(`new Promise(done => {
+      document.querySelector(".code-label .md-toggle").click();
+      const at = !!document.querySelector(".view-fade");
+      setTimeout(() => done({ at, later: !!document.querySelector(".view-fade") }), 500);
+    })`);
     await waitFor(`!${tmd} && document.querySelector(".code-area diffs-container")`, 8000);
-    const codeThere = await threadMd();
+    const codeThere = { ...(await threadMd()), fade: threadFade };
     await b.eval(`document.querySelector(".code-label .md-toggle").click(); true`);
     await waitFor(`${tmd}?.querySelector(".md-thread-focus")`, 8000);
     await b.eval(`${stepButton("written")}.click(); true`);
@@ -1281,7 +1332,7 @@ try {
     check(
       "a thread on a Markdown file shows its code rendered, with the toggle to code and back; its blocks are marked, picking a step keeps the view, and a changed step compares old and new with the changed words marked",
       threadOpened.rendered && (threadOpened.toggle?.includes("code") ?? false) && threadOpened.marker && threadOpened.focus.some((f: string) => f.endsWith("Paragraph 3")) &&
-        !codeThere.rendered && codeThere.code && (codeThere.toggle?.includes("rendered") ?? false) &&
+        !codeThere.rendered && codeThere.code && (codeThere.toggle?.includes("rendered") ?? false) && threadFade.at && !threadFade.later &&
         written.rendered && written.folds > 0 && written.words.length === 0 && JSON.stringify(written.focus) === JSON.stringify(["new:Paragraph 3"]) &&
         changed.rendered && changed.split === true && JSON.stringify(changed.focus) === JSON.stringify(["old:Paragraph 3", "new:Paragraph 3"]) &&
         JSON.stringify(changed.words) === JSON.stringify(["del:1", "ins:2"]),

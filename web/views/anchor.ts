@@ -7,17 +7,28 @@ const HEADER = 48;
 
 let release: (() => void) | null = null;
 
+const once = (fn?: () => void) => {
+  let done = !fn;
+  return () => {
+    if (done) return;
+    done = true;
+    fn!();
+  };
+};
+
 /**
  * Puts a rendered block where `want` says (px from the top of the scroller, given the block, as its height may count):
  * once as soon as it is drawn, and once more when the pictures above it have loaded (they push it down), within `ms`
  * and unless the reader scrolls, clicks or types first. Between the two pierre keeps the place itself; a correction on
  * every frame would fight its own and shake the page.
  */
-export function placeAt(scroller: HTMLElement, find: () => Element | null, want: number | ((el: Element) => number), ms = 1500): void {
+export function placeAt(scroller: HTMLElement, find: () => Element | null, want: number | ((el: Element) => number), ms = 1500, placed?: () => void): void {
   release?.();
   let done = false;
+  const tell = once(placed);
   const events = ["wheel", "pointerdown", "keydown"] as const;
   const stop = () => {
+    tell();
     done = true;
     for (const ev of events) window.removeEventListener(ev, stop, { capture: true });
     if (release === stop) release = null;
@@ -31,16 +42,17 @@ export function placeAt(scroller: HTMLElement, find: () => Element | null, want:
     if (Math.abs(off) >= 1) scroller.scrollTop += off;
   };
   const above = (el: Element) => [...(el.closest(".md-view")?.querySelectorAll("img") ?? [])].filter((img) => img.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
-  let placed = false;
+  let first = false;
   let last = NaN;
   let still = 0;
   const tick = () => {
     if (done) return;
     const el = find();
     const late = performance.now() > end;
-    if (el && !placed) {
+    if (el && !first) {
       fix(el);
-      placed = true;
+      first = true;
+      tell();
     } else if (el) {
       const top = el.getBoundingClientRect().top;
       still = top === last ? still + 1 : 0;
@@ -61,13 +73,15 @@ export function placeAt(scroller: HTMLElement, find: () => Element | null, want:
  * Puts a line of the code `y` px below the top: pierre's own line target keeps it there while it lays the rows out,
  * and once the line has stood still for a few frames one last nudge takes up what pierre's sum leaves over.
  */
-export function lineAt(scroller: HTMLElement, view: CodeView<never>, path: string, side: Side, line: number, y: number, ms = 1500): void {
+export function lineAt(scroller: HTMLElement, view: CodeView<never>, path: string, side: Side, line: number, y: number, ms = 1500, placed?: () => void): void {
   release?.();
   const sticky = (view as unknown as { getStickyHeaderOffset?: () => number }).getStickyHeaderOffset?.() ?? 0;
   view.scrollTo({ type: "line", id: path, lineNumber: line, side, align: "start", offset: y - sticky });
   let done = false;
+  const tell = once(placed);
   const events = ["wheel", "pointerdown", "keydown"] as const;
   const stop = () => {
+    tell();
     done = true;
     for (const ev of events) window.removeEventListener(ev, stop, { capture: true });
     if (release === stop) release = null;
@@ -83,6 +97,7 @@ export function lineAt(scroller: HTMLElement, view: CodeView<never>, path: strin
     const top = el ? el.getBoundingClientRect().top - scroller.getBoundingClientRect().top : NaN;
     still = top === last ? still + 1 : 0;
     last = top;
+    if (el && Math.abs(top - y) <= 2) tell();
     if (el && still >= 6) {
       if (Math.abs(top - y) >= 1) scroller.scrollTop += top - y;
       return stop();

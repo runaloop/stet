@@ -21,6 +21,7 @@ import { latchNew, openAtNews } from "../msgs.ts";
 import { stepThread, stepUnread } from "../lib/nav.ts";
 import { isMarkdown } from "../lib/markdown.ts";
 import { filePatch, regionPatch } from "../lib/region.ts";
+import { snapshot, visibleBox, type Fade } from "../lib/fade.ts";
 import { CHUNK, expansionOf, NOTHING, revealedPatch, textLines, withSpan, type Reveal } from "../lib/reveal.ts";
 import type { Span } from "../lib/cursor.ts";
 import { clampStep, diffPair } from "../lib/timeline.ts";
@@ -128,6 +129,20 @@ function CodeBlock({ d, from, to, here }: { d: Detail; from: TimelineStepDto; to
   }, [whole, oldFile, newFile, scope, fileDiff, opened]);
   const open = (span: Span | null) => span && setOpened((r) => withSpan(r, span));
   const mdHost = useRef<HTMLDivElement>(null);
+  const body = useRef<HTMLDivElement>(null);
+  // a copy of the old view covers the switch and fades out once the new one is drawn
+  const fade = useRef<Fade | null>(null);
+  const toggle = () => {
+    fade.current = body.current ? snapshot(visibleBox(body.current), [body.current]) : null;
+    mdView.value = rendered ? "code" : "rendered";
+  };
+  useEffect(() => {
+    const f = fade.current;
+    fade.current = null;
+    if (!f) return;
+    const frame = requestAnimationFrame(() => requestAnimationFrame(f.go));
+    return () => cancelAnimationFrame(frame);
+  }, [rendered]);
   useEffect(() => {
     if (!rendered) return;
     const frame = requestAnimationFrame(() => reveal(mdHost.current, scope !== "region"));
@@ -240,11 +255,12 @@ function CodeBlock({ d, from, to, here }: { d: Detail; from: TimelineStepDto; to
           ))}
         </span>
         {isMarkdown(to.path) ? (
-          <button class="btn ghost small md-toggle" title="Markdown: show it rendered or as code" onClick={() => (mdView.value = rendered ? "code" : "rendered")}>
+          <button class="btn ghost small md-toggle" title="Markdown: show it rendered or as code" onClick={toggle}>
             {rendered ? "‹/› code" : "¶ rendered"}
           </button>
         ) : null}
       </div>
+      <div class="code-body" ref={body}>
       {rendered ? (
         whole && (scope === "file" || shared) ? (
           <div class="md-anno" ref={mdHost}>
@@ -274,6 +290,7 @@ function CodeBlock({ d, from, to, here }: { d: Detail; from: TimelineStepDto; to
       ) : (
         <div class="note">loading…</div>
       )}
+      </div>
     </>
   );
 }

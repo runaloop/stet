@@ -60,8 +60,10 @@ The button on its header (**‹/› code** / **¶ rendered**) switches that file
 open, and keeps the first text you see where it is on the screen: the topmost block becomes its line at the point you
 scrolled to (halfway through a ten-line paragraph: its fifth line), and the topmost line becomes the block that holds
 it, placed so that the line's share of the block stays where the line was. Text the code had folded opens there, with
-a screen of lines around it, and stays open when you switch again. The cursor goes there too when it was on screen;
-otherwise it keeps its place in the file. `stet config set compare.markdown code` makes code the default.
+a screen of lines around it, and stays open when you switch again. The old view fades out over the new one in a fifth
+of a second (at once with reduced motion), and keys, clicks and the wheel act on the new one right away. The cursor
+goes there too when it was on screen; otherwise it keeps its place in the file. `stet config set compare.markdown
+code` makes code the default.
 
 In split view the old and the new version stand side by side, block facing block: unchanged blocks are level, and
 inside a changed list or table the items and rows face each other too (nested items as well), with an empty slot

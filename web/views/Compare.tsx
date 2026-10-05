@@ -60,6 +60,7 @@ import { rowPosition, type Cursor, type LineRange } from "../lib/cursor.ts";
 import { compareOrder } from "../lib/nav.ts";
 import { PeekView } from "./Peek.tsx";
 import { codeTop, lineAt, onScreen, placeAt, renderedTop, rowElement, stopElement } from "./anchor.ts";
+import { snapshot, visibleBox } from "../lib/fade.ts";
 import { Presets, rangeTitle, ReviewedButton, VersionStrip } from "../components/VersionStrip.tsx";
 import { takeSpot } from "../jumps.ts";
 import { compileQuery, diffRows } from "../lib/search.ts";
@@ -505,6 +506,9 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     const c = cursor.peek();
     const here = c?.path === path && c.row >= 0;
     if (!h || !v || !fd) return setFileView(path, to);
+    // the change of height around the text read is covered by a copy of the old view, faded out once the new one is in place
+    const fade = snapshot(visibleBox(h), [...h.querySelectorAll("diffs-container, .codeview-footer")]);
+    const fadeLater = () => requestAnimationFrame(() => requestAnimationFrame(fade.go));
     const spanOf = (side: Side, row: number) => {
       const nav = cursorSpace.peek().block({ path, row });
       return nav ? (side === "deletions" ? nav.old : nav.new) : null;
@@ -515,7 +519,11 @@ export function CompareView({ from, to }: { from: string; to: string }) {
       const nav = top ? cursorSpace.peek().block({ path, row: top.stop }) : null;
       const seen = here && onScreen(h, stopElement(path, c!.row));
       const kept = here && !seen ? { at: cursorSpace.peek().block(c!) } : null;
-      if (!top || !nav) return setFileView(path, "code");
+      if (!top || !nav) {
+        setFileView(path, "code");
+        afterDraw.current.push(fadeLater);
+        return;
+      }
       const side: Side = (top.side === "old" || !nav.new) && nav.old ? "deletions" : "additions";
       const span = (side === "deletions" ? nav.old : nav.new)!;
       const count = span.end - span.start + 1;
@@ -544,7 +552,8 @@ export function CompareView({ from, to }: { from: string; to: string }) {
         }
         requestAnimationFrame(() => {
           const cv = view.current as CodeView<never> | null;
-          if (cv) lineAt(h, cv, path, side, line, y);
+          if (cv) lineAt(h, cv, path, side, line, y, 1500, fade.go);
+          else fade.go();
         });
       });
       return;
@@ -558,7 +567,10 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     const texts = d ? Promise.all([fd.type === "new" ? null : api.blob(d.from.sha, fd.prevName ?? path), fd.type === "deleted" ? null : api.blob(d.to.sha, path)]) : Promise.resolve();
     void texts.catch(() => null).then(() => {
       setFileView(path, "rendered");
-      if (!top && !where) return;
+      if (!top && !where) {
+        afterDraw.current.push(fadeLater);
+        return;
+      }
       afterDraw.current.push(() =>
         whenLaidOut(
           path,
@@ -570,10 +582,10 @@ export function CompareView({ from, to }: { from: string; to: string }) {
             if (seen && s) cursor.value = s;
             else if (back?.path === path && c?.row === back.line.row) cursor.value = { path, row: back.block };
             else if (where) cursor.value = space.locate(path, where.side, where.line) ?? cursor.peek();
-            if (!top || !s) return;
+            if (!top || !s) return fadeLater();
             const span = spanOf(top.side, s.row);
             const share = span ? Math.min(1, Math.max(0, (top.line - span.start) / (span.end - span.start + 1))) : 0;
-            placeAt(h, () => stopElement(path, s.row, top.side), (el) => top.y - share * el.getBoundingClientRect().height, 2500);
+            placeAt(h, () => stopElement(path, s.row, top.side), (el) => top.y - share * el.getBoundingClientRect().height, 2500, fade.go);
           },
           true,
         ),
