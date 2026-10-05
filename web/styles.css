@@ -420,16 +420,17 @@ a.snip:not(.match):hover { opacity: 0.8; }
 @container (min-width: 1100px) {
   .detail { display: grid; grid-template-columns: minmax(0, 1fr) 7px var(--msgs-w, minmax(360px, 38%)); grid-template-rows: auto auto minmax(0, 1fr); height: 100%; max-width: none; padding-bottom: 0; column-gap: 0; }
   .detail > .detail-head, .detail > .state-strip { grid-column: 1 / -1; }
-  .detail > .thread-code { grid-column: 1; overflow: auto; padding: 0 10px 24px 0; }
-  .detail > .splitter.msgs-splitter { display: block; grid-column: 2; background: transparent; }
-  .detail > .thread-msgs { grid-column: 3; overflow: auto; padding: 0 2px 24px 12px; }
+  .detail > .detail-head { grid-row: 1; }
+  .detail > .state-strip { grid-row: 2; }
+  .detail > .thread-code { grid-column: 1; grid-row: 3; overflow: auto; padding: 0 10px 24px 0; }
+  .detail > .splitter.msgs-splitter { display: block; grid-column: 2; grid-row: 3; background: transparent; }
+  .detail > .thread-msgs { grid-column: 3; grid-row: 3; overflow: auto; padding: 0 2px 24px 12px; }
   .detail > .thread-code > .peek { position: absolute; inset: 0 10px 0 0; height: auto; margin: 0; }
   .thread-msgs .conversation { margin-top: 0; }
   .thread-msgs .conversation > .comment:first-child { margin-top: 0; }
   .detail.msgs-left { grid-template-columns: var(--msgs-w, minmax(360px, 38%)) 7px minmax(0, 1fr); }
-  .detail.msgs-left > .thread-msgs { grid-column: 1; grid-row: 3; padding: 0 12px 24px 2px; }
-  .detail.msgs-left > .splitter.msgs-splitter { grid-row: 3; }
-  .detail.msgs-left > .thread-code { grid-column: 3; grid-row: 3; padding: 0 0 24px 10px; }
+  .detail.msgs-left > .thread-msgs { grid-column: 1; padding: 0 12px 24px 2px; }
+  .detail.msgs-left > .thread-code { grid-column: 3; padding: 0 0 24px 10px; }
   .detail.msgs-left > .thread-code > .peek { inset: 0 0 0 10px; }
 }
 

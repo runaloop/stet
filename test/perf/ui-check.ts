@@ -688,6 +688,27 @@ try {
     const wide = await b.eval(`(() => { const c = document.querySelector(".thread-code").getBoundingClientRect(); const m = document.querySelector(".thread-msgs").getBoundingClientRect(); return { code: [Math.round(c.left), Math.round(c.right)], msgs: [Math.round(m.left), Math.round(m.right)], scroll: getComputedStyle(document.querySelector(".thread-msgs")).overflowY }; })()`);
     await b.screenshot(join(OUT, "shots", "ui-check-wide.png"));
     check("on a wide screen the thread is threads | code | messages, each column scrolling on its own", wide.msgs[0] >= wide.code[1] && wide.scroll === "auto", wide);
+    const span = (sel: string) => `(() => { const r = document.querySelector(${JSON.stringify(sel)})?.getBoundingClientRect(); return r && r.height ? [Math.round(r.top), Math.round(r.bottom)] : null; })()`;
+    const threadRows = () => b.eval(`({ head: ${span(".detail-head")}, strip: ${span(".state-strip")}, code: ${span(".thread-code")}, msgs: ${span(".thread-msgs")}, page: ${span(".detail")} })`) as Promise<{ head: number[]; strip: number[] | null; code: number[]; msgs: number[]; page: number[] }>;
+    const rowsOk = (r: Awaited<ReturnType<typeof threadRows>>) =>
+      r.code[0] === r.msgs[0] && r.code[0]! >= (r.strip ?? r.head)[1]! && r.code[1] === r.page[1] && r.msgs[1] === r.page[1];
+    const withStrip = await threadRows();
+    await b.eval(`document.querySelector(".state-strip").style.display = "none"; true`);
+    await sleep(200);
+    const noStrip = await threadRows();
+    await b.screenshot(join(OUT, "shots", "ui-check-no-strip.png"));
+    await b.eval(`document.activeElement?.blur(); true`);
+    await keys(" ", "u", "l");
+    await sleep(400);
+    const noStripLeft = await threadRows();
+    await keys(" ", "u", "l");
+    await b.eval(`document.querySelector(".state-strip").style.display = ""; true`);
+    await sleep(300);
+    check(
+      "the thread's code and conversation start at the same height under the header and reach the bottom, with the state strip and without it, in both column orders",
+      !!withStrip.strip && rowsOk(withStrip) && !noStrip.strip && rowsOk(noStrip) && !noStripLeft.strip && rowsOk(noStripLeft) && noStripLeft.msgs[0] === noStrip.msgs[0],
+      { withStrip, noStrip, noStripLeft },
+    );
     const aside0 = await b.eval(`Math.round(document.querySelector("aside").getBoundingClientRect().width)`);
     const grip = await rect(".side-splitter");
     if (grip) await pointer([{ type: "pointerMove", x: grip.x, y: grip.y }, { type: "pointerDown", button: 0 }, { type: "pointerMove", x: grip.x + 120, y: grip.y, duration: 150 }, { type: "pointerUp", button: 0 }]);
