@@ -124,12 +124,14 @@ picture) is one stop:
 | `Space s k` | search the keys by what they do, `Enter` runs the key |
 | `Space e` · `Space st` · `Space n` | Files tab · Threads tab · threads with news |
 | `Space uw` · `Space ud` · `Space ur` · `Space ut` | wrap · split/unified · resolved threads · folded tests |
+| `Space ul` · `Space uL` | side panel left / right of the diff · the page's column order and widths back to the defaults |
 | `Space rd` · `Space rs` · `Space rv` · `Space rr` | drafts · submit or approve · changes since you last looked · re-read "now" |
 | `Esc` | close the preview, the selection, then the comment box |
 
 In a thread: `j` / `k` next / previous thread, `n` / `N` unread, `[` / `]` timeline step, `t` diff / then /
 at step, `p` diff base, `r` reply, `x` / `X` resolve / reopen, `e` editor, `/` search all
-files at the step shown, `*` find the selected word, `Esc` close the preview, then back to the changes.
+files at the step shown, `*` find the selected word, `Space u l` the conversation left / right of the code, `Esc` close
+the preview, then back to the changes.
 In its messages: `}` / `{` next / previous message, `gg` / `G` first / last, `Ctrl+d` / `Ctrl+u` half a
 page, `za` fold or unfold the message under the cursor (`zR` / `zM` all of them), and `r` replies to the
 message under the cursor once you moved it there (with these keys or a click), otherwise to the thread.
@@ -142,7 +144,7 @@ and `Esc` or `jj` leaves the box without losing the text.
 
 ## Side panel
 
-The left column has three tabs on the Changes page and on a thread:
+The side panel has three tabs on the Changes page and on a thread:
 
 - **Threads**: the thread tree with filters.
 - **Files**: every file of the diff with `+`/`−` counts and thread counts. The file under the cursor (or,
@@ -178,6 +180,11 @@ with a preview on hover. The agent's and your messages have their own colours.
 
 On a wide screen the thread page is three columns: threads | code | messages, each scrolling on its own.
 Drag the border next to the side panel or the messages (double-click resets it); widths are kept per page.
+The ⇄ button at the top of the border between code and messages (or `Space u l`) puts the conversation left of the
+code, next to the threads: threads | messages | code. On the Changes page the same button on the side panel's border
+puts the panel right of the diff. Each page remembers its order in the browser, a column keeps its width wherever it
+sits, and `Space u L` puts the page's columns back in their default order and widths. A narrower window lays the
+columns out as before, whatever the order.
 
 A thread opens at the first message you have not read, under a "new" line, or at the last message with
 the reply box when nothing is new; the header of the messages counts them ("7 messages · 2 new", a click

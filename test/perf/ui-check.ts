@@ -698,6 +698,125 @@ try {
     const aside2 = await b.eval(`Math.round(document.querySelector("aside").getBoundingClientRect().width)`);
     check("the border next to the side panel can be dragged, a double-click resets it", Math.abs(aside1 - aside0 - 120) <= 4 && aside2 === aside0, { aside0, aside1, aside2 });
 
+    const edges = (sel: string) => `(() => { const r = document.querySelector(${JSON.stringify(sel)})?.getBoundingClientRect(); return r ? [Math.round(r.left), Math.round(r.right)] : null; })()`;
+    const threadCols = () => b.eval(`({ side: ${edges("aside")}, code: ${edges(".thread-code")}, msgs: ${edges(".thread-msgs")}, swapped: !!document.querySelector(".detail.msgs-left") })`) as Promise<{ side: [number, number]; code: [number, number]; msgs: [number, number]; swapped: boolean }>;
+    const msgsW = async () => (await threadCols()).msgs.reduce((l, r) => r - l);
+    const msgs0 = await msgsW();
+    const msgsGrip = await rect(".msgs-splitter");
+    if (msgsGrip) await pointer([{ type: "pointerMove", x: msgsGrip.x, y: msgsGrip.y }, { type: "pointerDown", button: 0 }, { type: "pointerMove", x: msgsGrip.x - 80, y: msgsGrip.y, duration: 150 }, { type: "pointerUp", button: 0 }]);
+    await sleep(300);
+    const msgs1 = await msgsW();
+    await click(".msgs-splitter .splitter-swap");
+    await sleep(400);
+    const msgsLeft = await threadCols();
+    await b.screenshot(join(OUT, "shots", "ui-check-msgs-left.png"));
+    check(
+      "the button on the messages border puts the conversation left of the code, next to the threads, and it keeps its width",
+      msgsLeft.swapped && msgsLeft.side[1] <= msgsLeft.msgs[0] && msgsLeft.msgs[1] <= msgsLeft.code[0] && Math.abs(msgs1 - msgs0 - 80) <= 4 && Math.abs(msgsLeft.msgs[1] - msgsLeft.msgs[0] - msgs1) <= 2,
+      { msgs0, msgs1, msgsLeft },
+    );
+    const leftGrip = await rect(".msgs-splitter");
+    if (leftGrip) await pointer([{ type: "pointerMove", x: leftGrip.x, y: leftGrip.y + 40 }, { type: "pointerDown", button: 0 }, { type: "pointerMove", x: leftGrip.x + 50, y: leftGrip.y + 40, duration: 150 }, { type: "pointerUp", button: 0 }]);
+    await sleep(300);
+    const msgs2 = await msgsW();
+    await b.eval(`document.activeElement?.blur(); true`);
+    await keys("r");
+    await sleep(400);
+    const replyLeft = await b.eval(`document.activeElement?.tagName === "TEXTAREA" && !!document.activeElement.closest(".thread-msgs")`);
+    await keys("\uE00C");
+    await b.eval(`document.activeElement?.blur(); true`);
+    const stepNow = `document.querySelector(".timeline .step.selected .step-label")?.textContent ?? null`;
+    const step0 = await b.eval(stepNow);
+    await keys("[");
+    await sleep(300);
+    const stepLeft = [step0, await b.eval(stepNow)];
+    await b.navigate(url.replace("#", `#/thread/${t100}&`));
+    await b.eval(`location.hash = "#/thread/${t100}"; true`);
+    await waitFor(`document.querySelector(".detail-head .tid")?.textContent === "#${t100}" && document.querySelector(".thread-code .code-area")`, 8000);
+    await sleep(800);
+    const msgsReloaded = await threadCols();
+    await b.eval(`document.activeElement?.blur(); true`);
+    await keys(" ", "u", "L");
+    await sleep(400);
+    const msgsReset = await threadCols();
+    const swapStore = await b.eval(`[localStorage.getItem("stet.swap.thread"), localStorage.getItem("stet.w.msgs")]`);
+    check(
+      "with the conversation on the left, dragging its border right widens it, r replies in it, the timeline keys work, a reload keeps it; Space u L puts it back on the right at its default width",
+      Math.abs(msgs2 - msgs1 - 50) <= 4 && replyLeft === true && !!stepLeft[0] && !!stepLeft[1] && stepLeft[0] !== stepLeft[1] && msgsReloaded.swapped && msgsReloaded.msgs[1] <= msgsReloaded.code[0] && Math.abs(msgsReloaded.msgs[1] - msgsReloaded.msgs[0] - msgs2) <= 2 &&
+        !msgsReset.swapped && msgsReset.msgs[0] >= msgsReset.code[1] && Math.abs(msgsReset.msgs[1] - msgsReset.msgs[0] - msgs0) <= 2 && JSON.stringify(swapStore) === "[null,null]",
+      { msgs2, replyLeft, stepLeft, msgsReloaded, msgsReset, swapStore },
+    );
+    await keys(" ", "u", "l");
+    await sleep(300);
+    await keys("j");
+    await waitFor(`location.hash !== "#/thread/${t100}" && document.querySelector(".thread-code .code-area")`, 8000);
+    await sleep(500);
+    const nextLeft = await threadCols();
+    await keys(" ", "u", "l");
+    await sleep(300);
+    const backRight = await threadCols();
+    check(
+      "Space u l moves the conversation left and back; j opens the next thread with the conversation still on the left",
+      nextLeft.swapped && nextLeft.msgs[1] <= nextLeft.code[0] && !backRight.swapped && backRight.msgs[0] >= backRight.code[1],
+      { nextLeft, backRight },
+    );
+
+    await b.eval(`location.hash = "#/compare/1..2"; true`);
+    await waitFor(`[...document.querySelectorAll(".codeview-host diffs-container")].some(c => c.shadowRoot.textContent.includes("HUNDRED_V2"))`, 8000);
+    await sleep(500);
+    const compareCols = () => b.eval(`({ side: ${edges("aside")}, pane: ${edges(".pane")}, swapped: !!document.querySelector("main.side-right") })`) as Promise<{ side: [number, number]; pane: [number, number]; swapped: boolean }>;
+    const sideGrip = await rect(".side-splitter");
+    if (sideGrip) await pointer([{ type: "pointerMove", x: sideGrip.x, y: sideGrip.y }, { type: "pointerDown", button: 0 }, { type: "pointerMove", x: sideGrip.x + 60, y: sideGrip.y, duration: 150 }, { type: "pointerUp", button: 0 }]);
+    await sleep(300);
+    const sideBefore = await compareCols();
+    await b.eval(`document.activeElement?.blur(); true`);
+    await keys(" ", "u", "l");
+    await sleep(400);
+    const sideRight = await compareCols();
+    await b.screenshot(join(OUT, "shots", "ui-check-side-right.png"));
+    const cursorRows = `[...document.querySelectorAll(".codeview-host diffs-container")].flatMap(c => [...c.shadowRoot.querySelectorAll('[data-content] > [data-stet-mark~="cursor"]')].map(r => r.getAttribute("data-line-type") + ":" + r.getAttribute("data-line")))`;
+    await keys("z", "R", "g", "g");
+    await sleep(500);
+    const cur0 = await b.eval(cursorRows);
+    await keys("j");
+    await sleep(300);
+    const cur1 = await b.eval(cursorRows);
+    await keys(" ", "e");
+    await sleep(300);
+    await b.eval(`[...document.querySelectorAll(".file-row")].find(r => r.querySelector(".file-name")?.textContent === "Zbig.kt")?.querySelector(".file-link").click(); true`);
+    await sleep(800);
+    const onZbig = await b.eval(`[...document.querySelectorAll(".codeview-host diffs-container")].find(c => c.shadowRoot.textContent.includes("HUNDRED_V2"))?.shadowRoot.querySelector('[data-content] > [data-stet-mark~="cursor"]') ? true : false`);
+    const rightGrip = await rect(".side-splitter");
+    if (rightGrip) await pointer([{ type: "pointerMove", x: rightGrip.x, y: rightGrip.y + 40 }, { type: "pointerDown", button: 0 }, { type: "pointerMove", x: rightGrip.x - 40, y: rightGrip.y + 40, duration: 150 }, { type: "pointerUp", button: 0 }]);
+    await sleep(300);
+    const sideWide = await compareCols();
+    check(
+      "Space u l puts the side panel right of the diff with its width; the cursor keys, the Files tab and a click on a file still work, and dragging its border left widens it",
+      sideRight.swapped && sideRight.pane[1] <= sideRight.side[0] && sideRight.side[1] - sideRight.side[0] === sideBefore.side[1] - sideBefore.side[0] && cur0.length > 0 && cur1.length > 0 && JSON.stringify(cur0) !== JSON.stringify(cur1) && onZbig &&
+        Math.abs(sideWide.side[1] - sideWide.side[0] - (sideRight.side[1] - sideRight.side[0]) - 40) <= 4,
+      { sideBefore, sideRight, cur0, cur1, onZbig, sideWide },
+    );
+    await b.navigate(url.replace("#", "#/compare/1..2&"));
+    await b.eval(`location.hash = "#/compare/1..2"; true`);
+    await waitFor(`document.querySelector(".codeview-host diffs-container")`, 8000);
+    await sleep(500);
+    const sideKept = await compareCols();
+    await b.viewport(700, 900);
+    await sleep(400);
+    const sidePhone = await compareCols();
+    await b.viewport(1920, 1000);
+    await sleep(300);
+    await b.eval(`document.activeElement?.blur(); true`);
+    await keys(" ", "u", "L");
+    await sleep(400);
+    const sideReset = await compareCols();
+    check(
+      "a reload keeps the side panel on the right; a narrow window stacks it above the diff as before; Space u L puts it back on the left at its default width",
+      sideKept.swapped && sideKept.pane[1] <= sideKept.side[0] && sideKept.side[1] - sideKept.side[0] === sideWide.side[1] - sideWide.side[0] &&
+        sidePhone.side[0] === sidePhone.pane[0] && !sideReset.swapped && sideReset.side[0] === 0 && sideReset.side[1] === aside0,
+      { sideKept, sidePhone, sideReset, aside0 },
+    );
+
     run(repo, ["git", "add", "-A"]);
     run(repo, ["git", "commit", "-q", "-m", "ui: first commit"]);
     writeFileSync(join(repo, "src/Extra.kt"), "val extra = 1\n");
