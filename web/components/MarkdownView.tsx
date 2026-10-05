@@ -5,7 +5,6 @@ import { rawUrl, type BlobDto } from "../api.ts";
 import {
   compareData,
   compareFiles,
-  compareNav,
   currentGrepHit,
   currentHit,
   changeReveal,
@@ -13,6 +12,7 @@ import {
   grepHits,
   hoverThread,
   isWhole,
+  linesNav,
   linkedLines,
   peek,
   pendingLines,
@@ -666,10 +666,10 @@ export function RenderedMarkdown({ file, fd, old, now, split: splitWanted, threa
     const r = side === "old" ? layout.stops[k]?.nav.old : layout.stops[k]?.nav.new;
     if (!r) return;
     setCursor({ path: file, row: k }, false);
-    compareNav.current?.startComment({ path: file, side: diffSide(side), start: r.start, end: r.end });
+    linesNav()?.startComment({ path: file, side: diffSide(side), start: r.start, end: r.end });
   };
 
-  const toCode = (k: number, side: MdSide) => compareNav.current?.showCode(file, k, side);
+  const toCode = (k: number, side: MdSide) => linesNav()?.showCode(file, k, side);
 
   const click = (e: MouseEvent) => {
     const el = e.target as Element;

@@ -1,12 +1,12 @@
 import type { SelectedLineRange } from "@pierre/diffs";
 import { useState } from "preact/hooks";
 import { api } from "../api.ts";
-import { compareData, compareNav, copyLinesUrl, type PendingLines } from "../compare.ts";
+import { compareData, copyLinesUrl, linesNav, threadCode, type PendingLines } from "../compare.ts";
 import { guard, notify, reloadAll, reviewId, route } from "../state.ts";
 import { canQuote, quoteLines } from "../quote.ts";
 import { rangeText } from "./Bits.tsx";
 import { Composer, loadText, saveText } from "./Composer.tsx";
-import { askRestore, RESTORE_TITLE, restorable } from "./Restore.tsx";
+import { RESTORE_TITLE, restorable } from "./Restore.tsx";
 
 export interface NewHere {
   path: string;
@@ -52,9 +52,8 @@ export function useNewThread(scope: string): Here {
   };
 }
 
-/** `thread`: lines picked on a thread's page, where they can be restored in that thread from an older version. */
-export function NewHereBox({ here, p, thread }: { here: Here; p: NewHere; thread?: { id: number; newest: string } }) {
-  const old = thread && p.sha !== thread.newest ? restorable(p.label) : null;
+/** The comment box for lines picked in a file's preview. */
+export function NewHereBox({ here, p }: { here: Here; p: NewHere }) {
   return (
     <div class="new-thread inline">
       <div class="note">
@@ -75,42 +74,43 @@ export function NewHereBox({ here, p, thread }: { here: Here; p: NewHere; thread
             </button>
           </>
         ) : null}
-        {old && thread ? (
-          <>
-            {" · or "}
-            <button
-              class="btn small restore-lines"
-              title={`${RESTORE_TITLE}; in this thread, with what you typed below`}
-              onClick={async () => {
-                const key = here.storageKey(p);
-                if (!(await askRestore({ from: old, path: p.path, start: p.start, end: p.end, thread: thread.id, body: loadText(key) ?? "" }))) return;
-                saveText(key, "");
-                here.cancel();
-              }}
-            >
-              ↺ Restore as in {old}
-            </button>
-          </>
-        ) : null}
       </div>
       <Composer storageKey={here.storageKey(p)} autoFocus placeholder="What is wrong here?" onCancel={here.cancel} onSubmit={here.create} secondaryLabel="Send now" />
     </div>
   );
 }
 
-/** The comment box for lines picked on the Changes page: under them in the code, or under a rendered block. */
+/**
+ * The comment box for lines picked on the Changes page or in a thread's code: under them in the code, or under a
+ * rendered block. In a thread's code the lines can go into the reply instead, and an older version's be restored there.
+ */
 export function PendingBox({ p }: { p: PendingLines }) {
   const d = compareData.value;
   const r = route.value;
+  const t = r.name === "thread" ? threadCode.value : null;
+  const removed = p.range.side === "deletions";
+  const at = t ? (removed ? t.old : t.now) : null;
   const [from, to] = r.name === "compare" ? [r.from, r.to] : ["", ""];
-  const where = p.range.side === "deletions" ? `${p.oldPath} · removed lines (${d?.from.label ?? from})` : `${p.path} (${d?.to.label ?? to})`;
-  const key = `new:${reviewId.value}:${from}..${to}:${p.path}:${p.range.side}:${p.range.start}-${p.range.end}`;
-  const old = p.range.side === "deletions" ? restorable(d?.from.label) : null;
+  const where = at ? `${at.path}${removed ? " · removed lines" : ""} (${at.label})` : removed ? `${p.oldPath} · removed lines (${d?.from.label ?? from})` : `${p.path} (${d?.to.label ?? to})`;
+  const key = t && at ? `new:${reviewId.value}:t${t.thread}:${at.sha}:${at.path}:${removed ? "old" : "new"}:${lo(p.range)}-${hi(p.range)}` : `new:${reviewId.value}:${from}..${to}:${p.path}:${p.range.side}:${p.range.start}-${p.range.end}`;
+  const old = t && at ? (at.sha !== t.newest ? restorable(at.label) : null) : removed ? restorable(d?.from.label) : null;
   return (
     <div class="new-thread inline">
       <div class="note">
         New thread on {where} · lines {rangeText({ start: lo(p.range), end: hi(p.range) })}
         {" · or "}
+        {at ? (
+          <button
+            class="btn small quote-lines"
+            title="put these lines, with path and line numbers, into your reply in this thread"
+            onClick={() => {
+              void quoteLines({ path: at.path, start: lo(p.range), end: hi(p.range), sha: at.sha, label: at.label });
+              linesNav()?.cancelComment();
+            }}
+          >
+            ❝ Quote in reply
+          </button>
+        ) : null}
         <button
           class="btn small copy-link"
           title="copy a link that opens the Changes page at these lines, highlighted (Space g Y)"
@@ -121,9 +121,9 @@ export function PendingBox({ p }: { p: PendingLines }) {
         {old ? (
           <button
             class="btn small restore-lines"
-            title={`${RESTORE_TITLE}; what you typed below goes with it`}
+            title={`${RESTORE_TITLE}; ${t ? "in this thread, with what you typed below" : "what you typed below goes with it"}`}
             onClick={async () => {
-              if (await compareNav.current?.restoreLines(loadText(key) ?? "")) saveText(key, "");
+              if (await linesNav()?.restoreLines(loadText(key) ?? "")) saveText(key, "");
             }}
           >
             ↺ Restore as in {old}
@@ -134,8 +134,8 @@ export function PendingBox({ p }: { p: PendingLines }) {
         storageKey={key}
         autoFocus
         placeholder="What is wrong here?"
-        onCancel={() => compareNav.current?.cancelComment()}
-        onSubmit={(body, mode) => compareNav.current?.submitComment(body, mode) ?? Promise.resolve(false)}
+        onCancel={() => linesNav()?.cancelComment()}
+        onSubmit={(body, mode) => linesNav()?.submitComment(body, mode) ?? Promise.resolve(false)}
         onEscape={(el) => el.blur()}
         secondaryLabel="Send now"
       />

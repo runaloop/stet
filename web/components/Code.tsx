@@ -83,6 +83,7 @@ export interface DiffViewProps<M> {
   marks?: LineMark[];
   selected?: SelectedLineRange | null;
   onSelect?: (r: SelectedLineRange | null) => void;
+  onLineClick?: (line: number, side: SelectionSide) => void;
   diffStyle: "split" | "unified";
   wrap?: boolean;
   expandUnchanged?: boolean;
@@ -114,6 +115,7 @@ export function DiffView<M>(props: DiffViewProps<M>) {
       enableLineSelection: selectable,
       enableGutterUtility: selectable,
       onGutterUtilityClick: (r: SelectedLineRange) => latest.current.onSelect?.(r),
+      onLineClick: selectable ? (p: { lineNumber: number; annotationSide: SelectionSide }) => latest.current.onLineClick?.(p.lineNumber, p.annotationSide) : undefined,
       unsafeCSS: MARK_CSS,
       onPostRender: (node: HTMLElement, _inst: unknown, phase: string) => {
         if (phase === "unmount") return;

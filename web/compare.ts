@@ -4,7 +4,7 @@ import type { CompareDto, GrepResultDto, Region } from "../src/core/types.ts";
 import { DEFAULT_COLLAPSE_GLOBS, DEFAULT_SKIP_MARKERS, foldOf, isTestPath, parseList, viewedKey, type FoldDecision, type FoldGroup } from "./lib/fold.ts";
 import { groupTitle } from "./lib/order.ts";
 import type { LineMark } from "./lib/marks.ts";
-import { CursorSpace, rowPosition, type Cursor, type LineRange, type NavBlock } from "./lib/cursor.ts";
+import { CursorSpace, rowPosition, type Cursor, type CursorFile, type LineRange, type NavBlock } from "./lib/cursor.ts";
 import { isMarkdown } from "./lib/markdown.ts";
 import { NOTHING, revealedPatch, type Reveal } from "./lib/reveal.ts";
 import { api } from "./api.ts";
@@ -221,6 +221,38 @@ export interface PendingLines {
 }
 export const pendingLines = signal<PendingLines | null>(null);
 
+/** A side of a thread's code: the version's commit and label, the file's path there, and the ref a compare link names. */
+export interface CodeSide {
+  sha: string;
+  label: string;
+  path: string;
+  ref: string;
+}
+
+/**
+ * The code a thread's page shows, for the cursor and comments there as on the Changes page: one file, from a step of
+ * the thread (the old side) to another (the new side; the same step in Then and At step).
+ */
+export interface ThreadCode {
+  file: CursorFile;
+  old: CodeSide;
+  now: CodeSide;
+  thread: number;
+  /** The newest step's commit: lines of an older version can be restored in the thread. */
+  newest: string;
+  /** The thread's first line on the new side, where the cursor starts. */
+  start: number;
+}
+export const threadCode = signal<ThreadCode | null>(null);
+
+/** On a thread's page: the cursor and the commenting keys act on its code (after a click into it, or V or i). */
+export const codeFocus = signal(false);
+
+export function leaveCode(): void {
+  codeFocus.value = false;
+  visualAnchor.value = null;
+}
+
 export const searchInput = signal("");
 export const searchQuery = signal("");
 export const searchRegex = signal(false);
@@ -332,6 +364,15 @@ export interface CompareHandle {
 }
 
 export const compareNav: { current: CompareHandle | null } = { current: null };
+
+/** What a thread's code does for the cursor and comments: the part of the Changes page's handle it has. */
+export type CodeHandle = Pick<CompareHandle, "revealCursor" | "cursorElement" | "startComment" | "submitComment" | "restoreLines" | "cancelComment" | "pageRows" | "pageFrom" | "showCode">;
+export const threadNav: { current: CodeHandle | null } = { current: null };
+
+/** The handle of the code on this page: the Changes page's, or a thread's. */
+export function linesNav(): CodeHandle | null {
+  return onThreadPage.peek() ? threadNav.current : compareNav.current;
+}
 
 export function stepHit(dir: 1 | -1): boolean {
   if (scope.value === "files") {
@@ -538,6 +579,10 @@ effect(() => {
 export const cursor = signal<Cursor | null>(null);
 export const visualAnchor = signal<Cursor | null>(null);
 export const cursorSpace = computed(() => {
+  if (onThreadPage.value) {
+    const t = threadCode.value;
+    return new CursorSpace(t ? [t.file] : []);
+  }
   const drawn = drawnFiles.value;
   const blocks = fileBlocks.value;
   return new CursorSpace(
@@ -571,8 +616,24 @@ export function cursorMarks(space: CursorSpace, c: Cursor | null, anchor: Cursor
 
 export function setCursor(c: Cursor | null, reveal = true): void {
   cursor.value = c;
-  if (c && reveal) compareNav.current?.revealCursor(c);
+  if (c && reveal) linesNav()?.revealCursor(c);
 }
+
+// The Changes page and a thread's code keep a cursor each; another thread starts without one.
+let parked: { cursor: Cursor | null; anchor: Cursor | null } = { cursor: null, anchor: null };
+let shownThread: number | null = null;
+effect(() => {
+  const r = route.value;
+  const id = r.name === "thread" ? r.id : null;
+  if (id === shownThread) return;
+  const was = shownThread;
+  shownThread = id;
+  if (was === null) parked = { cursor: cursor.peek(), anchor: visualAnchor.peek() };
+  codeFocus.value = false;
+  threadCode.value = null;
+  cursor.value = id === null ? parked.cursor : null;
+  visualAnchor.value = id === null ? parked.anchor : null;
+});
 
 /** The lines a link opened, highlighted until the cursor leaves them. */
 export const linkedLines = signal<LineRange | null>(null);
@@ -587,9 +648,11 @@ effect(() => {
 export function linesUrl(lines: LineRange): string | null {
   const r = route.peek();
   const d = compareData.peek();
-  if (r.name !== "compare") return null;
+  const t = r.name === "thread" ? threadCode.peek() : null;
+  const ends = t ? { from: t.old.ref, to: t.now.ref } : r.name === "compare" ? { from: d?.from.ref ?? r.from, to: d?.to.ref ?? r.to } : null;
+  if (!ends) return null;
   const hash = routeHash(
-    { name: "compare", from: d?.from.ref ?? r.from, to: d?.to.ref ?? r.to, file: lines.path, line: lines.start, end: lines.end, ...(lines.side === "deletions" ? { side: "old" as const } : {}) },
+    { name: "compare", ...ends, file: lines.path, line: lines.start, end: lines.end, ...(lines.side === "deletions" ? { side: "old" as const } : {}) },
     reviewId.peek(),
   );
   return `${location.origin}${location.pathname}${hash}`;
