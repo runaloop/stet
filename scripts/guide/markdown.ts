@@ -133,11 +133,13 @@ export async function markdownGuide() {
       const picked = await p.need(".md-cell[data-side='new'] li.md-picked");
       const note = await p.need(".md-view .new-thread .note");
       const caption = await p.need(".md-view .md-bar .hint");
+      const copy = await p.need(".md-view .new-thread .copy-link");
       await p.shot("markdown-2.png", [
         { html: "<b>+</b> beside a block starts a thread on its lines, on its side. Or put the cursor on it (a click, <b>j</b> <b>k</b>, <b>]c</b>) and press <b>i</b>; <b>V</b> takes several blocks", at: { x: plus.x - 600, y: plus.y + 50 }, to: { x: plus.x - 4, y: plus.y + plus.h / 2 }, ring: plus, w: 470 },
         { html: "<b>‹/›</b> shows the block's lines in the code, with the cursor on them", at: { x: jump.x - 600, y: jump.y + 125 }, to: { x: jump.x - 4, y: jump.y + jump.h / 2 }, ring: jump, w: 470 },
         { html: "The thread is on the block's lines, as if you had selected them in the code", at: { x: jump.x - 600, y: jump.y + 195 }, to: { x: note.x - 4, y: note.y + note.h / 2 }, ring: { x: picked.x, y: picked.y, w: picked.w, h: picked.h }, w: 470 },
         { html: "The keys of the code work on blocks: <b>j</b> <b>k</b> a block, <b>]c</b> <b>[c</b> a change, <b>]t</b> a thread, <b>Enter</b> opens it", at: { x: caption.x + caption.w + 20, y: caption.y + 40 }, to: { x: caption.x + caption.w - 60, y: caption.y + caption.h + 2 }, w: 360 },
+        { html: "<b>Copy link</b>: a link that opens these blocks, highlighted (or <b>Space g Y</b>)", at: { x: copy.x + 40, y: copy.y + 45 }, to: { x: copy.x + copy.w / 2, y: copy.y + copy.h + 2 }, ring: copy, w: 270 },
       ]);
       await p.eval(`[...document.querySelectorAll(".md-view .new-thread button")].find(b => b.textContent === "Cancel").click(); true`);
 
