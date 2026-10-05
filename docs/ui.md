@@ -49,20 +49,35 @@ gets the image with the area framed and the area at full size as PNG files (`ste
 
 ## Markdown
 
-A Markdown file shows as code; the button on its header (**¶ rendered** / **‹/› code**) shows it rendered. In
-split view the old and the new version stand side by side, block facing block: unchanged blocks are level, a
-changed block is marked on both sides, a removed one red on the old side and an added one green on the new. In
-unified view it is one column: unchanged blocks once, and a changed block's old version (marked "was") above
-its new one, the way unified code shows removed lines above added ones. An added or a deleted file has one side.
-Pictures load from the repository at the version of their side; pictures from the web are not loaded (their
-address is shown instead), raw HTML stays text, and code blocks are highlighted.
+A Markdown file shows rendered. The button on its header (**‹/› code** / **¶ rendered**) switches that file to its
+code and back while the page is open, and keeps your place at the same height on the screen: the block at the cursor
+(or the topmost block in view) becomes its first line in the diff, a line becomes the block that holds it, and the
+cursor follows. `stet config set compare.markdown code` makes code the default.
+
+In split view the old and the new version stand side by side, block facing block: unchanged blocks are level, and
+inside a changed list or table the items and rows face each other too (nested items as well), with an empty slot
+facing an item or a row that was added or removed. The words that changed are marked in the text, struck through on
+the old side and green on the new one; a picture or a link whose address changed is framed or underlined, with the
+old address on hover. A block of which more than 60% of the words changed is marked as a whole instead. Blocks that
+one change rewrote together are paired by how alike they are; when nothing is alike they stay one group.
+
+In unified view it is one column. A block with a few words changed shows once, with the changes in its text. When
+the structure changed (another kind of block, items or rows added or removed, a code block) or the block was
+rewritten, its old version (marked "was") stands above its new one, the way unified code shows removed lines above
+added ones. An added or a deleted file has one side. Pictures load from the repository at the version of their
+side; pictures from the web are not loaded (their address is shown instead), raw HTML stays text, and code blocks
+are highlighted.
 
 Threads are on lines here too. A thread shows on the blocks its lines are in, with its card under the last of
 them (and its lines on the card when it covers only part of a block); a thread on blank lines shows on the
 block before them. A click on a block puts the cursor on it; **+** beside a block (or `i` on the cursor's
 block, `V` with `j` / `k` for several) starts a thread on the block's lines, on its side, and **‹/›** beside it
-shows those lines in the code with the cursor on them. A link to another file opens it in the preview
-([guide](guide/README.md#markdown)).
+shows those lines in the code where the block was, with the cursor on them. A link to another file opens it in the
+preview.
+
+Search reads the rendered text: a match is highlighted where it shows and the cursor goes to its block. A match
+that only the Markdown source has (a link address, a picture's path, markup) shows that file as code, and a note
+says so ([guide](guide/README.md#markdown)).
 
 ## Keys
 
@@ -72,8 +87,9 @@ what can follow it. Counts work (`5j`), and so do non-Latin keyboard layouts (ke
 physical position). A tour with screenshots: [guide](guide/README.md#navigation).
 
 On the Changes page a cursor moves over the diff (a click on a line puts it there). In a rendered Markdown file it
-moves over the blocks instead of the hidden lines, the old side's before the new side's where they differ; a picture
-(an image, an SVG shown as a picture) is one stop:
+moves over the blocks instead of the hidden lines (an unchanged block once, a changed one on its old side, then its
+new side), and `Ctrl+d` / `Ctrl+u` move it by half a screen of blocks; a picture (an image, an SVG shown as a
+picture) is one stop:
 
 | Key | Action |
 |---|---|
