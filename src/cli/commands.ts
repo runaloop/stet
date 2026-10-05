@@ -1,12 +1,16 @@
 import pkg from "../../package.json" with { type: "json" };
 import { spawnSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   StetError,
   conflict,
   ensureReview,
   initReview,
   openContext,
+  requireLastReview,
   requireReview,
+  reviewById,
   usage,
   type Ctx,
 } from "../core/context.ts";
@@ -66,6 +70,11 @@ Tools
                                                 compare.order, compare.markdown (rendered or code: how
                                                 Markdown files open on the Changes page; default rendered)
   prune [--dry-run] | export
+  export [--all] [--out <file> [--force]] [--review <id>]
+                                                the review as Markdown, also when piped (--json: the data):
+                                                its decisions, one line per thread, for a merge request;
+                                                --all: everything, for an archive or another agent.
+                                                Without an active review, the branch's last closed one
   skill install [--for agents|claude|all] [--dir <path>]
                                                 the agent's skill: ~/.agents/skills (Codex, Gemini CLI, Cursor,
                                                 OpenCode, Copilot) and ~/.claude/skills when Claude Code is there
@@ -544,18 +553,28 @@ const commands: Record<string, { options: Options; run: (p: Parsed) => Promise<n
   },
 
   export: {
-    options: {},
+    options: { all: { type: "boolean" }, out: { type: "string" }, force: { type: "boolean" }, review: { type: "string" } },
     async run(p) {
+      const file = str(p, "out");
+      if (bool(p, "force") && !file) throw usage("--force goes with --out");
       const ctx = await context(p);
-      const review = await requireReview(ctx, str(p, "branch"));
-      const threads = await svc.threadSummaries(ctx, review, { includeDrafts: false });
-      const details = [];
-      for (const t of threads) details.push(await svc.threadDetail(ctx, review, t.id));
-      emit(p, {
-        review: svc.reviewDto(review),
-        versions: svc.versionRows(ctx, review.id).map(svc.versionDto),
-        threads: details,
-      });
+      const id = str(p, "review");
+      const review = id ? reviewById(ctx.store, int(id, "--review")) : await requireLastReview(ctx, str(p, "branch"));
+      const { collectExport, exportMarkdown } = await import("../core/export.ts");
+      const data = await collectExport(ctx, review);
+      const text = bool(p, "json") ? JSON.stringify(data, null, 2) + "\n" : exportMarkdown(data, { all: bool(p, "all") });
+      if (!file) {
+        out(text);
+        return;
+      }
+      const path = resolve(file);
+      try {
+        writeFileSync(path, text, { flag: bool(p, "force") ? "w" : "wx" });
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code === "EEXIST") throw conflict(`${file} already exists: add --force to overwrite it`);
+        throw e;
+      }
+      emit(p, { out: path }, () => `wrote ${path}`);
     },
   },
 };

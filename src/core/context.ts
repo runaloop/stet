@@ -112,6 +112,17 @@ export async function requireReview(ctx: Ctx, branchOpt?: string): Promise<Revie
   throw new StetError(`no active review for branch '${branch}': run \`stet init\``, 2, "no_review");
 }
 
+/** The branch's active review, or else the last one closed on it: for reading a review once it is done. */
+export async function requireLastReview(ctx: Ctx, branchOpt?: string): Promise<ReviewRow> {
+  const active = await findReview(ctx, branchOpt);
+  if (active) return active;
+  const branch = await reviewBranchName(ctx, branchOpt);
+  const closed = branch
+    ? ctx.store.db.query<ReviewRow, [string]>("SELECT * FROM reviews WHERE branch = ? ORDER BY id DESC LIMIT 1").get(branch)
+    : null;
+  return closed ?? requireReview(ctx, branchOpt);
+}
+
 export async function initReview(
   ctx: Ctx,
   opts: { branch?: string; base?: string; worktree?: string; staged?: boolean },

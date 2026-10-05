@@ -12,9 +12,9 @@ export interface CliResult {
 
 export function stet(
   args: string[],
-  opts: { cwd: string; role?: "reviewer" | "agent"; author?: string; input?: string; env?: Record<string, string> },
+  opts: { cwd: string; role?: "reviewer" | "agent"; author?: string; input?: string; env?: Record<string, string>; json?: boolean },
 ): Promise<CliResult> {
-  const proc = Bun.spawn(["bun", CLI, ...args, "--json"], {
+  const proc = Bun.spawn(["bun", CLI, ...args, ...(opts.json === false ? [] : ["--json"])], {
     cwd: opts.cwd,
     env: {
       ...process.env,

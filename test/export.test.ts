@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { writeFileSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { ensureReview, openContext, type Ctx } from "../src/core/context.ts";
 import { collectExport, exportMarkdown, gist } from "../src/core/export.ts";
 import { addReply, addThread, createVersion, resolveThread, submitReview } from "../src/core/service.ts";
 import type { ReviewRow } from "../src/core/store/db.ts";
+import { ok, stet } from "./helpers/cli.ts";
 import { Fixture, lines } from "./helpers/fixture.ts";
 import { png } from "./helpers/png.ts";
 
@@ -124,5 +126,57 @@ describe("export", () => {
     await createVersion(agent, review, { label: "after the approval" });
     const md = exportMarkdown(await collectExport(agent, review));
     expect(md).toStartWith("### Review: 2 rounds, v1–v3, approved at v2 · changed after\n");
+  });
+});
+
+describe("stet export", () => {
+  const f = new Fixture();
+  const reviewer = { cwd: f.root, role: "reviewer" as const };
+  const agent = { cwd: f.root, role: "agent" as const };
+
+  beforeAll(async () => {
+    f.write("a.txt", lines(10));
+    f.commit("init");
+    f.git(["checkout", "-q", "-b", "feat"]);
+    await ok(stet(["version", "create"], agent));
+    await ok(stet(["comment", "add", "--file", "a.txt", "--range", "2-3", "--at", "1", "--body", "Почему так?"], reviewer));
+  }, 30_000);
+
+  afterAll(() => f.cleanup());
+
+  test("prints Markdown when piped, and JSON only with --json", async () => {
+    const r = await stet(["export"], { ...agent, json: false });
+    expect(r.code).toBe(0);
+    expect(r.stdout).toBe("### Review: v1\n\nOpen:\n\n- #1 Почему так? (a.txt:2-3) — waits for the agent\n");
+    const all = await stet(["export", "--all"], { ...agent, json: false });
+    expect(all.stdout).toStartWith("# Review of feat\n");
+    const json = await ok(stet(["export"], agent));
+    expect(json.threads[0].thread.title).toBe("Почему так?");
+  });
+
+  test("--out writes the file and refuses to overwrite it without --force", async () => {
+    const file = join(f.root, "..", `${f.root.split("/").pop()}-review.md`);
+    try {
+      const r = await ok(stet(["export", "--out", file], { ...agent, json: false }));
+      expect(r.out).toBe(file);
+      expect(readFileSync(file, "utf8")).toStartWith("### Review: v1\n");
+      const again = await stet(["export", "--all", "--out", file], { ...agent, json: false });
+      expect(again.code).toBe(3);
+      expect(again.stderr).toContain("--force");
+      await ok(stet(["export", "--all", "--out", file, "--force"], { ...agent, json: false }));
+      expect(readFileSync(file, "utf8")).toStartWith("# Review of feat\n");
+    } finally {
+      rmSync(file, { force: true });
+    }
+  });
+
+  test("exports a closed review, by branch or by id", async () => {
+    await ok(stet(["review", "close"], reviewer));
+    expect((await stet(["status"], agent)).code).toBe(2);
+    const r = await stet(["export"], { ...agent, json: false });
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("Почему так?");
+    const byId = await stet(["export", "--all", "--review", "1", "-b", "nowhere"], { ...agent, json: false });
+    expect(byId.stdout).toMatch(/^- Started .*, closed .* UTC$/m);
   });
 });
