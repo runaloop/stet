@@ -6,8 +6,9 @@ description: Take part in a local multi-round code review as the author, through
 # stet review loop (you are the author)
 
 The human is the reviewer. They comment on line ranges in the stet web UI and submit a
-review. You answer every thread, fix the code, and hand over a new version. Threads,
-versions and replies live in `.git/stet/`; every worktree of the branch sees the same review.
+review, or approve the work. You answer every thread, fix the code, and hand over a new
+version. Threads, versions and replies live in `.git/stet/`; every worktree of the branch
+sees the same review.
 
 All commands print JSON when piped. Run them from the worktree you are working in.
 
@@ -46,11 +47,23 @@ Only when the human asks you to wait, run this in the background:
 stet wait --for review --json
 ```
 
-Without `--timeout` it blocks until the reviewer submits; it returns at once (`reason: "pending"`) when
-threads already wait for you. If the wait ends without a review (a timeout, or your harness stopped the
-command), do not report it and do not start it again: the human will call you back.
+Without `--timeout` it blocks until the reviewer submits; it returns at once when threads already wait for
+you (`reason: "pending"`) or the reviewer approved the latest version (`reason: "approved"`). If the wait
+ends without a review (a timeout, or your harness stopped the command), do not report it and do not start
+it again: the human will call you back.
 
-## 3. Read the threads
+## 3. Read the review
+
+First check the verdict: `stet status --json`. `.lastSubmission.verdict` is `changes` (answer the threads)
+or `approved`: the reviewer accepted version `.lastSubmission.version` (`.lastSubmission.body` is their
+summary, if any). On an approval:
+
+- no thread waits for you (`.counts.needsAgent` is 0): the work is done. Write the human a short summary
+  of it and stop. Commit or push only if they asked.
+- threads wait for you: they are nits. Fix them, reply `fixed` to each (step 4), create a version
+  (step 5), write the summary and stop. There is no next round to wait for.
+
+For `changes`, and for nits, read the threads:
 
 ```bash
 stet threads list --needs-reply --json
@@ -101,7 +114,7 @@ stet version create --label "fixes for review <N>"
 ```
 
 Report to the human: how many threads fixed / answered / disagreed / questions, and the
-version number. Then go back to step 2.
+version number. Then go back to step 2; after the nits of an approval, write the summary and stop instead.
 
 ## Rules
 
