@@ -1,8 +1,8 @@
 import { hydratePartialDiff, parsePatchFiles, type DiffLineAnnotation, type FileDiffMetadata } from "@pierre/diffs";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { CompareDto, GuideDto, GuideRefDto, GuideStepDto } from "../../src/core/types.ts";
-import { baseFiles, compareData, shownPlacements } from "../compare.ts";
-import { fetchGuide, guideOpen, guideShown, guideStep, guideVersion, openInDiff } from "../guide.ts";
+import { baseFiles, compareData, guideFiles, guideKeys, shownPlacements } from "../compare.ts";
+import { fetchGuide, foldRef, guideAt, guideFolds, guideOpen, guideShown, guideStep, guideVersion, isFolded, openInDiff, refKey } from "../guide.ts";
 import { guideHtml, notInGuide, refLabel, refPatch, threadsOn } from "../lib/guide.ts";
 import type { Span } from "../lib/cursor.ts";
 import type { LineMark } from "../lib/marks.ts";
@@ -57,7 +57,7 @@ export function refRoute(d: CompareDto, from: string, to: string, ref: GuideRefD
 
 const fileOf = (path: string) => baseFiles.value?.find((f) => f.name === path || (f.type === "deleted" && f.prevName === path));
 
-function RefBlock({ d, from, to, r }: { d: CompareDto; from: string; to: string; r: GuideRefDto }) {
+function RefBlock({ d, from, to, r, k }: { d: CompareDto; from: string; to: string; r: GuideRefDto; k: string }) {
   const fd = fileOf(r.path);
   const oldPath = fd?.prevName ?? r.path;
   const deleted = fd?.type === "deleted";
@@ -82,6 +82,20 @@ function RefBlock({ d, from, to, r }: { d: CompareDto; from: string; to: string;
       return out;
     }
   }, [fd, oldText, newText, r, more]);
+  const rows = useMemo(() => (diff ? diffRows(diff) : null), [diff]);
+  const folded = !!rows && isFolded(k, rows.length);
+  const path = fd?.name ?? r.path;
+  useEffect(() => {
+    guideFiles.value = new Map(guideFiles.peek()).set(k, { fd: diff, path, oldPath, folded });
+  }, [diff, path, folded]);
+  useEffect(
+    () => () => {
+      const m = new Map(guideFiles.peek());
+      m.delete(k);
+      guideFiles.value = m;
+    },
+    [k],
+  );
   const expand = (hunk: number, direction: "up" | "down" | "both", count: number | undefined) => {
     if (!diff || typeof newText !== "string") return;
     const span = expansionOf(diff.hunks, textLines(newText).lines.length, hunk, direction, count ?? CHUNK);
@@ -89,25 +103,34 @@ function RefBlock({ d, from, to, r }: { d: CompareDto; from: string; to: string;
   };
   const placed = shownPlacements.value;
   const annotations = useMemo((): DiffLineAnnotation<Anno>[] => {
-    if (!diff) return [];
-    const rows = diffRows(diff);
+    if (!diff || !rows) return [];
     const shown = { old: rows.flatMap((x) => (x.old === null ? [] : [x.old])), new: rows.flatMap((x) => (x.new === null ? [] : [x.new])) };
     return threadsOn(placed, diff.name, shown).map(({ placement: p, line }) => ({ side: p.side, lineNumber: line, metadata: { id: p.threadId, state: p.state } }));
-  }, [diff, placed]);
+  }, [diff, rows, placed]);
   const marks = useMemo((): LineMark[] => {
     const own: LineMark[] = r.range ? [{ side: "additions", start: r.range.start, end: r.range.end, tag: "linked" }] : [];
     return [...own, ...placed.filter((p) => p.path === (fd?.name ?? r.path)).map((p) => ({ side: p.side, start: p.range.start, end: p.range.end, tag: "thread" }))];
   }, [placed, r, fd]);
   const where = r.range ? `line${r.range.end > r.range.start ? "s" : ""} ${r.range.start === r.range.end ? r.range.start : `${r.range.start}–${r.range.end}`}` : "its whole change";
   const note = !fd && !r.range ? `no change between ${d.from.label} and ${d.to.label}` : fd && fd.hunks.length === 0 ? "no lines to show here (a binary file or only its mode changed)" : null;
+  const added = rows?.filter((x) => x.kind === "add").length ?? 0;
+  const removed = rows?.filter((x) => x.kind === "del").length ?? 0;
   return (
-    <div class="guide-ref" data-ref={refLabel(r)}>
+    <div class={`guide-ref${folded ? " folded" : ""}`} data-ref={refLabel(r)} data-key={k}>
       <div class="guide-ref-head">
-        <b class="path">{r.path}</b>
+        <button class="guide-fold" title={folded ? "show these lines · z a" : "fold these lines · z a"} aria-expanded={!folded} onClick={() => rows && foldRef(k, !folded)}>
+          <span class="chev">{folded ? "▸" : "▾"}</span>
+          <b class="path">{r.path}</b>
+        </button>
         <span class="subtle">
           {where}
           {fd ? null : r.range ? ` · unchanged between ${d.from.label} and ${d.to.label}` : null}
         </span>
+        {rows && (added || removed) ? (
+          <span class="stat">
+            <span class="add">+{added}</span> <span class="del">−{removed}</span>
+          </span>
+        ) : null}
         <span class="spacer" />
         <a class="guide-open" title="the normal diff at exactly these lines, where you can comment on them" {...diffLink(refRoute(d, from, to, r, fd))}>
           open in Diff
@@ -115,6 +138,10 @@ function RefBlock({ d, from, to, r }: { d: CompareDto; from: string; to: string;
       </div>
       {note ? (
         <div class="note subtle">{note}</div>
+      ) : diff && folded ? (
+        <button class="guide-unfold" onClick={() => foldRef(k, false)}>
+          ▸ show {rows!.length} line{rows!.length === 1 ? "" : "s"}
+        </button>
       ) : diff ? (
         <DiffView<Anno>
           fileDiff={diff}
@@ -144,8 +171,8 @@ function Step({ d, from, to, s }: { d: CompareDto; from: string; to: string; s: 
         <span class="guide-num">{s.index}</span>
         <div class="md" dangerouslySetInnerHTML={{ __html: html }} />
       </div>
-      {s.refs.map((r) => (
-        <RefBlock key={refLabel(r)} d={d} from={from} to={to} r={r} />
+      {s.refs.map((r, j) => (
+        <RefBlock key={refLabel(r)} d={d} from={from} to={to} r={r} k={refKey(s.index, j)} />
       ))}
     </section>
   );
@@ -204,10 +231,31 @@ export function GuideView({ from, to }: { from: string; to: string }) {
   }, [shown, rid, n]);
 
   const ready = shown && !!g && g.version === n;
+  const frame = useRef(0);
+  // the file diff at the top of the view, unless the one gone to is still on screen
+  const spy = () => {
+    frame.current = 0;
+    const el = box.current;
+    const refs = [...(el?.querySelectorAll<HTMLElement>(".guide-ref") ?? [])];
+    if (!el || !refs.length) return;
+    const view = el.getBoundingClientRect();
+    const top = view.top + (el.querySelector(".guide-head")?.getBoundingClientRect().height ?? 0) + 8;
+    const was = guideAt.peek();
+    const kept = was ? refs.find((x) => x.dataset.key === was)?.getBoundingClientRect() : null;
+    if (kept && kept.bottom > top && kept.top < view.bottom) return;
+    const at = (refs.find((x) => x.getBoundingClientRect().bottom > top) ?? refs[refs.length - 1]!).dataset.key ?? null;
+    if (at !== was) guideAt.value = at;
+  };
+  const spyLater = () => {
+    if (!frame.current) frame.current = requestAnimationFrame(spy);
+  };
+  useEffect(() => () => cancelAnimationFrame(frame.current), []);
+
   useLayoutEffect(() => {
     const el = box.current;
     if (!ready || !el) return;
     el.scrollTop = scrolls.get(key) ?? 0;
+    spyLater();
   }, [ready, key]);
 
   useEffect(() => {
@@ -216,6 +264,11 @@ export function GuideView({ from, to }: { from: string; to: string }) {
   }, [guideStep.value, shown]);
 
   if (!shown || !d) return null;
+  const onPointerDown = (e: PointerEvent) => {
+    const el = e.target as Element;
+    const at = el.closest?.<HTMLElement>(".guide-ref")?.dataset.key ?? el.closest?.<HTMLElement>(".guide-step")?.querySelector<HTMLElement>(".guide-ref")?.dataset.key;
+    if (at) guideAt.value = at;
+  };
   const onClick = (e: MouseEvent) => {
     const a = (e.target as Element).closest?.("a.guide-thread");
     if (!a || !plainClick(e)) return;
@@ -223,11 +276,20 @@ export function GuideView({ from, to }: { from: string; to: string }) {
     navigate({ name: "thread", id: Number(a.getAttribute("data-thread")) });
   };
   return (
-    <div class="guide" ref={box} onClick={onClick} onScroll={(e) => ready && scrolls.set(key, (e.currentTarget as HTMLElement).scrollTop)}>
+    <div
+      class="guide"
+      ref={box}
+      onClick={onClick}
+      onPointerDown={onPointerDown}
+      onScroll={(e) => {
+        if (ready) scrolls.set(key, (e.currentTarget as HTMLElement).scrollTop);
+        spyLater();
+      }}
+    >
       <div class="guide-head">
         <b>Guide to v{n}</b> <Badge tone="info" title="an experiment: it may change or go">experimental</Badge>
         <span class="subtle">
-          {g ? `${g.steps.length} step${g.steps.length === 1 ? "" : "s"} by the agent · ` : ""}comment in the Diff · <Kbd>{"}"}</Kbd> <Kbd>{"{"}</Kbd> steps · <Kbd>Enter</Kbd> open the step in the Diff · <Kbd>Esc</Kbd> back to the Diff
+          {g ? `${g.steps.length} step${g.steps.length === 1 ? "" : "s"} by the agent · ` : ""}comment in the Diff · <Kbd>{"}"}</Kbd> <Kbd>{"{"}</Kbd> steps · <Kbd>za</Kbd> fold · <Kbd>Enter</Kbd> open the step in the Diff · <Kbd>Esc</Kbd> back to the Diff
         </span>
       </div>
       {error ? <div class="note error">{error}</div> : !ready ? <div class="note">loading…</div> : (
@@ -249,7 +311,25 @@ export function stepGuide(dir: 1 | -1, count: number): boolean {
   const steps = document.querySelectorAll(".guide .guide-step").length;
   if (!steps) return true;
   const at = guideStep.value ?? (dir === 1 ? 0 : steps + 1);
-  guideStep.value = Math.max(1, Math.min(steps, at + dir * count));
+  const step = Math.max(1, Math.min(steps, at + dir * count));
+  guideStep.value = step;
+  guideAt.value = refKey(step, 0);
+  return true;
+}
+
+/** Folds or opens the file diff the reader is at (`za` `zo` `zc`), keeping its head in view. */
+export function foldGuide(open: boolean | "toggle"): boolean {
+  const k = guideAt.value ?? guideKeys.value[0];
+  const f = k ? guideFiles.value.get(k) : null;
+  if (!k || !f?.fd) return true;
+  foldRef(k, open === "toggle" ? !f.folded : !open);
+  requestAnimationFrame(() => document.querySelector(`.guide .guide-ref[data-key="${k}"]`)?.scrollIntoView({ block: "nearest", behavior: "instant" as ScrollBehavior }));
+  return true;
+}
+
+/** Folds or opens every file diff of the guide (`zM` `zR`). */
+export function foldAllGuide(open: boolean): boolean {
+  guideFolds.value = new Map(guideKeys.value.map((k) => [k, !open]));
   return true;
 }
 

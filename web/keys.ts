@@ -31,7 +31,7 @@ import { gitOpen } from "./components/GitState.tsx";
 import { edgeMsg, foldAllMsgs, foldMsg, halfPage, replyAtCursor, stepMsg } from "./msgs.ts";
 import { clampStep, diffPair } from "./lib/timeline.ts";
 import { openBlame } from "./components/Blame.tsx";
-import { openGuideStep, scrollGuide, stepGuide } from "./components/Guide.tsx";
+import { foldAllGuide, foldGuide, openGuideStep, scrollGuide, stepGuide } from "./components/Guide.tsx";
 import { guideShown, toggleGuide } from "./guide.ts";
 import {
   banner,
@@ -420,6 +420,11 @@ export const BINDINGS: Binding[] = [
   { keys: "k", desc: "scroll up", where: "guide", run: (n) => scrollGuide(n, -1) },
   { keys: "<C-d>", desc: "half a page down", where: "guide", run: () => scrollGuide("half", 1) },
   { keys: "<C-u>", desc: "half a page up", where: "guide", run: () => scrollGuide("half", -1) },
+  { keys: "za", desc: "fold / unfold the file diff in view (a long one starts folded)", where: "guide", run: () => foldGuide("toggle") },
+  { keys: "zo", desc: "unfold the file diff in view", where: "guide", run: () => foldGuide(true) },
+  { keys: "zc", desc: "fold the file diff in view", where: "guide", run: () => foldGuide(false) },
+  { keys: "zR", desc: "unfold every file diff of the guide", where: "guide", run: () => foldAllGuide(true) },
+  { keys: "zM", desc: "fold every file diff of the guide", where: "guide", run: () => foldAllGuide(false) },
 
   { keys: "j", desc: "next thread", where: "thread", run: () => go(stepThread(ordered.value, currentThreadId.value, 1)) },
   { keys: "k", desc: "previous thread", where: "thread", run: () => go(stepThread(ordered.value, currentThreadId.value, -1)) },

@@ -11,7 +11,7 @@ import { api } from "./api.ts";
 import { compileQuery, diffRows, flatHits, matchRanges, searchDiff, type Hit, type Side } from "./lib/search.ts";
 import { clampStep } from "./lib/timeline.ts";
 import { routeHash } from "./lib/route.ts";
-import { compareFocus, detail, fileOrder, guard, loading, markReviewed, noteJump, notify, reviewedCursor, reviewId, route, selectedStep, showResolved, status, testGlobs, threads, viewedKeys } from "./state.ts";
+import { compareFocus, detail, fileOrder, guard, loading, markReviewed, noteJump, notify, reviewedCursor, reviewId, route, selectedStep, showResolved, status, testGlobs, threads, versions, viewedKeys } from "./state.ts";
 
 export type SideTab = "threads" | "files" | "search";
 
@@ -252,6 +252,45 @@ export function leaveCode(): void {
   codeFocus.value = false;
   visualAnchor.value = null;
 }
+
+/**
+ * The Guide tab of the Changes page (experimental): the agent's guide to the version on the right, over the diff. The
+ * diff stays as it is under it, so switching back finds it as it was.
+ */
+export const guideOpen = signal(false);
+
+/** The version on the right of the compare shown, when the agent wrote a guide to it. */
+export const guideVersion = computed(() => {
+  const r = route.value;
+  const d = compareData.value;
+  if (r.name !== "compare" || !d || d.from.ref !== r.from || d.to.ref !== r.to) return null;
+  const n = Number(/^v(\d+)$/.exec(d.to.label)?.[1]);
+  return versions.value.some((v) => v.number === n && v.guide) ? n : null;
+});
+
+export const guideShown = computed(() => guideOpen.value && guideVersion.value !== null);
+
+/** A file diff of the Guide tab: the lines of `path` a step names (`oldPath` on the old side), once they are drawn. */
+export interface GuideFile {
+  fd: FileDiffMetadata | null;
+  path: string;
+  oldPath: string;
+  folded: boolean;
+}
+
+/** The Guide tab's file diffs by key, `<step>.<reference>`: a file can be in several steps. */
+export const guideFiles = signal<ReadonlyMap<string, GuideFile>>(new Map());
+
+const keyParts = (k: string) => k.split(".").map(Number) as [number, number];
+
+/** The keys of the Guide tab's file diffs in the guide's order. */
+export const guideKeys = computed(() =>
+  [...guideFiles.value.keys()].sort((a, b) => {
+    const [sa, ra] = keyParts(a);
+    const [sb, rb] = keyParts(b);
+    return sa - sb || ra - rb;
+  }),
+);
 
 export const searchInput = signal("");
 export const searchQuery = signal("");

@@ -1,27 +1,42 @@
-import { computed, effect, signal } from "@preact/signals";
+import { effect, signal } from "@preact/signals";
 import type { GuideDto } from "../src/core/types.ts";
 import { api } from "./api.ts";
-import { compareData, compareNav } from "./compare.ts";
-import { navigate, notify, reviewId, route, routeHash, versions, type Route } from "./state.ts";
+import { compareData, compareNav, guideOpen, guideVersion } from "./compare.ts";
+import { navigate, notify, reviewId, routeHash, versions, type Route } from "./state.ts";
 
-/**
- * The Guide tab of the Changes page (experimental): the agent's guide to the version on the right, over the diff. The
- * diff stays as it is under it, so switching back finds it as it was.
- */
-export const guideOpen = signal(false);
+export { guideOpen, guideShown, guideVersion } from "./compare.ts";
+
 /** The step `}` and `{` went to, from 1. */
 export const guideStep = signal<number | null>(null);
 
-/** The version on the right of the compare shown, when the agent wrote a guide to it. */
-export const guideVersion = computed(() => {
-  const r = route.value;
-  const d = compareData.value;
-  if (r.name !== "compare" || !d || d.from.ref !== r.from || d.to.ref !== r.to) return null;
-  const n = Number(/^v(\d+)$/.exec(d.to.label)?.[1]);
-  return versions.value.some((v) => v.number === n && v.guide) ? n : null;
-});
+/** A step's file diff longer than this many lines starts folded. */
+export const LONG = 80;
 
-export const guideShown = computed(() => guideOpen.value && guideVersion.value !== null);
+/** The key of a step's reference among the Guide tab's file diffs: step from 1, reference from 0. */
+export const refKey = (step: number, ref: number) => `${step}.${ref}`;
+
+/** File diffs of the guide the reader folded (true) or opened (false); the others are folded when they are long. */
+export const guideFolds = signal<ReadonlyMap<string, boolean>>(new Map());
+
+export const isFolded = (key: string, lines: number) => guideFolds.value.get(key) ?? lines > LONG;
+
+export function foldRef(key: string, folded: boolean): void {
+  guideFolds.value = new Map(guideFolds.value).set(key, folded);
+}
+
+/** The guide's file diff the reader is at: under the cursor, gone to with a key or a click, else the top one in view. */
+export const guideAt = signal<string | null>(null);
+
+let shownRange = "";
+effect(() => {
+  const d = compareData.value;
+  const range = d ? `${d.from.sha}..${d.to.sha}` : "";
+  if (range === shownRange) return;
+  shownRange = range;
+  guideFolds.value = new Map();
+  guideAt.value = null;
+  guideStep.value = null;
+});
 
 // A version whose guide the reviewer asked for opens on the Guide tab the first time it is on the right; after that
 // the tab stays as the reader left it.

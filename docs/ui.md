@@ -113,13 +113,15 @@ few steps, in the order that makes the change easiest to follow, each naming its
 for the file's whole change). When the right side of the Changes page is such a version, a **Diff | Guide** switch
 sits next to the title (`Space u g`). The Guide tab shows the guide's title, then each step's text (Markdown, raw HTML
 shown as text; `#12` links the thread) and under it only that step's lines as a small diff of the open compare, with
-three lines around them; the bars above and below show more. Threads on those lines show as cards that open the
-thread. **open in Diff** goes to the normal diff at exactly those lines, highlighted, with the cursor on the first.
+three lines around them; the bars above and below show more. A click on a file's name above its lines folds them to
+that line (its path, its `+` and `−`), and **show N lines** opens them again; a file of more than 80 lines (a long
+new test, say) starts folded. Threads on those lines show as cards that open the thread. **open in Diff** goes to the normal diff at exactly those lines, highlighted, with the cursor on the first.
 At the end, **Not in the guide** lists the files the compare changes that no step names. Comments are written in the
 Diff. Switching to the Guide and back leaves the diff as it was: its scroll, cursor and selection.
 
 In the Guide tab: `}` / `{` next / previous step, `Enter` opens the step's first lines in the Diff, `j` / `k` and
-`Ctrl+d` / `Ctrl+u` scroll, `Esc` or `Space u g` back to the Diff. The agent reads it back with `stet guide [N]`.
+`Ctrl+d` / `Ctrl+u` scroll, `za` folds or opens the file in view (`zo` / `zc`; `zR` / `zM` all of them), `Esc` or
+`Space u g` back to the Diff. The agent reads it back with `stet guide [N]`.
 
 When the agent writes one: by default (`agent.guide` `on`) for the first version of a task and for a round that
 changed more than the threads asked; with `stet config set agent.guide off`, only when you ask. To ask, tick **ask

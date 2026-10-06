@@ -193,6 +193,40 @@ describe("the Guide tab", () => {
     render(null, host);
   });
 
+  test("a step's file diff folds from its head, its bar or z a; zR opens them all; a long one starts folded", async () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(<GuideView from="1" to="2" />, host);
+    guide.guideOpen.value = true;
+    await tick(150);
+    const ref = () => host.querySelector(".guide-ref[data-key='1.0']")!;
+    expect(ref().classList.contains("folded")).toBe(false);
+    expect(ref().querySelector(".guide-ref-head .stat")?.textContent).toBe("+1 −1");
+    (ref().querySelector(".guide-fold") as HTMLButtonElement).click();
+    await tick();
+    expect(ref().classList.contains("folded")).toBe(true);
+    expect(ref().querySelector(".guide-fold .chev")?.textContent).toBe("▸");
+    expect(ref().querySelector(".guide-unfold")?.textContent).toBe("▸ show 9 lines");
+    expect(host.querySelector(".guide-step[data-step='1'] .md")).not.toBeNull();
+    (ref().querySelector(".guide-unfold") as HTMLButtonElement).click();
+    await tick();
+    expect(ref().classList.contains("folded")).toBe(false);
+    guide.guideAt.value = "1.0";
+    press("z", "a");
+    await tick();
+    expect(ref().classList.contains("folded")).toBe(true);
+    press("z", "R");
+    await tick();
+    expect(host.querySelectorAll(".guide-ref.folded").length).toBe(0);
+    press("z", "M");
+    await tick();
+    expect(host.querySelectorAll(".guide-ref.folded").length).toBe(2);
+    expect([guide.isFolded("other", guide.LONG), guide.isFolded("other", guide.LONG + 1)]).toEqual([false, true]);
+    guide.guideFolds.value = new Map();
+    guide.guideOpen.value = false;
+    render(null, host);
+  });
+
   test("a version without a guide has no tab, and Space u g says so", () => {
     compare.compareData.value = { ...DATA, to: { ref: "1", sha: "s1", label: "v1" }, from: { ref: "base", sha: "s0", label: "base" } };
     state.route.value = { name: "compare", from: "base", to: "1" };
