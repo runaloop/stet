@@ -115,7 +115,9 @@ sits next to the title (`Space u g`). The Guide tab shows the guide's title, the
 shown as text; `#12` links the thread) and under it only that step's lines as a small diff of the open compare, with
 three lines around them; the bars above and below show more. A click on a file's name above its lines folds them to
 that line (its path, its `+` and `−`), and **show N lines** opens them again; a file of more than 80 lines (a long
-new test, say) starts folded. Threads on those lines show as cards that open the thread. **open in Diff** goes to the normal diff at exactly those lines, highlighted, with the cursor on the first.
+new test, say) starts folded. Threads on those lines show as cards that open the thread. The Files panel marks the
+file of the lines in view (or of the step `}` / `{` or a click went to); a file picked there goes to the first step
+that names it, or to the Diff when none does. **open in Diff** goes to the normal diff at exactly those lines, highlighted, with the cursor on the first.
 At the end, **Not in the guide** lists the files the compare changes that no step names. Comments are written in the
 Diff. Switching to the Guide and back leaves the diff as it was: its scroll, cursor and selection.
 

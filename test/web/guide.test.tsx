@@ -89,7 +89,7 @@ const DATA: CompareDto = {
 
 beforeAll(() => {
   state.reviewId.value = 1;
-  state.status.value = { versionsList: [{ number: 1 }, { number: 2, guide: true }] } as never;
+  state.status.value = { review: { source: "worktree" }, versionsList: [{ number: 1 }, { number: 2, guide: true }] } as never;
   state.threads.value = [thread({ id: 5, path: "src/a.kt", range: { start: 4, end: 4 }, title: "Why 4?" })];
   state.route.value = { name: "compare", from: "1", to: "2" };
   compare.compareData.value = DATA;
@@ -225,6 +225,37 @@ describe("the Guide tab", () => {
     guide.guideFolds.value = new Map();
     guide.guideOpen.value = false;
     render(null, host);
+  });
+
+  test("the Files panel marks the file of the step in view; a file there goes to its step, or to the diff when no step names it", async () => {
+    const { SidePanel } = await import("../../web/views/CompareSide.tsx");
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    compare.sideTab.value = "files";
+    guide.guideStep.value = null;
+    render(<><GuideView from="1" to="2" /><SidePanel /></>, host);
+    guide.guideOpen.value = true;
+    await tick(150);
+    const active = () => [...host.querySelectorAll(".file-row.active .file-name")].map((x) => x.textContent);
+    press("}");
+    await tick();
+    expect(guide.guideAt.value).toBe("1.0");
+    expect(active()).toEqual(["a.kt"]);
+    press("}");
+    await tick();
+    expect(active()).toEqual(["b.kt"]);
+    const row = (name: string) => [...host.querySelectorAll<HTMLAnchorElement>(".file-row .file-link")].find((a) => a.querySelector(".file-name")?.textContent === name)!;
+    row("a.kt").click();
+    await tick();
+    expect(guide.guideAt.value).toBe("1.0");
+    expect(active()).toEqual(["a.kt"]);
+    expect(guide.guideOpen.value).toBe(true);
+    row("README.md").click();
+    await tick();
+    expect(guide.guideOpen.value).toBe(false);
+    expect(location.hash).toBe("#/compare/1..2?file=README.md");
+    render(null, host);
+    state.route.value = { name: "compare", from: "1", to: "2" };
   });
 
   test("a version without a guide has no tab, and Space u g says so", () => {

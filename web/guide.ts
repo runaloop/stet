@@ -1,7 +1,7 @@
-import { effect, signal } from "@preact/signals";
+import { computed, effect, signal } from "@preact/signals";
 import type { GuideDto } from "../src/core/types.ts";
 import { api } from "./api.ts";
-import { compareData, compareNav, guideOpen, guideVersion } from "./compare.ts";
+import { compareData, compareNav, guideFiles, guideOpen, guideVersion } from "./compare.ts";
 import { navigate, notify, reviewId, routeHash, versions, type Route } from "./state.ts";
 
 export { guideOpen, guideShown, guideVersion } from "./compare.ts";
@@ -26,6 +26,12 @@ export function foldRef(key: string, folded: boolean): void {
 
 /** The guide's file diff the reader is at: under the cursor, gone to with a key or a click, else the top one in view. */
 export const guideAt = signal<string | null>(null);
+
+/** The file of the diff the reader is at in the guide, for the Files panel. */
+export const guideFile = computed(() => {
+  const k = guideAt.value;
+  return k ? (guideFiles.value.get(k)?.path ?? null) : null;
+});
 
 let shownRange = "";
 effect(() => {

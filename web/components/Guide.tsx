@@ -317,6 +317,18 @@ export function stepGuide(dir: 1 | -1, count: number): boolean {
   return true;
 }
 
+/** A file picked in the Files panel: its first step's lines in the guide, or the diff when no step names it. */
+export function showFileInGuide(path: string): void {
+  const k = guideKeys.value.find((x) => guideFiles.value.get(x)?.path === path);
+  const d = compareData.value;
+  if (!k) {
+    if (d) openInDiff({ name: "compare", from: d.from.ref, to: d.to.ref, file: path });
+    return;
+  }
+  guideAt.value = k;
+  document.querySelector(`.guide .guide-ref[data-key="${k}"]`)?.scrollIntoView({ block: "start", behavior: "instant" as ScrollBehavior });
+}
+
 /** Folds or opens the file diff the reader is at (`za` `zo` `zc`), keeping its head in view. */
 export function foldGuide(open: boolean | "toggle"): boolean {
   const k = guideAt.value ?? guideKeys.value[0];

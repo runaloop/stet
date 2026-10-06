@@ -3,6 +3,7 @@ import { isPixelImage } from "../../src/core/image.ts";
 import { useEffect, useRef } from "preact/hooks";
 import { Kbd } from "../components/Bits.tsx";
 import { FileGitMarks } from "../components/GitState.tsx";
+import { showFileInGuide } from "../components/Guide.tsx";
 import {
   activeFile,
   compareData,
@@ -33,8 +34,10 @@ import {
   type FileRow,
   type SideTab,
   cursorSpace,
+  guideShown,
   setCursor,
 } from "../compare.ts";
+import { guideFile } from "../guide.ts";
 import { diffRows, groupHits, type DiffRow, type Hit, type HitGroup } from "../lib/search.ts";
 import type { GrepLineDto } from "../../src/core/types.ts";
 import type { Route } from "../lib/route.ts";
@@ -68,6 +71,7 @@ function firstChange(row: FileRow): number {
 }
 
 function openFile(row: FileRow): void {
+  if (!onThreadPage.value && guideShown.value) return showFileInGuide(row.fd.name);
   if (!onThreadPage.value) {
     compareNav.current?.scrollToFile(row.fd.name);
     const space = cursorSpace.peek();
@@ -117,7 +121,7 @@ function FileLine({ row, active }: { row: FileRow; active: boolean }) {
 
 function FileList() {
   const rows = fileRows.value;
-  const active = activeFile.value;
+  const active = !onThreadPage.value && guideShown.value ? guideFile.value : activeFile.value;
   const d = compareData.value;
   if (onThreadPage.value && !d) return <div class="empty">Files of the diff you were looking at. Open the changes (<Kbd>v</Kbd>) first.</div>;
   if (rows.length === 0) return <div class="empty">No files in this diff.</div>;
