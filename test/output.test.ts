@@ -85,6 +85,18 @@ test("a large error on stderr arrives once through a pipe, alone or merged with 
       }
 });
 
+test("a reader that stops early ends the output without a trace or a failing exit", async () => {
+  const f = repo();
+  const script = `bun "$0" "$@" 2>"$STET_ERR"; echo "exit=$?" >"$STET_CODE"`;
+  const [err, code] = [join(outDir, "early-err"), join(outDir, "early-code")];
+  const proc = Bun.spawn(["sh", "-c", `{ ${script}; } | head -c 20 >/dev/null`, CLI, "config", "set", "snapshot.exclude", valueFor(130_000), "--json"], {
+    cwd: f.root, env: { ...env, STET_ERR: err, STET_CODE: code }, stdout: "ignore", stderr: "ignore",
+  });
+  await proc.exited;
+  expect(readFileSync(err, "utf8")).toBe("");
+  expect(readFileSync(code, "utf8")).toBe("exit=0\n");
+});
+
 test("output written to a file is exact at every size", async () => {
   const f = repo();
   for (const size of [8193, 65537, 130_000]) {

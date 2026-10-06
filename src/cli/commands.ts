@@ -134,7 +134,15 @@ let pending: Promise<unknown> = Promise.resolve();
 function out(text: string, stream: NodeJS.WriteStream = process.stdout): void {
   const line = text.endsWith("\n") ? text : text + "\n";
   pending = pending.then(() => new Promise<void>((resolve, reject) => {
-    stream.write(line, (e) => (e ? reject(e) : resolve()));
+    // A reader that went away early (`stet ... | head`) ends the output, not the process with a trace.
+    // On a failed write the stream emits "error" after the callback, so the listener stays then.
+    const done = (e?: Error | null) => {
+      if (!e) stream.off("error", done);
+      if (!e || (e as NodeJS.ErrnoException).code === "EPIPE") resolve();
+      else reject(e);
+    };
+    stream.on("error", done);
+    stream.write(line, done);
   }));
 }
 
