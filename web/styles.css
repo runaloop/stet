@@ -708,7 +708,7 @@ header.top .offline { flex: none; font-size: 12px; padding: 1px 8px; border: 1px
 .guide-step.focused > .guide-step-text { box-shadow: -10px 0 0 -6px var(--accent); }
 .guide-step-text { display: flex; gap: 10px; align-items: baseline; margin-bottom: 8px; }
 .guide-step-text > .md { flex: 1; min-width: 0; }
-.guide-num { flex: none; min-width: 22px; height: 22px; line-height: 22px; border-radius: 11px; text-align: center; background: var(--accent); color: #fff; font: 600 12px var(--sans); }
+.guide-num { flex: none; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: var(--accent); color: #fff; font: 600 12px/1 var(--sans); font-variant-numeric: tabular-nums; text-box: trim-both cap alphabetic; }
 .guide-ref { margin: 0 0 10px 32px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .guide-ref-head { display: flex; gap: 8px; align-items: center; padding: 3px 8px; background: var(--bg-soft); border-bottom: 1px solid var(--border); font-size: 12px; }
 .guide-ref-head .path { font: 600 12px var(--mono); overflow-wrap: anywhere; }
