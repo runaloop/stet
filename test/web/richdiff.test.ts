@@ -86,6 +86,23 @@ describe("one version with the changes in it", () => {
     expect(fresh.innerHTML).toBe(`<p data-b="0" class="md-words">keep the cart in <del>memory</del><ins>SQLite</ins> for now</p>`);
   });
 
+  test("removed text keeps its formatting: bold, code and a link, but not what the place it goes to already has", () => {
+    const a = box(`<p data-b="0">keep the <b>whole</b> cart in <code>memory</code> for now</p>`);
+    const b = box(`<p data-b="0">keep the cart in SQLite for now</p>`);
+    const pairs = [leaf(0, 0)];
+    markInline(b, pairs, unitsOf(a, b, pairs));
+    expect(b.innerHTML).toBe(`<p data-b="0" class="md-words">keep the <del><b>whole</b> </del>cart in <del><code>memory</code></del><ins>SQLite</ins> for now</p>`);
+    const c = box(`<p data-b="0">see <a class="md-file" data-href="x.md">the old docs</a> today</p>`);
+    const e = box(`<p data-b="0">see <a class="md-file" data-href="x.md">the docs</a> today</p>`);
+    markInline(e, pairs, unitsOf(c, e, pairs));
+    expect(e.innerHTML).toBe(`<p data-b="0" class="md-words">see <a class="md-file" data-href="x.md">the <del>old </del>docs</a> today</p>`);
+    const t = box(`<table data-b="0"><tbody data-b="1"><tr data-b="2"><td><em>a</em></td><td><strong>1</strong></td></tr></tbody></table>`);
+    const u = box(`<table data-b="0"><tbody data-b="1"><tr data-b="2"><td><em>a</em></td><td>2</td></tr></tbody></table>`);
+    const rows: Pair[] = [{ old: [0], new: [0], children: [{ old: [1], new: [1], children: [leaf(2, 2)] }] }];
+    markInline(u, rows, unitsOf(t, u, rows));
+    expect(u.querySelector("tr")!.innerHTML).toBe(`<td><em>a</em></td><td><del><strong>1</strong></del><ins>2</ins></td>`);
+  });
+
   test("a different kind of block, an added item or a code block keeps the old and the new version", () => {
     const a = box(`<p data-b="0">Install it</p>`);
     const b = box(`<h2 data-b="0">Install it now</h2>`);

@@ -39,21 +39,62 @@ export function textOf(roots: readonly Element[], own = false): BlockText {
 const words = (s: string) => s.match(/[\p{L}\p{N}_]+/gu)?.length ?? 0;
 const blank = (s: string) => !/\S/.test(s);
 
-/** Wrap a range of the text in `<del>` or `<ins>`, or put removed text in a `<del>` at a place of it. */
-export type Op = { at: number; end: number; tag: "del" | "ins" } | { at: number; text: string };
+/**
+ * Wrap a range of the text in `<del>` or `<ins>`, or put removed text in a `<del>` at a place of it; `from` is where
+ * that text starts in the old text, to take its formatting along.
+ */
+export type Op = { at: number; end: number; tag: "del" | "ins" } | { at: number; text: string; from?: number };
+
+/** The inline elements around a text node, innermost first, up to the block or the table cell it is in. */
+function inlineAround(el: Element | null): Element[] {
+  const out: Element[] = [];
+  for (let at = el; at && !at.matches("[data-b], td, th"); at = at.parentElement) out.push(at);
+  return out;
+}
+
+/**
+ * The old text from `from` to `to` as nodes, with the formatting it had (bold, a link, code) that the place it goes
+ * to does not have; a line break between table cells or blocks becomes a space.
+ */
+function removedNodes(was: BlockText, from: number, to: number, place: Element | null): Node[] {
+  const have = new Set(inlineAround(place).map((e) => e.tagName));
+  const out: Node[] = [];
+  let last: Piece | null = null;
+  for (const p of was.pieces) {
+    const a = Math.max(from, p.start);
+    const b = Math.min(to, p.end);
+    if (a >= b) continue;
+    const doc = p.node.ownerDocument;
+    if (last && last.end < p.start) out.push(doc.createTextNode(" "));
+    let node: Node = doc.createTextNode(p.node.data.slice(a - p.start, b - p.start));
+    for (const el of inlineAround(p.node.parentElement)) {
+      if (have.has(el.tagName)) continue;
+      const copy = doc.createElement(el.tagName.toLowerCase());
+      const cls = el.getAttribute("class");
+      if (cls) copy.setAttribute("class", cls);
+      copy.append(node);
+      node = copy;
+    }
+    out.push(node);
+    last = p;
+  }
+  return out;
+}
 
 /**
  * Splits text nodes at the ops and wraps or inserts the marks, from the end so the offsets of the rest hold. A range
- * that crosses inline elements (bold, a link, code) is wrapped piece by piece inside each of them.
+ * that crosses inline elements (bold, a link, code) is wrapped piece by piece inside each of them. With `was`, the old
+ * text, removed text keeps its formatting.
  */
-export function applyOps(t: BlockText, ops: readonly Op[]): void {
+export function applyOps(t: BlockText, ops: readonly Op[], was?: BlockText): void {
   const sorted = [...ops].sort((a, b) => b.at - a.at || ("text" in a ? 1 : 0) - ("text" in b ? 1 : 0));
   for (const op of sorted) {
     if ("text" in op) {
       const p = t.pieces.find((x) => x.start <= op.at && op.at < x.end) ?? [...t.pieces].reverse().find((x) => x.end === op.at);
       if (!p) continue;
       const del = p.node.ownerDocument.createElement("del");
-      del.textContent = op.text.replace(/\n+/g, " ");
+      if (was && op.from !== undefined) del.append(...removedNodes(was, op.from, op.from + op.text.length, p.node.parentElement));
+      else del.textContent = op.text.replace(/\n+/g, " ");
       const local = op.at - p.start;
       const wrapped = p.node.parentElement?.tagName === "INS" ? p.node.parentElement : null;
       if (local <= 0) (wrapped ?? p.node).before(del);
@@ -147,7 +188,7 @@ export function opsOf(u: Unit): { old: Op[]; new: Op[]; inline: Op[] } {
     if (p.removed) {
       if (!blank(p.value)) {
         out.old.push({ at: o, end: o + p.value.length, tag: "del" });
-        out.inline.push({ at: n, text: p.value });
+        out.inline.push({ at: n, text: p.value, from: o });
       }
       o += p.value.length;
     } else if (p.added) {
@@ -205,7 +246,7 @@ export function markInline(newRoot: ParentNode, pairs: readonly Pair[], units: r
     const u = units[k++]!;
     const here = els(newRoot, p.new);
     if (worded(u)) {
-      applyOps(textOf(here, u.own), opsOf(u).inline);
+      applyOps(textOf(here, u.own), opsOf(u).inline, textOf(u.old, u.own));
       markTargets(u, here, null);
       for (const el of here) el.classList.add("md-words");
     }
