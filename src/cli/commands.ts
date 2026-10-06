@@ -129,8 +129,13 @@ async function readGuide(file: string): Promise<string> {
 
 let pending: Promise<unknown> = Promise.resolve();
 
-function out(text: string, stream: typeof Bun.stdout = Bun.stdout): void {
-  pending = pending.then(() => Bun.write(stream, text.endsWith("\n") ? text : text + "\n"));
+// Not Bun.write(Bun.stdout): once process.stdout or process.stderr is touched, Bun makes a piped fd
+// non-blocking, and Bun.write answers a short write by writing the whole text again from its start.
+function out(text: string, stream: NodeJS.WriteStream = process.stdout): void {
+  const line = text.endsWith("\n") ? text : text + "\n";
+  pending = pending.then(() => new Promise<void>((resolve, reject) => {
+    stream.write(line, (e) => (e ? reject(e) : resolve()));
+  }));
 }
 
 export function flushOutput(): Promise<unknown> {
@@ -645,7 +650,7 @@ export async function main(argv: string[]): Promise<number> {
   }
   const cmd = commands[name];
   if (!cmd) {
-    out(`unknown command: ${[first, GROUPS.has(first) ? second : undefined].filter(Boolean).join(" ")}\n\n${HELP}`, Bun.stderr);
+    out(`unknown command: ${[first, GROUPS.has(first) ? second : undefined].filter(Boolean).join(" ")}\n\n${HELP}`, process.stderr);
     return 1;
   }
   const p = parse(args, cmd.options);
@@ -663,7 +668,7 @@ export function reportError(e: unknown, json: boolean): number {
     : (e as Error)?.name === "GitError"
       ? { code: "git", message: (e as Error).message, exit: 4 }
       : { code: "internal", message: (e as Error)?.stack ?? String(e), exit: 1 };
-  if (json || !process.stderr.isTTY) out(JSON.stringify({ error: { code: err.code, message: err.message } }), Bun.stderr);
-  else out(`stet: ${err.message}`, Bun.stderr);
+  if (json || !process.stderr.isTTY) out(JSON.stringify({ error: { code: err.code, message: err.message } }), process.stderr);
+  else out(`stet: ${err.message}`, process.stderr);
   return err.exit;
 }
