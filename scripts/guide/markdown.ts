@@ -26,6 +26,18 @@ A small demo shop for the Android app. The cart lives in memory.
 ./gradlew installDebug
 \`\`\`
 
+## How it is built
+
+The app is a single activity with Compose screens. Each screen has a view model that talks to a repository.
+
+The repository reads from the local database first and refreshes from the network in the background.
+
+Screens:
+
+- Catalog
+- Product page
+- Cart
+
 ## Checkout
 
 - Pay by card
@@ -50,6 +62,18 @@ A small demo shop for the Android app. The cart lives in SQLite and survives a r
 \`\`\`bash
 ./gradlew installDebug -Pflavor=demo
 \`\`\`
+
+## How it is built
+
+The app is a single activity with Compose screens. Each screen has a view model that talks to a repository.
+
+The repository reads from the local database first and refreshes from the network in the background.
+
+Screens:
+
+- Catalog
+- Product page
+- Cart
 
 ## Checkout
 
@@ -109,6 +133,7 @@ export async function markdownGuide() {
       const pictureOld = await p.need(".md-cell[data-side='old'] img");
       const pictureNew = await p.need(".md-cell[data-side='new'] img");
       const gap = await p.need(".md-cell[data-side='old'] .md-gap");
+      const fold = await p.need(".md-view .md-fold");
       await p.shot("markdown-1.png", [
         { html: "<b>‹/› code</b>: this file as code, at the same place on the screen. Markdown opens rendered (<code>compare.markdown</code>)", at: { x: toggle.x - 520, y: toggle.y - 56 }, to: { x: toggle.x - 4, y: toggle.y + toggle.h / 2 }, ring: toggle, w: 450 },
         { html: "Split view: the old version and the new one, block facing block. Unchanged blocks stay level", at: { x: 40, y: 250 }, to: { x: heads.x - 4, y: heads.y + heads.h / 2 }, w: 420 },
@@ -116,6 +141,7 @@ export async function markdownGuide() {
         { html: "Items of a changed list face each other; an added one faces an empty slot", at: { x: 40, y: gap.y - 70 }, to: { x: gap.x - 4, y: gap.y + gap.h / 2 }, ring: gap, w: 420 },
         { html: "Removed: red on the old side, nothing facing it. A thread on old lines shows on the old side", at: { x: 40, y: removed.y + 10 }, to: { x: removed.x - 14, y: removed.y + removed.h / 2 }, w: 420 },
         { html: "A thread shows on the block its lines are in, with its card under it", at: { x: card.x + 200, y: card.y + 50 }, to: { x: card.x + 160, y: card.y + card.h + 2 }, ring: card, w: 330 },
+        { html: "Unchanged text between the changes folds into a bar: <b>show above</b>, <b>show below</b> or <b>show all</b> opens it, in the code too", at: { x: 40, y: fold.y - 30 }, to: { x: fold.x - 4, y: fold.y + fold.h / 2 }, ring: fold, w: 420 },
         { html: "Each side's pictures come from its own version", at: { x: 40, y: pictureOld.y + 20 }, to: { x: pictureOld.x - 4, y: pictureOld.y + pictureOld.h / 2 }, ring: { x: pictureOld.x, y: pictureOld.y, w: pictureNew.x + pictureNew.w - pictureOld.x, h: pictureNew.h }, w: 420 },
       ]);
 
@@ -149,11 +175,14 @@ export async function markdownGuide() {
       await toTop(`.md-view[data-file="README.md"]`, 70);
       await p.sleep(800);
       const inline = await p.need(".md-one .md-cell[data-side='new'] p.md-words");
-      const was = await p.need(".md-one .md-cell[data-side='old']", "Order history");
-      const now = await p.need(".md-one .md-cell[data-side='new'] li", "Promo codes");
+      // the thread on the first item breaks the list after it
+      const top = await p.need(".md-one .md-cell[data-side='new'] li", "Pay by card");
+      const list = await p.need(".md-one .md-cell[data-side='new'] ul", "Promo codes");
+      const gone = await p.need(".md-one .md-cell[data-side='new'] p.md-removed", "old gateway");
       await p.shot("markdown-3.png", [
         { html: "Unified view: one column. A block with a few words changed shows once, with the changes in its text", at: { x: inline.x + inline.w + 30, y: inline.y - 40 }, to: { x: inline.x + inline.w + 4, y: inline.y + inline.h / 2 }, ring: inline, w: 360 },
-        { html: "Items added: the old version, marked “was”, stands above the new one", at: { x: was.x + was.w + 30, y: was.y + 20 }, to: { x: was.x + was.w - 20, y: was.y + was.h / 2 }, ring: { x: was.x, y: was.y, w: was.w, h: now.y + now.h - was.y }, w: 360 },
+        { html: "A list shows once too: the changed words in an item, an added item green", at: { x: list.x + list.w + 30, y: top.y - 10 }, to: { x: list.x + list.w + 4, y: (top.y + list.y + list.h) / 2 }, ring: { x: list.x, y: top.y, w: list.w, h: list.y + list.h - top.y }, w: 330 },
+        { html: "A removed block is struck through where it was, with its thread", at: { x: gone.x + gone.w + 30, y: gone.y + 10 }, to: { x: gone.x + gone.w + 4, y: gone.y + gone.h / 2 }, w: 330 },
       ]);
       await p.eval(`[...document.querySelectorAll(".compare-head .btn")].find(b => b.textContent === "split").click(); true`);
     });

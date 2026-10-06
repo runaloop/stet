@@ -115,7 +115,7 @@ added one faces an empty slot. Like the code, it shows the changes with the text
 bars that open it a piece at a time; what you open shows in the code too, and **full file** shows all of it. Pictures
 of the repository load at the version of their side; pictures from the web are not loaded, raw HTML stays text.
 
-![The old and the new README side by side, with the changed words and a thread on a block](markdown-1.png)
+![The old and the new README side by side, with the changed words, a fold bar and a thread on a block](markdown-1.png)
 
 Threads are still on lines, so the agent gets the same thread as from the code. A thread shows on the blocks its
 lines are in; **+** beside a block, or `i` on the block under the cursor, starts one on the block's lines. The
@@ -125,8 +125,9 @@ blocks around the thread, and each step of its timeline old beside new with the 
 
 ![A thread on a list item, and the buttons beside a block](markdown-2.png)
 
-In unified view the text is one column: a block with a few words changed shows once with the changes in it, and a
-block that was rewritten or changed its structure shows its old version, marked "was", above the new one.
+In unified view the text is one column: a block with a few words changed shows once with the changes in it, and so
+does a list or a table, with added items and rows marked and removed ones struck through where they were. A block
+that was rewritten or became another kind of block shows its old version, marked "was", above the new one.
 
 ![The same change in unified view](markdown-3.png)
 
