@@ -2081,6 +2081,144 @@ try {
       { drawErrors, stepShown, stepMore, stepBox, oldDraft },
     );
 
+    // The cursor follows the mouse: a comment started with the mouse puts it on its lines, and once the wheel took the
+    // cursor off screen the keys go on from the code on screen. + takes every line, or rendered block, of a text selection.
+    mkdirSync(join(repo, "docs"), { recursive: true });
+    writeFileSync(join(repo, "docs/cursor.md"), "# Cursor\n\nStart.\n");
+    run(repo, ["git", "add", "-A"]);
+    const curA = JSON.parse(run(repo, ["bun", CLI, "version", "create", "--label", "cursor", "--json"])).version.number as number;
+    writeFileSync(join(repo, "src/Scroll.kt"), Array.from({ length: 300 }, (_, i) => `val v${i + 1} = "line ${i + 1} of a long file"`).join("\n") + "\n");
+    writeFileSync(join(repo, "docs/cursor.md"), "# Cursor\n\nStart.\n\nThe first paragraph of the new text, long enough to start a selection in.\n\nThe second paragraph, where the selection ends.\n\nA third paragraph, left alone.\n");
+    run(repo, ["git", "add", "-A"]);
+    const curB = JSON.parse(run(repo, ["bun", CLI, "version", "create", "--label", "cursor and mouse", "--json"])).version.number as number;
+    const scrollKt = `[...document.querySelectorAll(".codeview-host diffs-container")].find(c => c.shadowRoot?.querySelector("[data-title]")?.textContent === "src/Scroll.kt")`;
+    const ktCursor = () => b.eval(`(() => { const r = ${scrollKt}?.shadowRoot.querySelector('[data-content] > [data-stet-mark~="cursor"]'); return r ? +r.getAttribute("data-line") : null; })()`) as Promise<number | null>;
+    // the first and the last line at least half on screen, under the file's sticky header
+    const ktSeen = () =>
+      b.eval(`(() => { const h = document.querySelector(".codeview-host").getBoundingClientRect(); const top = h.top + 48; const n = [...${scrollKt}.shadowRoot.querySelectorAll("[data-content] > [data-line]")].filter(r => { const x = r.getBoundingClientRect(); return Math.min(x.bottom, h.bottom) - Math.max(x.top, top) >= x.height / 2; }).map(r => +r.getAttribute("data-line")); return [Math.min(...n), Math.max(...n)]; })()`) as Promise<[number, number]>;
+    const ktTop = () => b.eval(`document.querySelector(".codeview-host").scrollTop`) as Promise<number>;
+    const wheelBy = async (dy: number) => {
+      const h = await rect(".codeview-host");
+      await b.send("input.performActions", { context: b.context, actions: [{ type: "wheel", id: "wheel", actions: [{ type: "scroll", x: h!.x, y: h!.y, deltaX: 0, deltaY: dy }] }] });
+      await sleep(700);
+    };
+    // a point in a line's text (`dx` px into it) or on its number, in a file's code in `host`
+    const linePoint = (host: string, n: number, where: "text" | "number", dx = 0) =>
+      b.eval(`(() => { const el = [...${host}.shadowRoot.querySelectorAll(${JSON.stringify(where === "text" ? `[data-content] > [data-line="${n}"]` : `[data-column-number="${n}"]`)})].pop(); const r = el.getBoundingClientRect(); return { x: Math.round(r.left + (${where === "text" ? `40 + ${dx}` : "r.width / 2"})), y: Math.round(r.top + r.height / 2) }; })()`) as Promise<{ x: number; y: number }>;
+    const plusAt = async (host: string, n: number) => {
+      const at = await linePoint(host, n, "number");
+      await pointer([{ type: "pointerMove", x: at.x + 30, y: at.y }, { type: "pointerMove", x: at.x, y: at.y }]);
+      await sleep(300);
+      const btn = (await b.eval(`(() => { const r = ${host}.shadowRoot.querySelector("button")?.getBoundingClientRect(); return r && r.width ? { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) } : null; })()`)) as { x: number; y: number } | null;
+      if (btn) await pointer([{ type: "pointerMove", x: btn.x, y: btn.y }, { type: "pointerDown", button: 0 }, { type: "pointerUp", button: 0 }]);
+      return !!btn;
+    };
+    const dragText = async (from: { x: number; y: number }, to: { x: number; y: number }) => {
+      await pointer([{ type: "pointerMove", x: from.x, y: from.y }, { type: "pointerDown", button: 0 }, { type: "pointerMove", x: to.x, y: to.y, duration: 200 }, { type: "pointerUp", button: 0 }]);
+      await sleep(200);
+      return b.eval(`document.getSelection()?.toString() ?? ""`) as Promise<string>;
+    };
+    const boxNote = (scope: string) => waitFor(`document.querySelector(${JSON.stringify(`${scope} .new-thread .note`)})?.textContent ?? null`, 3000) as Promise<string | null>;
+    mkdirSync(join(OUT, "cursor-mouse"), { recursive: true });
+
+    await b.eval(`location.hash = "#/compare/${curA}..${curB}"; true`);
+    await waitFor(`${scrollKt}?.shadowRoot.querySelector("[data-column-number='1']")`, 10000);
+    await sleep(500);
+    await b.eval(`document.activeElement?.blur(); true`);
+    await keys("g", "g", "j", "j", "j");
+    await sleep(300);
+    const keyedAt = await ktCursor();
+    await wheelBy(3000);
+    const [shownFrom] = await ktSeen();
+    const mouseLine = shownFrom + 5;
+    await plusAt(scrollKt, mouseLine);
+    const mouseBox = await boxNote(".codeview-host");
+    await cancel();
+    const scrolledTo = await ktTop();
+    await keys("j");
+    await sleep(400);
+    const afterMouse = { cursor: await ktCursor(), moved: (await ktTop()) - scrolledTo };
+    check(
+      "j near the top, the wheel far down, a comment with the mouse: the cursor is on the comment's line, so j goes on below it instead of back to the top",
+      keyedAt === 4 && !!mouseBox?.includes(`lines ${mouseLine}`) && afterMouse.cursor === mouseLine + 1 && Math.abs(afterMouse.moved) < 100,
+      { keyedAt, mouseLine, mouseBox, afterMouse },
+    );
+
+    await wheelBy(1500);
+    const downView = await ktSeen();
+    await keys("j");
+    await sleep(400);
+    const fromTop = await ktCursor();
+    await wheelBy(-800);
+    const upView = await ktSeen();
+    await keys("k");
+    await sleep(400);
+    const fromBottom = await ktCursor();
+    check(
+      "after the wheel takes the cursor off screen, j goes on from the first line on screen and k from the last, as in Vim",
+      fromTop === downView[0] + 1 && fromBottom === upView[1] - 1,
+      { downView, fromTop, upView, fromBottom },
+    );
+
+    const [selFrom] = await ktSeen();
+    const selText = await dragText(await linePoint(scrollKt, selFrom + 3, "text", 30), await linePoint(scrollKt, selFrom + 5, "text", 60));
+    await plusAt(scrollKt, selFrom + 9);
+    const selBox = await boxNote(".codeview-host");
+    const selCursor = await ktCursor();
+    const selLeft = await b.eval(`document.getSelection()?.toString() ?? ""`);
+    const selMarked = await waitFor(`(() => { const n = [...${scrollKt}.shadowRoot.querySelectorAll("[data-content] > [data-line][data-selected-line]")].map(e => +e.getAttribute("data-line")); return new Set(n).size >= 3 ? [...new Set(n)] : null; })()`, 3000);
+    await b.screenshot(join(OUT, "cursor-mouse", "code-selection-plus.png"));
+    check(
+      "+ with text selected over 3 lines of code opens the box on those 3 lines, marked as picked, with the cursor on the last",
+      selText.split("\n").length >= 3 && !!selBox?.includes(`lines ${selFrom + 3}–${selFrom + 5}`) && selCursor === selFrom + 5 && selLeft === "" && JSON.stringify(selMarked) === JSON.stringify([selFrom + 3, selFrom + 4, selFrom + 5]),
+      { selFrom, selText, selBox, selCursor, selLeft, selMarked },
+    );
+    await cancel();
+
+    const cursorMd = `.md-view[data-file="docs/cursor.md"]`;
+    await keys("G");
+    await waitFor(`document.querySelector('${cursorMd} p[data-start="7"]')`, 8000);
+    await b.eval(`document.querySelector('${cursorMd} .md-cell[data-side="new"] p[data-start="5"]').scrollIntoView({ block: "center" }); true`);
+    await sleep(500);
+    const para = (start: number, dx: number) => b.eval(`(() => { const r = document.querySelector('${cursorMd} .md-cell[data-side="new"] p[data-start="${start}"]').getBoundingClientRect(); return { x: Math.round(r.left + ${dx}), y: Math.round(r.top + r.height / 2) }; })()`) as Promise<{ x: number; y: number }>;
+    const mdSelected = await dragText(await para(5, 30), await para(7, 120));
+    await pointer([{ type: "pointerMove", x: (await para(7, 10)).x, y: (await para(7, 10)).y }]);
+    await waitFor(`document.querySelector(".md-gutter .md-plus")`, 3000);
+    await click(".md-gutter .md-plus");
+    const mdPicked = await boxNote(cursorMd);
+    const mdCursor = await b.eval(`[...document.querySelectorAll(${JSON.stringify(`${cursorMd} .md-cursor`)})].map(e => e.dataset.start)`);
+    const otherSide = await b.eval(`getComputedStyle(document.querySelector('${cursorMd} .md-cell[data-side="old"]')).userSelect`);
+    await b.screenshot(join(OUT, "cursor-mouse", "markdown-selection-plus.png"));
+    check(
+      "in rendered Markdown a selection over 2 blocks, kept to its column, and + open the box on both blocks' lines, the cursor on the last block",
+      mdSelected.includes("\n") && mdSelected.includes("The second") && otherSide === "none" && !!mdPicked?.includes("lines 5–7") && JSON.stringify(mdCursor) === JSON.stringify(["7"]),
+      { mdSelected, otherSide, mdPicked, mdCursor },
+    );
+    await cancel();
+
+    const curThread = JSON.parse(run(repo, ["bun", CLI, "comment", "add", "--file", "src/Scroll.kt", "--range", "150-150", "--at", String(curB), "--body", "why line 150?", "--as", "reviewer", "--json"])).id as number;
+    await b.eval(`location.hash = "#/thread/${curThread}"; true`);
+    const threadKt = `document.querySelector(".code-area diffs-container")`;
+    await waitFor(`${threadKt}?.shadowRoot?.querySelector('[data-content] > [data-line="151"]')`, 8000);
+    await sleep(500);
+    // a first click puts the keys on the code, and the hint above it gets shorter
+    for (let i = 0; i < 2; i++) {
+      const p147 = await linePoint(threadKt, 147, "text");
+      await pointer([{ type: "pointerMove", x: p147.x, y: p147.y }, { type: "pointerDown", button: 0 }, { type: "pointerUp", button: 0 }]);
+      await sleep(300);
+    }
+    const clickedOn = await b.eval(`[...${threadKt}.shadowRoot.querySelectorAll("[data-content] > [data-stet-mark~=cursor]")].map(e => +e.getAttribute("data-line"))`);
+    const threadSelected = await dragText(await linePoint(threadKt, 149, "text", 20), await linePoint(threadKt, 151, "text", 60));
+    await plusAt(threadKt, 152);
+    const threadBox = await boxNote(".code-area");
+    const threadCursor = await b.eval(`[...${threadKt}.shadowRoot.querySelectorAll("[data-content] > [data-stet-mark~=cursor]")].map(e => +e.getAttribute("data-line"))`);
+    check(
+      "on a thread page a click on a line of its code puts the cursor there; + with text selected over 3 lines opens the box on those lines, the cursor on the last",
+      JSON.stringify(clickedOn) === "[147]" && threadSelected !== "" && !!threadBox?.includes("lines 149–151") && JSON.stringify(threadCursor) === "[151]",
+      { clickedOn, threadSelected, threadBox, threadCursor },
+    );
+    await cancel();
+
     await b.eval(`location.hash = "#/compare/${imgV - 1}..${imgV}"; true`);
     await waitFor(`[...document.querySelectorAll(".imgdiff img")].length >= 5`, 10000);
     await sleep(800);

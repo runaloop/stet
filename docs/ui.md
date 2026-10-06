@@ -90,8 +90,9 @@ so the card stands right under it; the table goes on below with its header again
 number, and in split view the other side breaks at the facing row, with an empty slot as tall as the card. The box
 for a new comment opens at the same place. A click on a block puts the cursor on it; **+** beside a block (or `i` on the cursor's
 block, `V` with `j` / `k` for several) starts a thread on the block's lines, on its side, and **‹/›** beside it
-shows those lines in the code where the block was, with the cursor on them. A link to another file opens it in the
-preview.
+shows those lines in the code where the block was, with the cursor on them. With text selected, **+** takes every
+block the selection touches and puts the cursor on the last; in split view a selection keeps to the column it starts
+in. A link to another file opens it in the preview.
 
 Search reads the rendered text: a match is highlighted where it shows and the cursor goes to its block. A match
 that only the Markdown source has (a link address, a picture's path, markup) shows that file as code, and a note
@@ -155,10 +156,13 @@ searches the keys like LazyVim's keymaps picker and runs the one you pick; `Spac
 what can follow it. Counts work (`5j`), and so do non-Latin keyboard layouts (keys are matched by their
 physical position). A tour with screenshots: [guide](guide/README.md#navigation).
 
-On the Changes page a cursor moves over the diff (a click on a line puts it there). In a rendered Markdown file it
-moves over the blocks instead of the hidden lines (an unchanged block once, a changed one on its old side, then its
-new side), and `Ctrl+d` / `Ctrl+u` move it by half a screen of blocks; a picture (an image, an SVG shown as a
-picture) is one stop:
+On the Changes page a cursor moves over the diff. A click on a line puts it there, and so does a comment started
+with the mouse (a drag over the line numbers, **+**): on the last line picked, so the keys go on from the comment.
+After the wheel or the scrollbar took the cursor off screen, a move starts from what is on screen, as Vim drags the
+cursor along: `j`, `Ctrl+d`, `]c`, `]h`, `]b` from the first line on screen, `k`, `Ctrl+u`, `[c`, `[h`, `[b` from the
+last one (in a thread's code and the Guide tab's lines too, while they have the focus). In a rendered Markdown file it moves over the blocks instead of the hidden lines (an unchanged block once, a
+changed one on its old side, then its new side), and `Ctrl+d` / `Ctrl+u` move it by half a screen of blocks; a
+picture (an image, an SVG shown as a picture) is one stop:
 
 | Key | Action |
 |---|---|
@@ -184,6 +188,10 @@ picture) is one stop:
 | `Space ug` | the agent's guide to the version on the right, or back to the diff ([experimental](#the-agents-guide-to-a-version-experimental)) |
 | `Space rd` · `Space rs` · `Space rv` · `Space rr` | drafts · submit or approve · changes since you last looked · re-read "now" |
 | `Esc` | close the preview, the selection, then the comment box |
+
+**+** beside a line comments on that line, or, with text selected in the file, on every line the selection touches.
+A selection over removed and added lines, or into another file, has no one range: **+** then keeps to its own line
+and a notice says so. The same goes for a thread's code, the Guide tab's lines and rendered Markdown (by blocks).
 
 In a thread: `j` / `k` next / previous thread, `n` / `N` unread, `[` / `]` timeline step, `t` diff / then /
 at step, `p` diff base, `r` reply, `x` / `X` resolve / reopen, `e` editor, `Space g b` blame the thread's lines in the code
