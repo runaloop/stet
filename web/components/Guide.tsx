@@ -21,7 +21,7 @@ import {
 } from "../compare.ts";
 import { fetchGuide, foldRef, guideAt, guideFolds, guideOpen, guideShown, guideStep, guideVersion, isFolded, openInDiff, refKey } from "../guide.ts";
 import { guideHtml, notInGuide, refLabel, refPatch, threadsOn } from "../lib/guide.ts";
-import type { Cursor, LineRange, Span } from "../lib/cursor.ts";
+import type { Cursor, LineRange, Seen, Span } from "../lib/cursor.ts";
 import { drawnLines, type LineMark } from "../lib/marks.ts";
 import { CHUNK, expansionOf, hydrateSubset, textLines } from "../lib/reveal.ts";
 import { plainClick } from "../lib/route.ts";
@@ -33,6 +33,7 @@ import { hi, lo, PendingBox } from "./NewThread.tsx";
 import { askRestore, restorable } from "./Restore.tsx";
 import { ThreadMini } from "./ThreadMini.tsx";
 import { useBlob } from "./useBlob.ts";
+import { linesInSight } from "../views/anchor.ts";
 
 export function GuideToggle() {
   const n = guideVersion.value;
@@ -322,6 +323,15 @@ export function GuideView({ from, to }: { from: string; to: string }) {
     else if (r.top < top) el.scrollTop -= top - r.top + 8;
     else if (r.bottom > view.bottom) el.scrollTop += r.bottom - view.bottom + 8;
   };
+  const inSight = (): Seen[] => {
+    const el = box.current;
+    if (!el) return [];
+    const head = el.querySelector(".guide-head")?.getBoundingClientRect().height ?? 0;
+    return [...el.querySelectorAll<HTMLElement>(".guide-ref[data-key]")].flatMap((ref) => {
+      const host = ref.querySelector("diffs-container");
+      return host ? linesInSight(el, host, ref.dataset.key!, cursorSpace.peek(), head) : [];
+    });
+  };
   const startComment = (range: LineRange) => {
     const f = guideFiles.peek().get(range.path);
     if (!f) return;
@@ -355,13 +365,14 @@ export function GuideView({ from, to }: { from: string; to: string }) {
     pendingLines.value = null;
     return true;
   };
-  const latest = useRef({ lineElement, revealCursor, startComment, submitComment, restoreLines });
-  latest.current = { lineElement, revealCursor, startComment, submitComment, restoreLines };
+  const latest = useRef({ lineElement, revealCursor, inSight, startComment, submitComment, restoreLines });
+  latest.current = { lineElement, revealCursor, inSight, startComment, submitComment, restoreLines };
   useEffect(() => {
     if (!shown) return;
     const nav: CodeHandle = {
       revealCursor: (c, align) => latest.current.revealCursor(c, align),
       cursorElement: (c) => latest.current.lineElement(c),
+      inSight: () => latest.current.inSight(),
       startComment: (range) => latest.current.startComment(range),
       submitComment: (body, mode) => latest.current.submitComment(body, mode),
       restoreLines: (body) => latest.current.restoreLines(body),

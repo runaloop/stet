@@ -60,10 +60,10 @@ import {
 import { MARK_CSS, paintMarks } from "../lib/marks.ts";
 import { isMarkdown } from "../lib/markdown.ts";
 import { CHUNK, expansionOf, newLineOf, textLines, withSpan, type Reveal } from "../lib/reveal.ts";
-import { rowPosition, type Cursor, type LineRange } from "../lib/cursor.ts";
+import { rowPosition, type Cursor, type LineRange, type Seen } from "../lib/cursor.ts";
 import { compareOrder } from "../lib/nav.ts";
 import { PeekView } from "./Peek.tsx";
-import { codeTop, lineAt, onScreen, placeAt, renderedTop, rowElement, stopElement } from "./anchor.ts";
+import { blocksInSight, codeTop, lineAt, linesInSight, onScreen, placeAt, renderedTop, rowElement, stopElement } from "./anchor.ts";
 import { snapshot, visibleBox } from "../lib/fade.ts";
 import { Presets, rangeTitle, ReviewedButton, VersionStrip } from "../components/VersionStrip.tsx";
 import { takeSpot } from "../jumps.ts";
@@ -685,6 +685,18 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     return rowElement(v, c.path, side, line);
   };
 
+  const inSight = (): Seen[] => {
+    const h = host.current;
+    const v = view.current as CodeView<never> | null;
+    if (!h || !v) return [];
+    const space = cursorSpace.peek();
+    return v.getRenderedItems().flatMap((item) => {
+      if (!drawnFiles.peek().has(item.id)) return linesInSight(h, item.element, item.id, space);
+      const md = document.querySelector(`.md-view[data-file="${CSS.escape(item.id)}"]`);
+      return md ? blocksInSight(h, md, item.id) : [];
+    });
+  };
+
   const startComment = (range: LineRange) => {
     const fd = files?.find((x) => x.name === range.path);
     setPending({ path: range.path, oldPath: fd?.prevName ?? range.path, range: { start: range.start, end: range.end, side: range.side } });
@@ -773,8 +785,8 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     else place();
   };
 
-  const latest = useRef({ data, pending, from, to, rid, order, visible, startThread, createThread, createRestore, cancelPending, scrollToThread, scrollToLine, showHit, scrollToFile, revealCursor, cursorElement, startComment, pageRows, pageFrom, openTarget, switchView, wholeFile });
-  latest.current = { data, pending, from, to, rid, order, visible, startThread, createThread, createRestore, cancelPending, scrollToThread, scrollToLine, showHit, scrollToFile, revealCursor, cursorElement, startComment, pageRows, pageFrom, openTarget, switchView, wholeFile };
+  const latest = useRef({ data, pending, from, to, rid, order, visible, startThread, createThread, createRestore, cancelPending, scrollToThread, scrollToLine, showHit, scrollToFile, revealCursor, cursorElement, inSight, startComment, pageRows, pageFrom, openTarget, switchView, wholeFile });
+  latest.current = { data, pending, from, to, rid, order, visible, startThread, createThread, createRestore, cancelPending, scrollToThread, scrollToLine, showHit, scrollToFile, revealCursor, cursorElement, inSight, startComment, pageRows, pageFrom, openTarget, switchView, wholeFile };
 
   const firstRange = useRef(`${from}..${to}`);
   useEffect(() => {
@@ -820,6 +832,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
       showCode: (path: string, stop: number, side: "old" | "new") => latest.current.switchView(path, "code", { stop, side }),
       revealCursor: (c: Cursor, align?: "nearest" | "center") => latest.current.revealCursor(c, align),
       cursorElement: (c: Cursor) => latest.current.cursorElement(c),
+      inSight: () => latest.current.inSight(),
       startComment: (range: LineRange) => latest.current.startComment(range),
       submitComment: (body: string, mode: "draft" | "now") => latest.current.createThread(body, mode),
       restoreLines: (body: string) => latest.current.createRestore(body),

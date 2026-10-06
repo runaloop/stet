@@ -218,6 +218,24 @@ export class CursorSpace {
   }
 }
 
+/** A place of the cursor drawn on screen, and how much of it shows: 0 to 1 of it, or of the view when it is taller. */
+export interface Seen {
+  at: Cursor;
+  share: number;
+}
+
+/**
+ * Where a move starts after the reader scrolled with the mouse: at the cursor while some of it is on screen; else, as
+ * Vim drags the cursor along when it scrolls, at the first place at least half on screen going down (`dir` 1), the
+ * last going up.
+ */
+export function moveStart(space: CursorSpace, c: Cursor, seen: readonly Seen[], dir: 1 | -1): Cursor {
+  if (seen.some((s) => s.share > 0 && s.at.path === c.path && s.at.row === c.row)) return c;
+  const flat = seen.filter((s) => s.share >= 0.5).map((s) => space.flat(s.at)).filter((f) => f !== -1);
+  if (flat.length === 0) return c;
+  return space.at(dir === 1 ? Math.min(...flat) : Math.max(...flat)) ?? c;
+}
+
 const blockRowCache = new WeakMap<readonly NavBlock[], DiffRow[]>();
 
 /** Rendered blocks as rows of the diff: a changed block is an added or removed row, so `]c` finds it. */

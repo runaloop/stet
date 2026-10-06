@@ -1,6 +1,6 @@
 import { parsePatchFiles } from "@pierre/diffs";
 import { describe, expect, test } from "bun:test";
-import { CursorSpace } from "../../web/lib/cursor.ts";
+import { CursorSpace, moveStart } from "../../web/lib/cursor.ts";
 
 const patch = (path: string, body: string) => `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n${body}`;
 const fs = parsePatchFiles(
@@ -81,6 +81,28 @@ describe("cursor over the diff", () => {
     ]);
     expect(md.position({ path: "a.kt", row: 1 })).toEqual({ side: "deletions", line: 6 });
     expect(s.locate("a.kt", "additions", md.position({ path: "a.kt", row: 0 })!.line)).toEqual({ path: "a.kt", row: 0 });
+  });
+});
+
+describe("the cursor after a scroll with the mouse", () => {
+  const s = space();
+  const a = (row: number) => ({ path: "a.kt", row });
+  const seen = (rows: number[], share = 1) => rows.map((row) => ({ at: a(row), share }));
+
+  test("off screen, a move down starts from the first place on screen and a move up from the last, in reading order", () => {
+    const shown = [...seen([7, 5, 6]), { at: { path: "b.kt", row: 0 }, share: 1 }];
+    expect(moveStart(s, a(0), shown, 1)).toEqual(a(5));
+    expect(moveStart(s, a(0), shown, -1)).toEqual({ path: "b.kt", row: 0 });
+  });
+
+  test("the cursor stays where it is while some of it shows, or when nothing is on screen", () => {
+    expect(moveStart(s, a(5), [...seen([5], 0.2), ...seen([6, 7])], 1)).toEqual(a(5));
+    expect(moveStart(s, a(0), [], 1)).toEqual(a(0));
+  });
+
+  test("a place less than half on screen is not where a move starts", () => {
+    expect(moveStart(s, a(0), [...seen([5], 0.3), ...seen([6, 7]), ...seen([8], 0.4)], 1)).toEqual(a(6));
+    expect(moveStart(s, a(0), [...seen([5], 0.3), ...seen([6, 7]), ...seen([8], 0.4)], -1)).toEqual(a(7));
   });
 });
 

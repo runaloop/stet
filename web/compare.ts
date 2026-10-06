@@ -4,7 +4,7 @@ import type { CompareDto, GrepResultDto, Region } from "../src/core/types.ts";
 import { DEFAULT_COLLAPSE_GLOBS, DEFAULT_SKIP_MARKERS, foldOf, isTestPath, parseList, viewedKey, type FoldDecision, type FoldGroup } from "./lib/fold.ts";
 import { groupTitle } from "./lib/order.ts";
 import type { LineMark } from "./lib/marks.ts";
-import { CursorSpace, rowPosition, type Cursor, type CursorFile, type LineRange, type NavBlock } from "./lib/cursor.ts";
+import { CursorSpace, rowPosition, type Cursor, type CursorFile, type LineRange, type NavBlock, type Seen } from "./lib/cursor.ts";
 import { isMarkdown } from "./lib/markdown.ts";
 import { NOTHING, revealedPatch, type Reveal } from "./lib/reveal.ts";
 import { api } from "./api.ts";
@@ -394,6 +394,8 @@ export interface CompareHandle {
   revealCursor(c: Cursor, align?: "nearest" | "center"): void;
   /** The drawn line or rendered block under the cursor, when it is drawn. */
   cursorElement(c: Cursor): Element | null;
+  /** The lines and rendered blocks on screen, as places of the cursor, with how much of each shows. */
+  inSight(): Seen[];
   startComment(range: LineRange): void;
   submitComment(body: string, mode: "draft" | "now"): Promise<boolean | void>;
   /** The picked removed lines as a restore request: a draft on the lines that stand in their place. */
@@ -409,7 +411,7 @@ export interface CompareHandle {
 export const compareNav: { current: CompareHandle | null } = { current: null };
 
 /** What a thread's code or the guide's does for the cursor and comments: the part of the Changes page's handle it has. */
-export type CodeHandle = Pick<CompareHandle, "revealCursor" | "cursorElement" | "startComment" | "submitComment" | "restoreLines" | "cancelComment" | "pageRows" | "pageFrom" | "showCode">;
+export type CodeHandle = Pick<CompareHandle, "revealCursor" | "cursorElement" | "inSight" | "startComment" | "submitComment" | "restoreLines" | "cancelComment" | "pageRows" | "pageFrom" | "showCode">;
 export const threadNav: { current: CodeHandle | null } = { current: null };
 export const guideNav: { current: CodeHandle | null } = { current: null };
 

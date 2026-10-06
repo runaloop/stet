@@ -41,9 +41,9 @@ import { contextPatch, filePatch, regionPatch } from "../lib/region.ts";
 import { snapshot, visibleBox, type Fade } from "../lib/fade.ts";
 import { drawnLines } from "../lib/marks.ts";
 import { CHUNK, expansionOf, hydrateSubset, NOTHING, revealedPatch, textLines, withSpan, type Reveal } from "../lib/reveal.ts";
-import type { Cursor, CursorFile, LineRange, NavBlock, Span } from "../lib/cursor.ts";
+import type { Cursor, CursorFile, LineRange, NavBlock, Seen, Span } from "../lib/cursor.ts";
 import type { Side } from "../lib/search.ts";
-import { stopElement } from "./anchor.ts";
+import { blocksInSight, linesInSight, stopElement } from "./anchor.ts";
 import { clampStep, diffPair } from "../lib/timeline.ts";
 import {
   codeMode,
@@ -229,6 +229,14 @@ function CodeBlock({ d, from, to }: { d: Detail; from: TimelineStepDto; to: Time
     return at && host ? (drawnLines(host).find((r) => r.at.some(([s, n]) => s === at.side && n === at.line))?.el ?? null) : null;
   };
   const revealCursor = (c: Cursor, align: "nearest" | "center" = "nearest") => lineElement(c)?.scrollIntoView({ block: align, behavior: "instant" as ScrollBehavior });
+  const inSight = (): Seen[] => {
+    const el = body.current;
+    const id = threadCode.peek()?.file.fd.name;
+    if (!el || !id) return [];
+    const scroller = el.closest(".thread-code") ?? el;
+    const host = el.querySelector("diffs-container");
+    return rendered ? blocksInSight(scroller, el, id, 0) : host ? linesInSight(scroller, host, id, cursorSpace.peek(), 0) : [];
+  };
   const stepOf = (side: SelectionSide | undefined) => (side === "deletions" ? from : to);
   const startComment = (range: LineRange) => {
     pendingLines.value = { path: range.path, oldPath: from.path ?? range.path, range: { start: range.start, end: range.end, side: range.side } };
@@ -281,13 +289,14 @@ function CodeBlock({ d, from, to }: { d: Detail; from: TimelineStepDto; to: Time
     toCode.current = true;
     if (rendered) toggle();
   };
-  const latest = useRef({ revealCursor, lineElement, startComment, submitComment, restoreLines, pageFrom, showCode });
-  latest.current = { revealCursor, lineElement, startComment, submitComment, restoreLines, pageFrom, showCode };
+  const latest = useRef({ revealCursor, lineElement, inSight, startComment, submitComment, restoreLines, pageFrom, showCode });
+  latest.current = { revealCursor, lineElement, inSight, startComment, submitComment, restoreLines, pageFrom, showCode };
   useEffect(() => {
     if (!to.range || !to.path) return;
     const nav: CodeHandle = {
       revealCursor: (c, align) => latest.current.revealCursor(c, align),
       cursorElement: (c) => latest.current.lineElement(c),
+      inSight: () => latest.current.inSight(),
       startComment: (range) => latest.current.startComment(range),
       submitComment: (text, mode) => latest.current.submitComment(text, mode),
       restoreLines: (text) => latest.current.restoreLines(text),

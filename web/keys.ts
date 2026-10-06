@@ -1,4 +1,4 @@
-import { signal } from "@preact/signals";
+import { effect, signal } from "@preact/signals";
 import {
   codeFocus,
   codeLines,
@@ -26,7 +26,7 @@ import {
   threadCode,
   visualAnchor,
 } from "./compare.ts";
-import type { Cursor, Span } from "./lib/cursor.ts";
+import { moveStart, type Cursor, type Span } from "./lib/cursor.ts";
 import { stepFile, stepThread, stepUnread } from "./lib/nav.ts";
 import { commitPicker } from "./commits.ts";
 import { gitOpen } from "./components/GitState.tsx";
@@ -148,19 +148,31 @@ function startCursor(): Cursor | null {
   return space.normalize(null);
 }
 
-function moveBy(delta: number): boolean {
-  if (!cursor.value) return move(startCursor());
-  return move(cursorSpace.value.move(cursor.value, delta));
+// Set when the reader scrolls with the wheel or the mouse, cleared when the cursor moves.
+let scrolled = false;
+effect(() => {
+  cursor.value;
+  scrolled = false;
+});
+
+/** The cursor, or where a move starts once the reader scrolled it off screen: the first place on screen going down, the last going up. */
+function from(dir: 1 | -1): Cursor | null {
+  const c = cursor.value;
+  return c && scrolled ? moveStart(cursorSpace.value, c, linesNav()?.inSight() ?? [], dir) : c;
+}
+
+function moveBy(delta: number, c = from(delta < 0 ? -1 : 1)): boolean {
+  return move(c ? cursorSpace.value.move(c, delta) : startCursor());
 }
 
 function page(dir: 1 | -1): boolean {
-  const c = cursor.value;
+  const c = from(dir);
   const to = c ? linesNav()?.pageFrom(c, dir) : null;
-  return to ? move(to) : moveBy(dir * (linesNav()?.pageRows() ?? 15));
+  return to ? move(to) : moveBy(dir * (linesNav()?.pageRows() ?? 15), c);
 }
 
-function repeat(n: number, step: (c: Cursor | null) => Cursor | null): boolean {
-  let c: Cursor | null = cursor.value ?? startCursor();
+function repeat(n: number, dir: 1 | -1, step: (c: Cursor | null) => Cursor | null): boolean {
+  let c: Cursor | null = from(dir) ?? startCursor();
   for (let i = 0; i < n; i++) {
     const next = step(c);
     if (!next) break;
@@ -359,14 +371,14 @@ export const BINDINGS: Binding[] = [
   { keys: "G", desc: "last line of the diff", where: "compare", visual: true, run: () => move(cursorSpace.value.at(cursorSpace.value.total - 1)) },
   { keys: "<C-d>", desc: "half a page down", where: "compare", visual: true, run: () => page(1) },
   { keys: "<C-u>", desc: "half a page up", where: "compare", visual: true, run: () => page(-1) },
-  { keys: "]c", desc: "next change", where: "compare", visual: true, run: (n) => repeat(n, (c) => cursorSpace.value.nextChange(c, 1)) },
-  { keys: "[c", desc: "previous change", where: "compare", visual: true, run: (n) => repeat(n, (c) => cursorSpace.value.nextChange(c, -1)) },
-  { keys: "]h", desc: "next hunk", where: "compare", visual: true, run: (n) => repeat(n, (c) => cursorSpace.value.nextHunk(c, 1)) },
-  { keys: "[h", desc: "previous hunk", where: "compare", visual: true, run: (n) => repeat(n, (c) => cursorSpace.value.nextHunk(c, -1)) },
-  { keys: "]b", desc: "next file", where: "compare", run: (n) => repeat(n, (c) => cursorSpace.value.nextFile(c, 1)) },
-  { keys: "[b", desc: "previous file", where: "compare", run: (n) => repeat(n, (c) => cursorSpace.value.nextFile(c, -1)) },
-  { keys: "L", desc: "next file", where: "compare", run: (n) => repeat(n, (c) => cursorSpace.value.nextFile(c, 1)) },
-  { keys: "H", desc: "previous file", where: "compare", run: (n) => repeat(n, (c) => cursorSpace.value.nextFile(c, -1)) },
+  { keys: "]c", desc: "next change", where: "compare", visual: true, run: (n) => repeat(n, 1, (c) => cursorSpace.value.nextChange(c, 1)) },
+  { keys: "[c", desc: "previous change", where: "compare", visual: true, run: (n) => repeat(n, -1, (c) => cursorSpace.value.nextChange(c, -1)) },
+  { keys: "]h", desc: "next hunk", where: "compare", visual: true, run: (n) => repeat(n, 1, (c) => cursorSpace.value.nextHunk(c, 1)) },
+  { keys: "[h", desc: "previous hunk", where: "compare", visual: true, run: (n) => repeat(n, -1, (c) => cursorSpace.value.nextHunk(c, -1)) },
+  { keys: "]b", desc: "next file", where: "compare", run: (n) => repeat(n, 1, (c) => cursorSpace.value.nextFile(c, 1)) },
+  { keys: "[b", desc: "previous file", where: "compare", run: (n) => repeat(n, -1, (c) => cursorSpace.value.nextFile(c, -1)) },
+  { keys: "L", desc: "next file", where: "compare", run: (n) => repeat(n, 1, (c) => cursorSpace.value.nextFile(c, 1)) },
+  { keys: "H", desc: "previous file", where: "compare", run: (n) => repeat(n, -1, (c) => cursorSpace.value.nextFile(c, -1)) },
   { keys: "]t", desc: "next thread on this diff", where: "compare", run: () => toThread(1) },
   { keys: "[t", desc: "previous thread on this diff", where: "compare", run: () => toThread(-1) },
   { keys: "]u", desc: "next unread thread", where: "compare", run: () => unread(1) },
@@ -486,10 +498,10 @@ export const BINDINGS: Binding[] = [
   { keys: "G", desc: "last line of the code shown", where: "code", visual: true, run: () => move(cursorSpace.value.at(cursorSpace.value.total - 1)) },
   { keys: "<C-d>", desc: "half a page down", where: "code", visual: true, run: () => page(1) },
   { keys: "<C-u>", desc: "half a page up", where: "code", visual: true, run: () => page(-1) },
-  { keys: "]c", desc: "next change", where: "code", visual: true, run: (n) => repeat(n, (c) => cursorSpace.value.nextChange(c, 1)) },
-  { keys: "[c", desc: "previous change", where: "code", visual: true, run: (n) => repeat(n, (c) => cursorSpace.value.nextChange(c, -1)) },
-  { keys: "]h", desc: "next hunk", where: "code", visual: true, run: (n) => repeat(n, (c) => cursorSpace.value.nextHunk(c, 1)) },
-  { keys: "[h", desc: "previous hunk", where: "code", visual: true, run: (n) => repeat(n, (c) => cursorSpace.value.nextHunk(c, -1)) },
+  { keys: "]c", desc: "next change", where: "code", visual: true, run: (n) => repeat(n, 1, (c) => cursorSpace.value.nextChange(c, 1)) },
+  { keys: "[c", desc: "previous change", where: "code", visual: true, run: (n) => repeat(n, -1, (c) => cursorSpace.value.nextChange(c, -1)) },
+  { keys: "]h", desc: "next hunk", where: "code", visual: true, run: (n) => repeat(n, 1, (c) => cursorSpace.value.nextHunk(c, 1)) },
+  { keys: "[h", desc: "previous hunk", where: "code", visual: true, run: (n) => repeat(n, -1, (c) => cursorSpace.value.nextHunk(c, -1)) },
   { keys: "zz", desc: "center the cursor line", where: "code", run: toggle(() => cursor.value && linesNav()?.revealCursor(cursor.value, "center")) },
   { keys: "V", desc: "select lines (visual mode)", where: "code", run: visual },
   { keys: "v", desc: "select lines (visual mode)", where: "code", run: visual },
@@ -697,6 +709,13 @@ export function handleKey(e: KeyboardEvent): boolean {
 const CONTROLS = new Set(["BUTTON", "SELECT", "INPUT", "A", "SUMMARY"]);
 
 export function installKeys(): void {
+  let held = false;
+  const opts = { capture: true, passive: true };
+  window.addEventListener("wheel", () => (scrolled = true), opts);
+  window.addEventListener("pointerdown", () => (held = true), opts);
+  for (const ev of ["pointerup", "pointercancel"]) window.addEventListener(ev, () => (held = false), opts);
+  // a drag on a scrollbar, or a selection that scrolls the code
+  window.addEventListener("scroll", () => held && (scrolled = true), opts);
   window.addEventListener("keydown", (e) => {
     const target = origin(e);
     const handled = handleKey(e);

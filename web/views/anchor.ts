@@ -1,4 +1,5 @@
 import type { CodeView } from "@pierre/diffs";
+import type { CursorSpace, Seen } from "../lib/cursor.ts";
 import { drawnLines } from "../lib/marks.ts";
 import type { Side } from "../lib/search.ts";
 
@@ -185,4 +186,34 @@ export function codeTop(scroller: HTMLElement, view: CodeView<never>, path: stri
   if (!row) return null;
   const [side, line] = row.at.find(([s]) => s === "additions") ?? row.at[0]!;
   return { side, line, y: offsetOf(scroller, row.el) };
+}
+
+/**
+ * How much of an element the reader sees, 0 to 1: of the element, or of the view when the element is taller. The view
+ * is the scroller below `inset` px (a sticky header), inside the window.
+ */
+export function seenShare(scroller: Element, el: Element, inset = HEADER): number {
+  const s = scroller.getBoundingClientRect();
+  const top = Math.max(s.top + inset, 0);
+  const bottom = Math.min(s.bottom, innerHeight);
+  const r = el.getBoundingClientRect();
+  const seen = Math.min(r.bottom, bottom) - Math.max(r.top, top);
+  return r.height > 0 && seen > 0 ? Math.min(1, seen / Math.min(r.height, bottom - top)) : 0;
+}
+
+/** The drawn lines of a file of code (`id` for the cursor) on screen, as places of the cursor. */
+export function linesInSight(scroller: Element, container: Element, id: string, space: CursorSpace, inset = HEADER): Seen[] {
+  return drawnLines(container).flatMap(({ el, at }) => {
+    const share = at[0] ? seenShare(scroller, el, inset) : 0;
+    const place = share > 0 ? space.locate(id, at[0]![0], at[0]![1]) : null;
+    return place ? [{ at: place, share }] : [];
+  });
+}
+
+/** The blocks of a rendered file on screen, as places of the cursor. */
+export function blocksInSight(scroller: Element, view: ParentNode, id: string, inset = HEADER): Seen[] {
+  return [...view.querySelectorAll<HTMLElement>("[data-stop]")].flatMap((el) => {
+    const share = seenShare(scroller, el, inset);
+    return share > 0 ? [{ at: { path: id, row: Number(el.dataset.stop) }, share }] : [];
+  });
 }
