@@ -115,7 +115,8 @@ export function DiffView<M>(props: DiffViewProps<M>) {
       enableLineSelection: selectable,
       enableGutterUtility: selectable,
       onGutterUtilityClick: (r: SelectedLineRange) => latest.current.onSelect?.(r),
-      onLineClick: selectable ? (p: { lineNumber: number; annotationSide: SelectionSide }) => latest.current.onLineClick?.(p.lineNumber, p.annotationSide) : undefined,
+      // a click on a line number, or the one that ends a click on +, is a selection of lines, which moves the cursor itself
+      onLineClick: selectable ? (p: { lineNumber: number; annotationSide: SelectionSide; numberColumn: boolean }) => p.numberColumn || latest.current.onLineClick?.(p.lineNumber, p.annotationSide) : undefined,
       unsafeCSS: MARK_CSS,
       onPostRender: (node: HTMLElement, _inst: unknown, phase: string) => {
         if (phase === "unmount") return;

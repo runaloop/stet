@@ -52,6 +52,7 @@ import {
   toggleFile,
   viewed,
   visibleFiles,
+  visualAnchor,
   fileOpen,
   peek,
   sideTab,
@@ -324,12 +325,17 @@ export function CompareView({ from, to }: { from: string; to: string }) {
   const visible = visibleFiles.value;
   const order = useMemo(() => compareOrder(shown, visible.map((f) => f.name)), [shown, visible]);
 
+  // Lines picked with the mouse, by a drag over the line numbers or +: the cursor goes to the last of them, so the keys
+  // go on from there.
   const startThread = (range: SelectedLineRange | null, ctx: SelectionContext) => {
     if (!range) return;
     if (range.endSide && range.side && range.endSide !== range.side) {
       notify("select lines on one side of the diff: removed or added lines", "error");
       return;
     }
+    const at = cursorSpace.peek().locate(ctx.item.id, range.side === "deletions" ? "deletions" : "additions", hi(range));
+    if (at) cursor.value = at;
+    visualAnchor.value = null;
     setPending({ path: ctx.item.id, oldPath: ctx.item.fileDiff?.prevName ?? ctx.item.id, range });
   };
 
@@ -886,7 +892,9 @@ export function CompareView({ from, to }: { from: string; to: string }) {
         const p = pendingLines.peek();
         return p ? mount(<PendingBox p={p} />, "anno") : undefined;
       },
-      onLineClick: (p: { lineNumber: number; annotationSide: Side }, ctx: SelectionContext) => {
+      // a click on a line number, or the one that ends a click on +, is a selection of lines, which moves the cursor itself
+      onLineClick: (p: { lineNumber: number; annotationSide: Side; numberColumn: boolean }, ctx: SelectionContext) => {
+        if (p.numberColumn) return;
         const c = cursorSpace.peek().locate(ctx.item.id, p.annotationSide, p.lineNumber);
         if (c) setCursor(c, false);
       },
