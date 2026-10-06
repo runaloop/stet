@@ -618,6 +618,10 @@ a.img-frame:hover, a.img-frame.hover, a.img-frame.focused { border-width: 3px; b
 .md li:is(.md-changed, .md-thread) { box-shadow: calc(-2em - 8px) 0 0 var(--md-mark); }
 .md li:is(.md-changed, .md-thread)::before { left: calc(-2em - 11px); }
 .md :is(tr, thead, tbody):is(.md-changed, .md-thread) { box-shadow: none; }
+/* a table scrolls sideways and so clips what sticks out of it: it reaches into the gutter for a row's bar */
+.md table:has(> * > tr:is(.md-changed, .md-thread)) { padding-left: 14px; margin-left: -14px; }
+.md tr:is(.md-changed, .md-thread) > :first-child { position: relative; }
+.md tr:is(.md-changed, .md-thread) > :first-child::before { content: ""; position: absolute; top: 0; bottom: 0; left: -12px; width: 3px; border-radius: 2px; background: var(--md-bar); }
 .md :is(.md-visual, .md-picked) { background: color-mix(in srgb, var(--accent) 13%, transparent); }
 .md .md-linked { background-image: linear-gradient(light-dark(rgb(130 80 220 / 0.17), rgb(170 130 255 / 0.2)), light-dark(rgb(130 80 220 / 0.17), rgb(170 130 255 / 0.2))); }
 .md .md-cursor { outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset: 2px; border-radius: 3px; }
