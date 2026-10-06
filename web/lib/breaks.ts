@@ -5,6 +5,12 @@ function strip<T extends Element>(el: T): T {
   return el;
 }
 
+/** What names a row or an item for the slot after it: its block, or the old block of a removed one. */
+export function unitKey(unit: Element): string {
+  const was = unit.getAttribute("data-was");
+  return unit.getAttribute("data-b") ?? (was === null ? "" : `was${was}`);
+}
+
 /** The row or list item a block stands in: itself, or the item a paragraph of a loose list is in. */
 export function unitOf(el: Element): Element | null {
   return el.closest("tr, li");
@@ -19,7 +25,7 @@ export function breakAfter(unit: Element, pair: string): HTMLElement {
   const doc = unit.ownerDocument;
   const slot = doc.createElement("div");
   slot.className = "md-slot";
-  slot.setAttribute("data-after", unit.getAttribute("data-b") ?? "");
+  slot.setAttribute("data-after", unitKey(unit));
   slot.setAttribute("data-pair", `slot-${pair}`);
   if (unit.tagName === "TR") {
     const table = unit.closest("table")!;
@@ -52,7 +58,7 @@ export function breakAfter(unit: Element, pair: string): HTMLElement {
   more.classList.add("md-more");
   more.append(...rest);
   if (list.tagName === "OL") {
-    const counted = [...list.children].filter((li) => li.tagName === "LI" && !li.classList.contains("md-gap")).length;
+    const counted = [...list.children].filter((li) => li.tagName === "LI" && !li.matches(".md-gap, .md-removed")).length;
     more.setAttribute("start", String(Number(list.getAttribute("start") ?? 1) + counted));
   }
   more.setAttribute("data-pair", `more-${pair}`);

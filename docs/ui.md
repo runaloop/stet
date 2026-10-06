@@ -72,10 +72,12 @@ the old side and green on the new one; a picture or a link whose address changed
 old address on hover. A block of which more than 60% of the words changed is marked as a whole instead. Blocks that
 one change rewrote together are paired by how alike they are; when nothing is alike they stay one group.
 
-In unified view it is one column. A block with a few words changed shows once, with the changes in its text. When
-the structure changed (another kind of block, items or rows added or removed, a code block) or the block was
-rewritten, its old version (marked "was") stands above its new one, the way unified code shows removed lines above
-added ones. An added or a deleted file has one side. Pictures load from the repository at the version of their
+In unified view it is one column. A block with a few words changed shows once, with the changes in its text (removed
+text keeps its bold, code and links), and so does a list or a table, nested items too: an item or a row that was
+added is green, one that was removed is struck through in red where it was (in an ordered list with its old number),
+and a rewritten one shows as the removed one above the added one. When a block became another kind of block, a code
+block changed, or a block was rewritten, its old version (marked "was") stands above its new one, the way unified
+code shows removed lines above added ones. An added or a deleted file has one side. Pictures load from the repository at the version of their
 side; pictures from the web are not loaded (their address is shown instead), raw HTML stays text, and code blocks
 are highlighted.
 

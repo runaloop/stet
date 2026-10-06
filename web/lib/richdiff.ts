@@ -16,6 +16,9 @@ export interface BlockText {
   pieces: Piece[];
 }
 
+/** A rendered block: of its own side, or of the old side put into the new one (see `markRemoved`). */
+const BLOCK = "[data-b], [data-was]";
+
 /** Text nodes of `roots` in document order; with `own`, only those no block inside the root holds. */
 export function textOf(roots: readonly Element[], own = false): BlockText {
   let text = "";
@@ -25,8 +28,8 @@ export function textOf(roots: readonly Element[], own = false): BlockText {
     const walker = root.ownerDocument.createTreeWalker(root, 4);
     for (let n = walker.nextNode() as Text | null; n; n = walker.nextNode() as Text | null) {
       const parent = n.parentElement;
-      if (!parent || (own && parent.closest("[data-b]") !== root) || parent.closest(".md-gap")) continue;
-      const at = parent.closest("td, th, [data-b]");
+      if (!parent || (own && parent.closest(BLOCK) !== root) || parent.closest(".md-gap")) continue;
+      const at = parent.closest(`td, th, ${BLOCK}`);
       if (box && at !== box) text += "\n";
       box = at;
       pieces.push({ node: n, start: text.length, end: text.length + n.data.length });
@@ -48,7 +51,7 @@ export type Op = { at: number; end: number; tag: "del" | "ins" } | { at: number;
 /** The inline elements around a text node, innermost first, up to the block or the table cell it is in. */
 function inlineAround(el: Element | null): Element[] {
   const out: Element[] = [];
-  for (let at = el; at && !at.matches("[data-b], td, th"); at = at.parentElement) out.push(at);
+  for (let at = el; at && !at.matches(`${BLOCK}, td, th`); at = at.parentElement) out.push(at);
   return out;
 }
 
@@ -137,7 +140,7 @@ export interface Unit {
 
 const ATTR = { img: "data-src", a: "data-href" } as const;
 const targetEls = (roots: readonly Element[], own: boolean, tag: "img" | "a") =>
-  roots.flatMap((r) => [...r.querySelectorAll(`${tag}[${ATTR[tag]}]`)].filter((el) => !own || el.closest("[data-b]") === r));
+  roots.flatMap((r) => [...r.querySelectorAll(`${tag}[${ATTR[tag]}]`)].filter((el) => !own || el.closest(BLOCK) === r));
 
 export function compareUnit(old: Element[], nw: Element[], own: boolean): Unit {
   const parts = diffWordsWithSpace(textOf(old, own).text, textOf(nw, own).text);
@@ -228,14 +231,38 @@ export function markWords(units: readonly Unit[]): void {
   }
 }
 
+const oneSided = (p: Pair): boolean => !p.old.length || !p.new.length;
+
 /**
- * Whether a changed row can show as one version with its changes in the text: the same blocks in the same order on
- * both sides, no code block, nothing rewritten, the same number of pictures and links, and something to mark.
+ * The pairs of a row with each item or row inside a list or a table that was rewritten (and holds no other blocks)
+ * taken apart: the old one removed and the new one added, as unified code shows a rewritten line. Its unit goes too.
+ */
+export function splitRewritten(pairs: readonly Pair[], units: readonly Unit[]): { pairs: Pair[]; units: Unit[] } {
+  let k = 0;
+  const kept: Unit[] = [];
+  const walk = (list: readonly Pair[], inside: boolean): Pair[] =>
+    list.flatMap((p): Pair[] => {
+      if (oneSided(p)) return [p];
+      const u = units[k++]!;
+      if (inside && !p.children && rewritten(u)) return [{ old: p.old, new: [], children: null }, { old: [], new: p.new, children: null }];
+      kept.push(u);
+      return [p.children ? { ...p, children: walk(p.children, true) } : p];
+    });
+  const out = walk(pairs, false);
+  return { pairs: out, units: kept };
+}
+
+/**
+ * Whether a changed row can show as one version with its changes in the text: blocks that face each other are of the
+ * same kind and in the same order, a block or an item, a row facing nothing was added or removed, no code block
+ * changed, nothing was rewritten, the same number of pictures and links, and something to mark.
  */
 export function isSimple(pairs: readonly Pair[], units: readonly Unit[], tagOf: (side: "old" | "new", i: number) => string): boolean {
   const same = (p: Pair): boolean =>
-    p.old.length === 1 && p.new.length === 1 && tagOf("old", p.old[0]!) === tagOf("new", p.new[0]!) && tagOf("new", p.new[0]!) !== "code" && (p.children ?? []).every(same);
-  return pairs.every(same) && units.every((u) => !rewritten(u) && !u.linksMoved) && units.some(worded);
+    oneSided(p) ||
+    (p.old.length === 1 && p.new.length === 1 && tagOf("old", p.old[0]!) === tagOf("new", p.new[0]!) && tagOf("new", p.new[0]!) !== "code" && (p.children ?? []).every(same));
+  const added = (p: Pair): boolean => oneSided(p) || (p.children ?? []).some(added);
+  return pairs.every(same) && units.every((u) => !rewritten(u) && !u.linksMoved) && (units.some(worded) || pairs.some(added));
 }
 
 /** The new version of a simple row with its changes in the text: what was removed struck through where it was. */
@@ -253,6 +280,39 @@ export function markInline(newRoot: ParentNode, pairs: readonly Pair[], units: r
     for (const c of p.children ?? []) walk(c);
   };
   for (const p of pairs) walk(p);
+}
+
+/**
+ * Puts the blocks, items and rows that a simple row removed into its new version where they were, marked
+ * `md-removed`. A copy names its old blocks by `data-was` instead of `data-b` and has no lines of the new version; a
+ * removed item of an ordered list keeps its old number (`data-n`).
+ */
+export function markRemoved(oldRoot: ParentNode, newRoot: ParentNode, pairs: readonly Pair[]): void {
+  const walk = (list: readonly Pair[], box: ParentNode) => {
+    list.forEach((p, k) => {
+      if (p.new.length) {
+        const b = p.children && p.old.length ? els(newRoot, [p.new[0]!])[0] : undefined;
+        if (b) walk(p.children!, b);
+        return;
+      }
+      const a = els(oldRoot, p.old)[0];
+      if (!a) return;
+      const copy = a.cloneNode(true) as Element;
+      for (const x of [copy, ...copy.querySelectorAll("[data-b]")]) {
+        x.setAttribute("data-was", x.getAttribute("data-b")!);
+        for (const name of ["data-b", "data-start", "data-end"]) x.removeAttribute(name);
+      }
+      copy.classList.add("md-removed");
+      if (a.tagName === "LI" && a.parentElement?.tagName === "OL") {
+        const items = [...a.parentElement.children].filter((c) => c.tagName === "LI");
+        copy.setAttribute("data-n", String(Number(a.parentElement.getAttribute("start") ?? 1) + items.indexOf(a)));
+      }
+      const next = list.slice(k + 1).flatMap((q) => (q.new.length ? els(newRoot, [q.new[0]!]) : []))[0];
+      if (next?.parentNode === box) next.before(copy);
+      else box.append(copy);
+    });
+  };
+  walk(pairs, newRoot);
 }
 
 /**

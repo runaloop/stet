@@ -27,8 +27,8 @@ import {
 } from "../compare.ts";
 import { paintTextHits } from "../lib/marks.ts";
 import { changesOf, pairsOf, renderMarkdown, rowsOf, slotsOf, stopsOf, stopsOn, subtree, type MdSide, type Row, type RowKind, type SideBlocks, type SideChanges, type Stop } from "../lib/markdown.ts";
-import { isSimple, markInline, markPairs, markWords, textOf as blockText, unitsOf } from "../lib/richdiff.ts";
-import { breakAfter, unitOf } from "../lib/breaks.ts";
+import { isSimple, markInline, markPairs, markRemoved, markWords, splitRewritten, textOf as blockText, unitsOf } from "../lib/richdiff.ts";
+import { breakAfter, unitKey, unitOf } from "../lib/breaks.ts";
 import { closeGaps, foldInside, meets, opening, withBlanks } from "../lib/mdfold.ts";
 import { CHUNK, newLineOf, withSpan } from "../lib/reveal.ts";
 import type { NavBlock, Span } from "../lib/cursor.ts";
@@ -145,9 +145,13 @@ function foldBar(hidden: Span[], side: MdSide, pair: string, live: boolean): HTM
   return bar;
 }
 
-/** The element a stop is drawn as, for a thread or a comment on `side`: in split view an unchanged block's old twin stands for the old side. */
+/**
+ * The element a stop is drawn as, for a thread or a comment on `side`: in split view an unchanged block's old twin
+ * stands for the old side; in unified view a removed block may stand in the new version of its row.
+ */
 function elementOf(grid: HTMLElement, s: Stop, side: MdSide, split: boolean): HTMLElement | null {
-  const q = (at: MdSide, b: number) => grid.querySelector<HTMLElement>(`.md-cell[data-side="${at}"] [data-b="${b}"]`);
+  const q = (at: MdSide, b: number) =>
+    grid.querySelector<HTMLElement>(`.md-cell[data-side="${at}"] [data-b="${b}"]`) ?? (at === "old" ? grid.querySelector<HTMLElement>(`.md-cell[data-side="new"] [data-was="${b}"]`) : null);
   if (split && side === "old" && s.twin !== null) return q("old", s.twin) ?? q(s.side, s.block);
   return q(s.side, s.block);
 }
@@ -255,7 +259,7 @@ function lineUp(g: HTMLElement): void {
 /** The slot a broken table or list keeps right under the row or item of `el`, as a way to put a box there. */
 function slotFor(el: HTMLElement): ((_: HTMLElement, box: HTMLElement) => void) | null {
   const unit = unitOf(el);
-  const b = unit?.getAttribute("data-b");
+  const b = unit ? unitKey(unit) : "";
   const slot = b ? el.closest(".md-cell")?.querySelector(`.md-slot[data-after="${b}"]`) : null;
   return slot ? (_, box) => slot.append(box) : null;
 }
@@ -391,9 +395,12 @@ export function RenderedMarkdown({ file, fd, old, now, split: splitWanted, threa
         const a = parse(html("old", r.old));
         const b = parse(html("new", r.new));
         const units = unitsOf(a.content, b.content, pairs[i]!);
-        if (!split && isSimple(pairs[i]!, units, tagOf)) {
+        const once = split ? null : splitRewritten(pairs[i]!, units);
+        if (once && isSimple(once.pairs, once.units, tagOf)) {
           merged.add(i);
-          markInline(b.content, pairs[i]!, units);
+          pairs[i] = once.pairs;
+          markInline(b.content, once.pairs, once.units);
+          markRemoved(a.content, b.content, once.pairs);
           cell("new", b);
           return;
         }
@@ -422,6 +429,8 @@ export function RenderedMarkdown({ file, fd, old, now, split: splitWanted, threa
       });
     });
     const root = (row: number, side: MdSide) => frags.find((f) => f.row === row && f.side === side)?.t.content ?? null;
+    const blockOf = (row: number, side: MdSide, b: number) =>
+      root(row, side)?.querySelector(`[data-b="${b}"]`) ?? (side === "old" && merged.has(row) ? root(row, "new")?.querySelector(`[data-was="${b}"]`) : null) ?? null;
     const ranges = [
       ...placed.filter((p) => cardOf(p) !== null).map((p) => ({ side: (p.side === "deletions" ? "old" : "new") as MdSide, start: p.range.start, end: p.range.end })),
       ...(mine ? [{ side: (mine.range.side === "deletions" ? "old" : "new") as MdSide, start: lo(mine.range), end: hi(mine.range) }] : []),
@@ -433,7 +442,7 @@ export function RenderedMarkdown({ file, fd, old, now, split: splitWanted, threa
       if (!s) continue;
       const side: MdSide = split && range.side === "old" && s.twin !== null ? "old" : s.side;
       const b = side === "old" && s.side === "new" ? s.twin! : s.block;
-      const el = root(s.row, side)?.querySelector(`[data-b="${b}"]`);
+      const el = blockOf(s.row, side, b);
       const unit = el ? unitOf(el) : null;
       if (!unit || broken.has(unit)) continue;
       const id = String(broken.size);
@@ -467,7 +476,7 @@ export function RenderedMarkdown({ file, fd, old, now, split: splitWanted, threa
         let k = 0;
         foldInside(f.t.content, fold[f.side], (hidden) => foldBar(withBlanks(hidden, sides[f.side]?.lines ?? [], fold[f.side]), f.side, `fold-${f.row}-${k++}`, revealing));
       }
-    const shownStops = fold ? stops.filter((s) => keep[s.row] && !!root(s.row, s.side)?.querySelector(`[data-b="${s.block}"]`)) : stops;
+    const shownStops = fold ? stops.filter((s) => keep[s.row] && !!blockOf(s.row, s.side, s.block)) : stops;
     const cells: Cell[] = frags.filter((f) => keep[f.row]).map((f) => ({ key: f.key, row: f.row, side: f.side, kind: f.kind, html: sized(f.t.innerHTML) }));
     return { rows, pairs, cells: fold ? foldRows(cells, rows, keep, sides, (hidden) => withBlanks(hidden, sides.new?.lines ?? sides.old?.lines ?? [], sides.new ? fold.new : fold.old)) : cells, merged, stops: shownStops };
   }, [fd, sides, split, placedKey, pendingKey, shownKey, revealing]);
@@ -660,7 +669,7 @@ export function RenderedMarkdown({ file, fd, old, now, split: splitWanted, threa
   const from = old ?? now!;
   const to = now ?? old!;
   const at = (side: MdSide) => (side === "old" ? from : to);
-  const sideOf = (el: Element): MdSide => ((el.closest(".md-cell") as HTMLElement | null)?.dataset.side === "old" ? "old" : "new");
+  const sideOf = (el: Element): MdSide => (el.closest("[data-was]") || (el.closest(".md-cell") as HTMLElement | null)?.dataset.side === "old" ? "old" : "new");
 
   const comment = (k: number, side: MdSide) => {
     const r = side === "old" ? layout.stops[k]?.nav.old : layout.stops[k]?.nav.new;
@@ -713,7 +722,7 @@ export function RenderedMarkdown({ file, fd, old, now, split: splitWanted, threa
     }
     if (!best || !grid.current) return setHover(null);
     const g = grid.current.getBoundingClientRect();
-    const next = { stop: Number(best.dataset.stop), side: sideOf(cell), top: Math.round(best.getBoundingClientRect().top - g.top), left: Math.round(cell.getBoundingClientRect().left - g.left) };
+    const next = { stop: Number(best.dataset.stop), side: sideOf(best), top: Math.round(best.getBoundingClientRect().top - g.top), left: Math.round(cell.getBoundingClientRect().left - g.left) };
     setHover((h) => (h && h.stop === next.stop && h.side === next.side && h.top === next.top && h.left === next.left ? h : next));
   };
 

@@ -185,6 +185,18 @@ describe("old and new side by side", () => {
     ]);
   });
 
+  test("drawn once, a row with an item removed and one added stops on each in place: the removed one on its old side", () => {
+    const before = lines("- a", "- b", "- c");
+    const after = lines("- a", "- c", "- d");
+    const once = laidOut(before, after, diffOf(before, after), false, new Set([0]));
+    expect(once.stops.map((s) => [s.side, s.nav.old?.start ?? null, s.nav.new?.start ?? null, s.nav.changed])).toEqual([
+      ["new", 1, 1, false],
+      ["old", 2, null, true],
+      ["new", 3, 2, false],
+      ["new", null, 3, true],
+    ]);
+  });
+
   test("items and rows added or removed inside a changed list or table face an empty slot; nested items pair too", () => {
     const before = lines("- one", "- two", "  - two.a", "- three", "", "| k | v |", "|---|---|", "| a | 1 |", "| b | 2 |");
     const after = lines("- one", "- two", "  - two.a", "  - two.b", "- three, now longer", "- four", "", "| k | v |", "|---|---|", "| a | 1 |", "| b | 20 |", "| c | 3 |");

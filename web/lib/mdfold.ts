@@ -114,7 +114,7 @@ function foldUnits(container: ParentNode, units: Element[], spans: readonly Span
       }
       parts.push(part);
     }
-    if (isList(container)) counted += run.units.filter((u) => !u.classList.contains("md-gap")).length;
+    if (isList(container)) counted += run.units.filter((u) => !u.matches(".md-gap, .md-removed")).length;
   }
   const anchor = doc.createComment("");
   container.before(anchor);

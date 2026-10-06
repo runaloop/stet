@@ -8,7 +8,7 @@ afterAll(async () => {
   if (mine) await GlobalRegistrator.unregister();
 });
 
-const { isSimple, markInline, markPairs, markWords, REWRITTEN, rewritten, textOf, unitsOf } = await import("../../web/lib/richdiff.ts");
+const { isSimple, markInline, markPairs, markRemoved, markWords, REWRITTEN, rewritten, splitRewritten, textOf, unitsOf } = await import("../../web/lib/richdiff.ts");
 const { breakAfter, unitOf } = await import("../../web/lib/breaks.ts");
 
 const box = (html: string) => {
@@ -103,14 +103,51 @@ describe("one version with the changes in it", () => {
     expect(u.querySelector("tr")!.innerHTML).toBe(`<td><em>a</em></td><td><del><strong>1</strong></del><ins>2</ins></td>`);
   });
 
-  test("a different kind of block, an added item or a code block keeps the old and the new version", () => {
+  test("a different kind of block or a changed code block keeps the old and the new version", () => {
     const a = box(`<p data-b="0">Install it</p>`);
     const b = box(`<h2 data-b="0">Install it now</h2>`);
     expect(isSimple([leaf(0, 0)], unitsOf(a, b, [leaf(0, 0)]), tags(a, b))).toBe(false);
-    const c = box(`<ul data-b="0"><li data-b="1">one</li></ul>`);
-    const e = box(`<ul data-b="0"><li data-b="1">one!</li><li data-b="2">two</li></ul>`);
-    const list: Pair[] = [{ old: [0], new: [0], children: [leaf(1, 1), { old: [], new: [2], children: null }] }];
-    expect(isSimple(list, unitsOf(c, e, list), tags(c, e))).toBe(false);
+    const c = box(`<div data-b="0"><pre><code>run it</code></pre></div>`);
+    const e = box(`<div data-b="0"><pre><code>run it now</code></pre></div>`);
+    expect(isSimple([leaf(0, 0)], unitsOf(c, e, [leaf(0, 0)]), () => "code")).toBe(false);
+  });
+
+  test("a rewritten row or item comes apart into the one removed and the one added; a rewritten paragraph stays a pair", () => {
+    const a = box(`<table data-b="0"><tbody data-b="1"><tr data-b="2"><td>cache</td><td>off</td></tr><tr data-b="3"><td>debug</td><td>false</td></tr></tbody></table>`);
+    const b = box(`<table data-b="0"><tbody data-b="1"><tr data-b="2"><td>cache</td><td>on</td></tr><tr data-b="3"><td>locale</td><td>en</td></tr></tbody></table>`);
+    const rows: Pair[] = [{ old: [0], new: [0], children: [{ old: [1], new: [1], children: [leaf(2, 2), leaf(3, 3)] }] }];
+    const units = unitsOf(a, b, rows);
+    expect(isSimple(rows, units, tags(a, b))).toBe(false);
+    const apart = splitRewritten(rows, units);
+    expect(apart.pairs[0]!.children![0]!.children).toEqual([leaf(2, 2), { old: [3], new: [], children: null }, { old: [], new: [3], children: null }]);
+    expect(apart.units.length).toBe(units.length - 1);
+    expect(isSimple(apart.pairs, apart.units, tags(a, b))).toBe(true);
+    const p = box(`<p data-b="0">Everything here was written for the first release.</p>`);
+    const q = box(`<p data-b="0">Rewritten from scratch: install, run, deploy.</p>`);
+    expect(splitRewritten([leaf(0, 0)], unitsOf(p, q, [leaf(0, 0)])).pairs).toEqual([leaf(0, 0)]);
+  });
+
+  test("an item or a row added or removed shows in the one version: the added one marked, the removed one put back where it was", () => {
+    const a = box(`<ol data-b="0" start="3"><li data-b="1" class="md-changed">gone</li><li data-b="2">stays</li><li data-b="3">two<ul data-b="4"><li data-b="5">x</li></ul></li></ol>`);
+    const b = box(`<ol data-b="0" start="3"><li data-b="1">stays</li><li data-b="2" class="md-changed">new</li><li data-b="3">two</li></ol>`);
+    const list: Pair[] = [
+      { old: [0], new: [0], children: [{ old: [1], new: [], children: null }, leaf(2, 1), { old: [], new: [2], children: null }, { old: [3], new: [3], children: [{ old: [4], new: [], children: null }] }] },
+    ];
+    const units = unitsOf(a, b, list);
+    expect(isSimple(list, units, tags(a, b))).toBe(true);
+    markInline(b, list, units);
+    markRemoved(a, b, list);
+    expect(b.innerHTML).toBe(
+      `<ol data-b="0" start="3"><li class="md-changed md-removed" data-was="1" data-n="3">gone</li><li data-b="1">stays</li><li data-b="2" class="md-changed">new</li><li data-b="3">two<ul data-was="4" class="md-removed"><li data-was="5">x</li></ul></li></ol>`,
+    );
+    // its text is a block of its own: not part of the item it went into
+    expect(textOf([b.querySelector('[data-b="3"]')!], true).text).toBe("two");
+    const t = box(`<table data-b="0"><tbody data-b="1"><tr data-b="2"><td>a</td></tr><tr data-b="3"><td>b</td></tr></tbody></table><p data-b="4">end</p>`);
+    const u = box(`<table data-b="0"><tbody data-b="1"><tr data-b="2"><td>a</td></tr></tbody></table><p data-b="3">end</p>`);
+    const rows: Pair[] = [{ old: [0], new: [0], children: [{ old: [1], new: [1], children: [leaf(2, 2), { old: [3], new: [], children: null }] }] }, { old: [4], new: [], children: null }, leaf(4, 3)];
+    markRemoved(t, u, rows);
+    expect([...u.querySelectorAll("tr")].map((r) => `${r.textContent}${r.classList.contains("md-removed") ? "-" : ""}`)).toEqual(["a", "b-"]);
+    expect([...u.children].map((c) => c.getAttribute("data-b") ?? `was ${c.getAttribute("data-was")}`)).toEqual(["0", "was 4", "3"]);
   });
 });
 
