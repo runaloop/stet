@@ -40,7 +40,7 @@ import { isMarkdown } from "../lib/markdown.ts";
 import { contextPatch, filePatch, regionPatch } from "../lib/region.ts";
 import { snapshot, visibleBox, type Fade } from "../lib/fade.ts";
 import { drawnLines } from "../lib/marks.ts";
-import { CHUNK, expansionOf, NOTHING, revealedPatch, textLines, withSpan, type Reveal } from "../lib/reveal.ts";
+import { CHUNK, evenTail, expansionOf, NOTHING, revealedPatch, textLines, withSpan, type Reveal } from "../lib/reveal.ts";
 import type { Cursor, CursorFile, LineRange, NavBlock, Span } from "../lib/cursor.ts";
 import type { Side } from "../lib/search.ts";
 import { stopElement } from "./anchor.ts";
@@ -85,7 +85,7 @@ function hydrated(patch: string, key: string, oldFile: { name: string; contents:
   const fd = parsePatchFiles(patch, key)[0]?.files[0];
   if (!fd) return null;
   try {
-    return hydratePartialDiff("clone", fd, { oldFile, newFile } as never);
+    return hydratePartialDiff("clone", fd, { oldFile: { ...oldFile, contents: evenTail(oldFile.contents, newFile.contents, fd.hunks.at(-1)) }, newFile } as never);
   } catch {
     return fd;
   }

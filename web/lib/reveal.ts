@@ -108,6 +108,23 @@ export function textLines(text: string): { lines: string[]; eol: boolean } {
   return { lines, eol };
 }
 
+/**
+ * The old version to draw a patch of some of a file's changes with. Past the patch's last hunk a change it leaves out
+ * makes the two versions differ in length, which the diff viewer refuses ("trailing context mismatch"); there the old
+ * version takes the new one's lines, so the bar below counts lines of the new version, as `gapsOf` does. Unchanged when
+ * the lengths agree.
+ */
+export function evenTail(oldText: string, newText: string, last: HunkShape | undefined): string {
+  if (!last) return oldText;
+  const a = textLines(oldText);
+  const b = textLines(newText);
+  const oldEnd = firstLine(last.deletionStart, last.deletionCount) + last.deletionCount - 1;
+  const newEnd = firstLine(last.additionStart, last.additionCount) + last.additionCount - 1;
+  if (a.lines.length - oldEnd === b.lines.length - newEnd) return oldText;
+  const lines = [...a.lines.slice(0, oldEnd), ...b.lines.slice(newEnd)];
+  return lines.length ? lines.join("\n") + (b.eol ? "\n" : "") : "";
+}
+
 const holds = (spans: readonly Span[], n: number | null) => n !== null && spans.some((s) => s.start <= n && n <= s.end);
 
 /**

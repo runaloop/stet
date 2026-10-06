@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { parsePatchFiles } from "@pierre/diffs";
 import { filePatch } from "../../web/lib/region.ts";
-import { expansionOf, fileLines, gapsOf, mergeSpans, NOTHING, revealedPatch, withSpan } from "../../web/lib/reveal.ts";
+import { evenTail, expansionOf, fileLines, gapsOf, mergeSpans, NOTHING, revealedPatch, withSpan } from "../../web/lib/reveal.ts";
 
 const file = (n: number, edits: Record<number, string> = {}) => Array.from({ length: n }, (_, i) => edits[i + 1] ?? `line ${i + 1}`).join("\n") + "\n";
 const hunksOf = (patch: string) => parsePatchFiles(patch).flatMap((p) => p.files)[0]!.hunks;
@@ -50,6 +50,20 @@ describe("revealed lines", () => {
     expect(ranges(revealedPatch(old, now, base, { spans: [{ start: 27, end: 46 }], full: false }, region)!)).toEqual([[14, 46]]);
     const far = hunksOf(revealedPatch(old, now, base, { spans: [{ start: 170, end: 190 }], full: false }, region)!);
     expect(far.map((h) => [h.additionStart, h.additionCount, h.additionLines])).toEqual([[14, 13, 1], [170, 21, 1]]);
+  });
+
+  test("a patch that leaves out a later change that adds lines is drawn with an old version as long as the new one past it", () => {
+    const a = file(40);
+    const b = file(40, { 10: "line 10 edited", 15: "added 1\nadded 2\nadded 3\nline 15" });
+    const all = hunksOf(filePatch({ path: "c.css", text: a }, { path: "c.css", text: b })!);
+    const patch = revealedPatch({ path: "c.css", text: a }, { path: "c.css", text: b }, all, { spans: [{ start: 8, end: 12 }], full: false }, { old: [], new: [{ start: 10, end: 10 }] })!;
+    const last = hunksOf(patch).at(-1)!;
+    expect([last.deletionStart, last.deletionCount, last.additionStart, last.additionCount]).toEqual([8, 5, 8, 5]);
+    const even = evenTail(a, b, last);
+    expect(even.split("\n").length - 12).toBe(b.split("\n").length - 12);
+    expect(even.split("\n").slice(0, 12)).toEqual(a.split("\n").slice(0, 12));
+    expect(even.split("\n").slice(12)).toEqual(b.split("\n").slice(12));
+    expect(evenTail(a, b, hunksOf(filePatch({ path: "c.css", text: a }, { path: "c.css", text: b })!).at(-1))).toBe(a);
   });
 
   test("a file without a newline at its end keeps that in the revealed diff", () => {

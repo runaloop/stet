@@ -23,7 +23,7 @@ import { fetchGuide, foldRef, guideAt, guideFolds, guideOpen, guideShown, guideS
 import { guideHtml, notInGuide, refLabel, refPatch, threadsOn } from "../lib/guide.ts";
 import type { Cursor, LineRange, Span } from "../lib/cursor.ts";
 import { drawnLines, type LineMark } from "../lib/marks.ts";
-import { CHUNK, expansionOf, textLines } from "../lib/reveal.ts";
+import { CHUNK, evenTail, expansionOf, textLines } from "../lib/reveal.ts";
 import { plainClick } from "../lib/route.ts";
 import { diffRows, type Side } from "../lib/search.ts";
 import { diffStyle, guard, navigate, notify, reloadAll, reviewId, routeHash, threads, wrap, type Route } from "../state.ts";
@@ -90,11 +90,11 @@ function RefBlock({ d, from, to, r, k }: { d: CompareDto; from: string; to: stri
   const [more, setMore] = useState<Span[]>([]);
   const diff = useMemo((): FileDiffMetadata | null => {
     if (typeof newText !== "string" || typeof oldText !== "string") return r.range ? null : (fd ?? null);
-    const files = { oldFile: { name: oldPath, contents: oldText }, newFile: { name: fd?.name ?? r.path, contents: newText } };
     let out = fd ?? null;
     const patch = refPatch(r, { path: oldPath, text: oldText }, { path: r.path, text: newText }, fd?.hunks ?? [], more);
     if (patch) out = parsePatchFiles(patch, `guide:${d.from.sha}:${d.to.sha}:${refLabel(r)}:${JSON.stringify(more)}`)[0]?.files[0] ?? null;
     if (!out) return null;
+    const files = { oldFile: { name: oldPath, contents: evenTail(oldText, newText, out.hunks.at(-1)) }, newFile: { name: fd?.name ?? r.path, contents: newText } };
     try {
       return hydratePartialDiff("clone", out, files as never);
     } catch {
