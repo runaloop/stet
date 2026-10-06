@@ -1,6 +1,7 @@
 import { signal } from "@preact/signals";
 import {
   codeFocus,
+  codeLines,
   compareData,
   compareNav,
   copyLinesUrl,
@@ -10,6 +11,7 @@ import {
   fileRows,
   grepHits,
   groupsOpen,
+  guideKeys,
   isCollapsed,
   leaveCode,
   linesNav,
@@ -31,8 +33,8 @@ import { gitOpen } from "./components/GitState.tsx";
 import { edgeMsg, foldAllMsgs, foldMsg, halfPage, replyAtCursor, stepMsg } from "./msgs.ts";
 import { clampStep, diffPair } from "./lib/timeline.ts";
 import { openBlame } from "./components/Blame.tsx";
-import { foldAllGuide, foldGuide, openGuideStep, scrollGuide, stepGuide } from "./components/Guide.tsx";
-import { guideShown, toggleGuide } from "./guide.ts";
+import { foldAllGuide, foldGuide, guideCursor, openGuideStep, scrollGuide, stepGuide } from "./components/Guide.tsx";
+import { guideAt, guideShown, toggleGuide } from "./guide.ts";
 import {
   banner,
   codeMode,
@@ -67,7 +69,7 @@ import { question } from "./components/Choice.tsx";
 import { approveReview, submitReview } from "./views/Drafts.tsx";
 import { openExternal, reopenCurrent, resolveCurrent } from "./views/ThreadDetail.tsx";
 
-/** `code`: a thread's code while it has the focus; there these come before the thread's own keys. */
+/** `code`: a thread's code or the Guide tab's lines while they have the focus; there these come before the page's own keys. */
 export type Where = "compare" | "guide" | "thread" | "code" | "drafts" | "everywhere";
 
 export interface Binding {
@@ -109,13 +111,17 @@ function go(id: number | null): void {
 
 const onCompare = () => route.value.name === "compare";
 const onThread = () => route.value.name === "thread";
-const inCode = () => onThread() && codeFocus.value;
+const inGuide = () => onCompare() && guideShown.value;
+const inCode = () => (onThread() || inGuide()) && codeFocus.value;
 
-/** From a thread's page into its code, with the cursor where it was or on the thread's first line. */
+/**
+ * From a thread's page into its code, or from the Guide tab into a step's lines, with the cursor where it was or on
+ * the thread's first line (the step's in view).
+ */
 function intoCode(then: () => boolean): () => boolean {
   return () => {
-    if (!threadCode.value) {
-      notify("this thread has no lines of code to comment on here");
+    if (inGuide() ? cursorSpace.value.total === 0 : !threadCode.value) {
+      notify(inGuide() ? "the guide shows no lines yet" : "this thread has no lines of code to comment on here");
       return true;
     }
     codeFocus.value = true;
@@ -130,6 +136,7 @@ function move(to: Cursor | null): boolean {
 }
 
 function startCursor(): Cursor | null {
+  if (inGuide()) return guideCursor(guideAt.value ?? guideKeys.value[0]);
   const space = cursorSpace.value;
   const code = onThread() ? threadCode.value : null;
   if (code) return space.locate(code.file.fd.name, "additions", code.start) ?? space.normalize(null);
@@ -181,7 +188,7 @@ function threadUnderCursor(): number | null {
 }
 
 function focusPendingBox(): boolean {
-  const box = document.querySelector<HTMLTextAreaElement>(":is(.codeview-host, .code-area) .new-thread textarea");
+  const box = document.querySelector<HTMLTextAreaElement>(inGuide() ? ".guide .new-thread textarea" : ":is(.codeview-host, .code-area) .new-thread textarea");
   if (!box) return false;
   box.focus();
   return true;
@@ -208,7 +215,7 @@ function copyLink(): boolean {
   const range = cursorSpace.value.range(visualAnchor.value ?? c, c);
   visualAnchor.value = null;
   if (!range) notify("put the cursor on a line of code or a rendered block (a collapsed file or a picture has none)");
-  else void copyLinesUrl(range);
+  else void copyLinesUrl(codeLines(range));
   return true;
 }
 
@@ -425,6 +432,11 @@ export const BINDINGS: Binding[] = [
   { keys: "zc", desc: "fold the file diff in view", where: "guide", run: () => foldGuide(false) },
   { keys: "zR", desc: "unfold every file diff of the guide", where: "guide", run: () => foldAllGuide(true) },
   { keys: "zM", desc: "fold every file diff of the guide", where: "guide", run: () => foldAllGuide(false) },
+  { keys: "V", desc: "into the code: select lines from the cursor, at first on the step's lines in view", where: "guide", run: intoCode(visual) },
+  { keys: "i", desc: "into the code: comment on the cursor line, at first the first line of the step in view", where: "guide", run: intoCode(comment) },
+  { keys: "a", desc: "into the code: comment (same as i)", where: "guide", run: intoCode(comment) },
+  { keys: "c", desc: "into the code: comment (same as i)", where: "guide", run: intoCode(comment) },
+  { keys: "gcc", desc: "into the code: comment on the cursor line", where: "guide", run: intoCode(comment) },
 
   { keys: "j", desc: "next thread", where: "thread", run: () => go(stepThread(ordered.value, currentThreadId.value, 1)) },
   { keys: "k", desc: "previous thread", where: "thread", run: () => go(stepThread(ordered.value, currentThreadId.value, -1)) },
@@ -493,7 +505,7 @@ export const BINDINGS: Binding[] = [
   { keys: "gc", desc: "comment on the selection", where: "code", visual: true, run: comment },
   { keys: "gcc", desc: "comment on the cursor line", where: "code", run: comment },
   { keys: "<Space>gY", desc: "copy a link to the cursor line or the selection, on the Changes page of the versions shown", where: "code", visual: true, run: copyLink },
-  { keys: "<Esc>", desc: "close the preview, the selection, the comment box, then leave the code: the thread's keys again", where: "code", visual: true, run: toggle(() => {
+  { keys: "<Esc>", desc: "close the preview, the selection, the comment box, then leave the code: the page's keys again", where: "code", visual: true, run: toggle(() => {
     if (peek.value) peek.value = null;
     else if (visualAnchor.value) visualAnchor.value = null;
     else if (pendingLines.value) linesNav()?.cancelComment();
@@ -587,7 +599,9 @@ export function keyToken(e: KeyboardEvent): string | null {
 export function contexts(): Where[] {
   const r = route.value.name;
   return r === "compare"
-    ? [guideShown.value ? "guide" : "compare", "everywhere"]
+    ? guideShown.value
+      ? [...(codeFocus.value ? (["code"] as Where[]) : []), "guide", "everywhere"]
+      : ["compare", "everywhere"]
     : r === "thread"
       ? [...(codeFocus.value ? (["code"] as Where[]) : []), "thread", "everywhere"]
       : r === "drafts"

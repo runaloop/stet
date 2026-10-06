@@ -15,7 +15,7 @@ export function keyLabel(keys: string): string {
   return tokens(keys).map(shown).join(" ");
 }
 
-const WHERE: Record<Where, string> = { compare: "changes", guide: "guide", thread: "thread", code: "thread's code", drafts: "drafts", everywhere: "everywhere" };
+const WHERE: Record<Where, string> = { compare: "changes", guide: "guide", thread: "thread", code: "code", drafts: "drafts", everywhere: "everywhere" };
 
 export function WhichKey() {
   const prefix = whichKey.value;
@@ -167,7 +167,7 @@ function KeyPicker() {
       )}
       pick={({ b, here }) => {
         if (here) b.run(1);
-        else notify(b.where === "code" ? `${keyLabel(b.keys)} works in a thread's code: click into it, or press V or i there` : `${keyLabel(b.keys)} works on the ${WHERE[b.where]} page`);
+        else notify(b.where === "code" ? `${keyLabel(b.keys)} works in a thread's code or the guide's lines: click into them, or press V or i there` : b.where === "guide" ? `${keyLabel(b.keys)} works in the Guide tab of the Changes page` : `${keyLabel(b.keys)} works on the ${WHERE[b.where]} page`);
       }}
     />
   );
@@ -254,7 +254,7 @@ const SECTIONS: [Where, string][] = [
   ["compare", "Changes (the diff)"],
   ["guide", "Changes: the Guide tab (experimental)"],
   ["thread", "Thread"],
-  ["code", "Thread: in its code (after a click into it, V or i)"],
+  ["code", "In the code of a thread or of the Guide tab (after a click into it, V or i)"],
   ["drafts", "Drafts"],
   ["everywhere", "Everywhere"],
 ];

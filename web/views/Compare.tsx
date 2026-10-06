@@ -238,7 +238,7 @@ function moved(before: string[], after: string[]): boolean {
 
 function annotationsFor(placements: ComparePlacement[] | undefined, pending: PendingLines | null, path: string): DiffLineAnnotation<Anno>[] {
   const out: DiffLineAnnotation<Anno>[] = (placements ?? []).map((p) => ({ side: p.side, lineNumber: p.range.end, metadata: { kind: "thread", placement: p } }));
-  if (pending && pending.path === path) {
+  if (pending && pending.path === path && !pending.guide) {
     out.push({ side: pending.range.side === "deletions" ? "deletions" : "additions", lineNumber: hi(pending.range), metadata: { kind: "new" } });
   }
   return out;

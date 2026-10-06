@@ -25,9 +25,18 @@ const GUIDE: GuideDto = {
 };
 
 const asked: string[] = [];
-globalThis.fetch = (async (input: RequestInfo | URL) => {
+const posted: unknown[] = [];
+globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
   asked.push(url);
+  if (url.startsWith("/api/threads") && init?.method === "POST") {
+    posted.push(JSON.parse(String(init.body)));
+    return Response.json({ id: 99 });
+  }
+  if (url.startsWith("/api/review?")) return Response.json(state.status.value);
+  if (url.startsWith("/api/threads?")) return Response.json(state.threads.value);
+  if (url.startsWith("/api/drafts")) return Response.json([]);
+  if (url.startsWith("/api/cursors")) return Response.json({ reviewed: null, viewed: [] });
   if (url.startsWith("/api/guide")) return Response.json(GUIDE);
   if (url.startsWith("/api/blob")) {
     const q = new URL(url, "http://x").searchParams;
@@ -256,6 +265,60 @@ describe("the Guide tab", () => {
     expect(location.hash).toBe("#/compare/1..2?file=README.md");
     render(null, host);
     state.route.value = { name: "compare", from: "1", to: "2" };
+  });
+
+  test("a step's lines take comments as the diff does: i opens the box on the step's first line in the code, Esc leaves the code, then the guide", async () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(<GuideView from="1" to="2" />, host);
+    guide.guideOpen.value = true;
+    await tick(150);
+    guide.guideStep.value = null;
+    compare.cursor.value = null;
+    guide.guideAt.value = null;
+    expect(compare.cursorSpace.value.files.map((f) => f.id)).toEqual(["1.0", "2.0"]);
+    press("i");
+    await tick();
+    expect(compare.codeFocus.value).toBe(true);
+    expect(compare.cursor.peek()).toEqual({ path: "1.0", row: compare.cursorSpace.value.locate("1.0", "additions", 4)!.row });
+    expect(compare.pendingLines.value).toEqual({ path: "src/a.kt", oldPath: "src/a.kt", range: { start: 4, end: 4, side: "additions" }, guide: "1.0" });
+    expect(host.querySelector(".guide")!.classList.contains("code-focus")).toBe(true);
+    expect(host.querySelector(".guide-ref[data-key='1.0'] .new-thread .note")?.textContent).toContain("New thread on src/a.kt (v2) · lines 4");
+    await compare.guideNav.current!.submitComment("why four?", "draft");
+    expect(posted.pop()).toEqual({ path: "src/a.kt", start: 4, end: 4, side: "new", at: "s2", body: "why four?", draft: true });
+    expect(compare.pendingLines.value).toBeNull();
+
+    press("j");
+    press("V", "k");
+    expect(compare.visualAnchor.value).not.toBeNull();
+    press("Escape");
+    expect(compare.visualAnchor.value).toBeNull();
+    press("Escape");
+    expect(compare.codeFocus.value).toBe(false);
+    expect(guide.guideOpen.value).toBe(true);
+    press("Escape");
+    expect(guide.guideOpen.value).toBe(false);
+    await tick();
+    render(null, host);
+  });
+
+  test("the diff and the Guide tab keep a cursor and a comment box each", () => {
+    compare.guideOpen.value = true;
+    compare.cursor.value = { path: "1.0", row: 1 };
+    compare.pendingLines.value = null;
+    compare.guideOpen.value = false;
+    compare.cursor.value = { path: "src/a.kt", row: 2 };
+    compare.pendingLines.value = { path: "src/a.kt", oldPath: "src/a.kt", range: { start: 3, end: 3, side: "additions" } };
+    compare.guideOpen.value = true;
+    expect(compare.cursor.value).toEqual({ path: "1.0", row: 1 });
+    expect(compare.pendingLines.value).toBeNull();
+    compare.guideOpen.value = false;
+    expect(compare.cursor.value).toEqual({ path: "src/a.kt", row: 2 });
+    expect(compare.pendingLines.value?.range.start).toBe(3);
+    compare.guideOpen.value = true;
+    expect(compare.cursor.value).toEqual({ path: "1.0", row: 1 });
+    compare.guideOpen.value = false;
+    compare.pendingLines.value = null;
   });
 
   test("a version without a guide has no tab, and Space u g says so", () => {

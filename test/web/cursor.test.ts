@@ -19,6 +19,16 @@ describe("cursor over the diff", () => {
     expect(s.move(null, 1)).toEqual({ path: "a.kt", row: 0 });
   });
 
+  test("one file in two places goes by the id each gives it", () => {
+    const b = fs[1]!;
+    const s = new CursorSpace([{ fd: b, collapsed: false, id: "1.0" }, { fd: b, collapsed: true, id: "3.0" }, { fd: b, collapsed: false, id: "3.1" }]);
+    expect(s.move({ path: "1.0", row: 2 }, 1)).toEqual({ path: "3.0", row: -1 });
+    expect(s.move({ path: "3.0", row: -1 }, 1)).toEqual({ path: "3.1", row: 0 });
+    expect(s.locate("3.1", "deletions", 1)).toEqual({ path: "3.1", row: 0 });
+    expect(s.locate("3.0", "additions", 1)).toBeNull();
+    expect(s.range({ path: "3.1", row: 1 }, { path: "3.1", row: 2 })).toEqual({ path: "3.1", side: "additions", start: 1, end: 2 });
+  });
+
   test("a collapsed file is one stop on its header", () => {
     const s = space(["b.kt"]);
     expect(s.move({ path: "a.kt", row: 8 }, 1)).toEqual({ path: "b.kt", row: -1 });

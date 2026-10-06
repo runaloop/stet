@@ -218,6 +218,8 @@ export interface PendingLines {
   path: string;
   oldPath: string;
   range: SelectedLineRange;
+  /** Picked in a file diff of the Guide tab: its key there. */
+  guide?: string;
 }
 export const pendingLines = signal<PendingLines | null>(null);
 
@@ -276,6 +278,8 @@ export interface GuideFile {
   path: string;
   oldPath: string;
   folded: boolean;
+  /** The step's first line, when it names lines rather than the file's whole change. */
+  start: number | null;
 }
 
 /** The Guide tab's file diffs by key, `<step>.<reference>`: a file can be in several steps. */
@@ -404,13 +408,20 @@ export interface CompareHandle {
 
 export const compareNav: { current: CompareHandle | null } = { current: null };
 
-/** What a thread's code does for the cursor and comments: the part of the Changes page's handle it has. */
+/** What a thread's code or the guide's does for the cursor and comments: the part of the Changes page's handle it has. */
 export type CodeHandle = Pick<CompareHandle, "revealCursor" | "cursorElement" | "startComment" | "submitComment" | "restoreLines" | "cancelComment" | "pageRows" | "pageFrom" | "showCode">;
 export const threadNav: { current: CodeHandle | null } = { current: null };
+export const guideNav: { current: CodeHandle | null } = { current: null };
 
-/** The handle of the code on this page: the Changes page's, or a thread's. */
+/** The handle of the code on this page: the Changes page's, its Guide tab's, or a thread's. */
 export function linesNav(): CodeHandle | null {
-  return onThreadPage.peek() ? threadNav.current : compareNav.current;
+  return onThreadPage.peek() ? threadNav.current : guideShown.peek() ? guideNav.current : compareNav.current;
+}
+
+/** Lines the cursor picked, with the file's path: in the guide the cursor names a file diff by its key. */
+export function codeLines(lines: LineRange): LineRange {
+  const f = guideShown.peek() ? guideFiles.peek().get(lines.path) : undefined;
+  return f ? { ...lines, path: f.path } : lines;
 }
 
 export function stepHit(dir: 1 | -1): boolean {
@@ -622,6 +633,15 @@ export const cursorSpace = computed(() => {
     const t = threadCode.value;
     return new CursorSpace(t ? [t.file] : []);
   }
+  if (guideShown.value) {
+    const files = guideFiles.value;
+    return new CursorSpace(
+      guideKeys.value.flatMap((k) => {
+        const f = files.get(k)!;
+        return f.fd ? [{ fd: f.fd, collapsed: f.folded, id: k }] : [];
+      }),
+    );
+  }
   const drawn = drawnFiles.value;
   const blocks = fileBlocks.value;
   return new CursorSpace(
@@ -634,7 +654,7 @@ export const cursorSpace = computed(() => {
 });
 effect(() => {
   const c = cursor.value;
-  if (c && c.path !== activeFile.peek()) activeFile.value = c.path;
+  if (c && !guideShown.peek() && c.path !== activeFile.peek()) activeFile.value = c.path;
 });
 
 export function cursorMarks(space: CursorSpace, c: Cursor | null, anchor: Cursor | null): Map<string, LineMark[]> {
@@ -658,20 +678,25 @@ export function setCursor(c: Cursor | null, reveal = true): void {
   if (c && reveal) linesNav()?.revealCursor(c);
 }
 
-// The Changes page and a thread's code keep a cursor each; another thread starts without one.
-let parked: { cursor: Cursor | null; anchor: Cursor | null } = { cursor: null, anchor: null };
-let shownThread: number | null = null;
+// The diff, its Guide tab and a thread's code keep a cursor each, and the diff and the guide their comment box;
+// another thread starts without one.
+type Parked = { cursor: Cursor | null; anchor: Cursor | null; pending: PendingLines | null };
+const parked = new Map<string, Parked>();
+let home = "diff";
 effect(() => {
   const r = route.value;
-  const id = r.name === "thread" ? r.id : null;
-  if (id === shownThread) return;
-  const was = shownThread;
-  shownThread = id;
-  if (was === null) parked = { cursor: cursor.peek(), anchor: visualAnchor.peek() };
+  const next = r.name === "thread" ? `thread ${r.id}` : guideShown.value ? "guide" : "diff";
+  if (next === home) return;
+  const was = home;
+  home = next;
+  if (was === "diff" || was === "guide") parked.set(was, { cursor: cursor.peek(), anchor: visualAnchor.peek(), pending: pendingLines.peek() });
+  const back = parked.get(next);
   codeFocus.value = false;
   threadCode.value = null;
-  cursor.value = id === null ? parked.cursor : null;
-  visualAnchor.value = id === null ? parked.anchor : null;
+  cursor.value = back?.cursor ?? null;
+  visualAnchor.value = back?.anchor ?? null;
+  // a thread's page and the Changes page as it opens set their own box
+  if (was === "guide" || next === "guide") pendingLines.value = back?.pending ?? null;
 });
 
 /** The lines a link opened, highlighted until the cursor leaves them. */
@@ -680,7 +705,7 @@ export const linkedLines = signal<LineRange | null>(null);
 effect(() => {
   const c = cursor.value;
   const lines = linkedLines.peek();
-  if (c && lines && !cursorSpace.peek().holds(c, lines)) linkedLines.value = null;
+  if (c && lines && !guideShown.peek() && !cursorSpace.peek().holds(c, lines)) linkedLines.value = null;
 });
 
 /** The address of lines on this Changes page, for another tab or another reader of the same browser. */
@@ -713,6 +738,6 @@ export const cursorLayer = computed(() => cursorMarks(cursorSpace.value, cursor.
 
 export function marksFor(path: string): LineMark[] {
   const a = marksByPath.peek().get(path);
-  const b = cursorLayer.peek().get(path);
+  const b = guideShown.peek() ? undefined : cursorLayer.peek().get(path);
   return a && b ? [...a, ...b] : (a ?? b ?? []);
 }

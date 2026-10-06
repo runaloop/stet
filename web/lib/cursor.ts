@@ -25,7 +25,11 @@ export interface CursorFile {
   collapsed: boolean;
   /** A file drawn instead of its lines: the cursor stops at these blocks (none for a picture) rather than at the lines. */
   blocks?: readonly NavBlock[];
+  /** What the cursor calls the file when it is not its path: lines of one file drawn in several places (a guide's steps). */
+  id?: string;
 }
+
+const idOf = (f: CursorFile) => f.id ?? f.fd.name;
 
 export interface LineRange {
   path: string;
@@ -46,7 +50,7 @@ export class CursorSpace {
   constructor(readonly files: CursorFile[]) {
     let n = 0;
     files.forEach((f, i) => {
-      this.byPath.set(f.fd.name, i);
+      this.byPath.set(idOf(f), i);
       this.starts.push(n);
       n += this.stops(i);
     });
@@ -91,7 +95,7 @@ export class CursorSpace {
       else hi = mid - 1;
     }
     const rows = this.rows(lo).length;
-    return { path: this.files[lo]!.fd.name, row: rows ? n - this.starts[lo]! : -1 };
+    return { path: idOf(this.files[lo]!), row: rows ? n - this.starts[lo]! : -1 };
   }
 
   normalize(c: Cursor | null): Cursor | null {
@@ -113,7 +117,7 @@ export class CursorSpace {
 
   fileStart(i: number): Cursor | null {
     if (i < 0 || i >= this.files.length) return null;
-    return { path: this.files[i]!.fd.name, row: this.rows(i).length ? 0 : -1 };
+    return { path: idOf(this.files[i]!), row: this.rows(i).length ? 0 : -1 };
   }
 
   nextFile(c: Cursor | null, dir: 1 | -1): Cursor | null {

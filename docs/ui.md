@@ -116,14 +116,24 @@ shown as text; `#12` links the thread) and under it only that step's lines as a 
 three lines around them; the bars above and below show more. A click on a file's name above its lines folds them to
 that line (its path, its `+` and `−`), and **show N lines** opens them again; a file of more than 80 lines (a long
 new test, say) starts folded. Threads on those lines show as cards that open the thread. The Files panel marks the
-file of the lines in view (or of the step `}` / `{` or a click went to); a file picked there goes to the first step
-that names it, or to the Diff when none does. **open in Diff** goes to the normal diff at exactly those lines, highlighted, with the cursor on the first.
-At the end, **Not in the guide** lists the files the compare changes that no step names. Comments are written in the
-Diff. Switching to the Guide and back leaves the diff as it was: its scroll, cursor and selection.
+file of the lines in view (or of the step `}` / `{`, a click or the cursor went to); a file picked there goes to the
+first step that names it, or to the Diff when none does. **open in Diff** goes to the normal diff at exactly those
+lines, highlighted, with the cursor on the first. At the end, **Not in the guide** lists the files the compare
+changes that no step names. Switching to the Guide and back leaves the diff as it was: its scroll, cursor, selection
+and comment box; the Guide tab keeps its own.
+
+A step's lines take comments as the diff does: a click on a line, **+** beside it or a drag over the line numbers
+opens the same box under the lines, for a draft (on the Drafts page, and a card under the lines once saved) or a
+thread sent at once. The keys work as in a thread's code: a click into the lines, `V` (select from the cursor, which
+starts on the first line of the step in view) or `i` / `a` / `c` / `gcc` give the lines the focus and the guide a
+blue frame; then `j` / `k`, `gg` / `G`, `Ctrl+d` / `Ctrl+u`, `]c` / `[c`, `]h` / `[h`, `zz`, `V` with `o`, `i` / `a`
+/ `c` / `gc` / `gcc`, `Space g Y` and counts act on them, across the steps, while `}` / `{` (which take the cursor to
+the step), `za` and `Enter` stay the guide's. `Esc` closes the selection and the box, then leaves the lines; the next
+`Esc` goes back to the Diff.
 
 In the Guide tab: `}` / `{` next / previous step, `Enter` opens the step's first lines in the Diff, `j` / `k` and
-`Ctrl+d` / `Ctrl+u` scroll, `za` folds or opens the file in view (`zo` / `zc`; `zR` / `zM` all of them), `Esc` or
-`Space u g` back to the Diff. The agent reads it back with `stet guide [N]`.
+`Ctrl+d` / `Ctrl+u` scroll, `za` folds or opens the file in view (`zo` / `zc`; `zR` / `zM` all of them), `V` / `i`
+into the lines, `Esc` or `Space u g` back to the Diff. The agent reads it back with `stet guide [N]`.
 
 When the agent writes one: by default (`agent.guide` `on`) for the first version of a task and for a round that
 changed more than the threads asked; with `stet config set agent.guide off`, only when you ask. To ask, tick **ask

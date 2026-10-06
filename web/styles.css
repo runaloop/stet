@@ -702,6 +702,7 @@ header.top .offline { flex: none; font-size: 12px; padding: 1px 8px; border: 1px
 .btn.restore-lines { border-color: color-mix(in srgb, var(--warn) 55%, var(--border)); }
 .guide-tabs { display: inline-flex; gap: 2px; }
 .guide { position: absolute; inset: 0; z-index: 4; overflow: auto; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 0 16px 24px; }
+.guide.code-focus { border-color: color-mix(in srgb, var(--accent) 60%, var(--border)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent); }
 .guide-head { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin: 0 -16px 8px; padding: 6px 16px; border-bottom: 1px solid var(--border); background: var(--bg-soft); font-size: 13px; }
 .guide-head .subtle { font-size: 12px; }
 .guide-title { margin: 12px 0 8px; font-size: 18px; }
