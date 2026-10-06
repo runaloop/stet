@@ -1265,12 +1265,14 @@ try {
       return b.eval(`({ cursor: [...document.querySelectorAll(".md-view .md-cursor")].map(e => e.closest(".md-view").dataset.file + ":" + e.closest(".md-cell").dataset.side + ":" + e.dataset.start), current: [...(CSS.highlights.get("stet-hit-current") ?? [])].map(r => r.toString() + (r.startContainer.parentElement?.closest(".md-view") ? "@rendered" : "@code")), rendered: !!${md}, toast: document.querySelector(".toast")?.textContent ?? null })`);
     };
     const inText = await findIn("open the card");
+    await b.eval(`window.__faded = false; window.__fadeSeen = new MutationObserver(() => { if (document.querySelector(".view-fade")) window.__faded = true; }); window.__fadeSeen.observe(document.body, { childList: true }); true`);
     const inSource = await findIn("card.png");
+    const sourceFaded = await b.eval(`(() => { window.__fadeSeen.disconnect(); return window.__faded; })()`);
     check(
-      "search finds a match in the rendered text: it is highlighted there and the cursor goes to its block; a match only in the Markdown source (a picture's path) shows that file as code and says so",
+      "search finds a match in the rendered text: it is highlighted there and the cursor goes to its block; a match only in the Markdown source (a picture's path) shows that file as code, fading the rendered view out, and says so",
       JSON.stringify(inText.cursor) === JSON.stringify(["docs/guide.md:new:7"]) && inText.current.includes("open the card@rendered") && inText.rendered &&
-        !inSource.rendered && inSource.current.some((c: string) => c === "card.png@code") && (inSource.toast?.includes("Markdown source") ?? false),
-      { inText, inSource },
+        !inSource.rendered && inSource.current.some((c: string) => c === "card.png@code") && (inSource.toast?.includes("Markdown source") ?? false) && sourceFaded === true,
+      { inText, inSource, sourceFaded },
     );
 
     run(repo, ["bun", CLI, "config", "set", "compare.markdown", "code"]);
@@ -1315,16 +1317,19 @@ try {
     };
     const listMd = (v: number) =>
       (v === 1
-        ? ["- Cart with items", "- Pay by card", "- Order history", "", "| Setting | Default |", "|---|---|", "| port | 8080 |", "| cache | off |", ""]
+        ? ["- Cart with items", "- Pay by card", "- Order history", "", "| Setting | Default |", "|---|---|", "| port | 8080 |", "| cache | **off** |", ""]
         : ["- Cart with items", "- Pay by card or by invoice", "- Order history", "- Promo codes", "", "| Setting | Default |", "|---|---|", "| port | 8080 |", "| cache | 64 MB |", "| theme | dark |", ""]
       ).join("\n");
+    const foldsMd = (v: number) => Array.from({ length: 30 }, (_, i) => `Paragraph ${i + 1}${i === 0 || i === 29 ? `, version ${v}` : ""}.\n\n\n`).join("");
     writeFileSync(join(repo, "docs/long.md"), longMd(1));
+    writeFileSync(join(repo, "docs/folds.md"), foldsMd(1));
     writeFileSync(join(repo, "docs/list.md"), listMd(1));
     writeFileSync(join(repo, "docs/ui.md"), uiThen);
     writeFileSync(join(repo, "docs/readme.md"), readmeMd(1));
     run(repo, ["git", "add", "-A"]);
     run(repo, ["bun", CLI, "version", "create", "--label", "long page", "--json"]);
     writeFileSync(join(repo, "docs/long.md"), longMd(2));
+    writeFileSync(join(repo, "docs/folds.md"), foldsMd(2));
     writeFileSync(join(repo, "docs/list.md"), listMd(2));
     writeFileSync(join(repo, "docs/ui.md"), uiNow);
     writeFileSync(join(repo, "docs/readme.md"), readmeMd(2));
@@ -1366,6 +1371,24 @@ try {
     await sleep(200);
     await b.eval(`[...document.querySelectorAll(".file-row")].find(r => r.textContent.includes("list.md")).querySelector(".file-link").click(); true`);
     const inUnified = (await waitFor(`document.querySelector('.md-view.md-one[data-file="docs/list.md"]')?.querySelectorAll(".md-slot .thread-mini").length === 3`, 10000)) ? await cardsAt() : null;
+    // the jump to the file settles its scroll for 1.4 s
+    await sleep(1600);
+    await b.eval(`[...${lmd}.querySelectorAll("tr")].find(r => r.textContent.trim().startsWith("cache"))?.scrollIntoView({ block: "center" }); true`);
+    await sleep(300);
+    const once = await b.eval(`(() => { const v = ${lmd}; const row = (t) => [...v.querySelectorAll("tr")].find(r => r.textContent.trim().startsWith(t)); const cache = row("cache"); const first = cache?.firstElementChild; const r = first?.getBoundingClientRect(); return {
+      cells: [...v.querySelectorAll(".md-cell")].map(c => c.dataset.side),
+      cache: cache ? [...cache.querySelectorAll("td")].map(td => td.innerHTML) : null,
+      added: [...v.querySelectorAll("li.md-changed, tr.md-changed")].map(e => e.textContent.trim().split(/\\s+/)[0]),
+      item: [...v.querySelectorAll("li")].find(e => e.textContent.startsWith("Pay by card"))?.innerHTML,
+      bar: r ? { pseudo: getComputedStyle(first, "::before").width, hit: document.elementsFromPoint(r.left - 10, r.top + r.height / 2).includes(first), at: [Math.round(r.left), Math.round(r.top)] } : null,
+    }; })()`);
+    await b.screenshot(join(OUT, "shots", "ui-check-markdown-unified-table.png"));
+    check(
+      "in unified view a changed list and table show once: changed words in the text, the removed bold value still bold, added items and rows marked, a changed row's bar in the gutter",
+      JSON.stringify(once.cells) === JSON.stringify(["new", "new"]) && JSON.stringify(once.cache) === JSON.stringify(["cache", "<del><strong>off</strong></del><ins>64 MB</ins>"]) &&
+        JSON.stringify(once.added) === JSON.stringify(["Pay", "Promo", "cache", "theme"]) && once.item === "Pay by card <ins>or by invoice</ins>" && once.bar?.pseudo === "3px" && once.bar.hit,
+      once,
+    );
     await b.eval(`[...document.querySelectorAll(".compare-head .btn")].find(x => x.textContent === "split").click(); true`);
     await sleep(800);
     const wantRows = (cards: { before: string; after: string; gap: number }[] | null) =>
@@ -1676,6 +1699,34 @@ try {
       middleHeld,
       middle,
     );
+
+    // a fold bar counts what the code's bar over the same lines counts, blank lines too; full file fades over in both views
+    const fmd = `document.querySelector('.md-view[data-file="docs/folds.md"]')`;
+    const foldsItem = `[...document.querySelectorAll(".codeview-host diffs-container")].find(c => c.shadowRoot?.querySelector("[data-title]")?.textContent === "docs/folds.md")`;
+    const wholeFolds = `[...document.querySelectorAll(".md-whole")].find(t => t.closest("diffs-container")?.shadowRoot?.querySelector("[data-title]")?.textContent === "docs/folds.md")`;
+    const fadeOf = (act: string) => b.eval(`new Promise(done => { ${act}; const at = !!document.querySelector(".view-fade"); setTimeout(() => done({ at, later: !!document.querySelector(".view-fade") }), 1200); })`) as Promise<{ at: boolean; later: boolean }>;
+    await toFile("folds.md");
+    await waitFor(`${fmd}?.querySelector("[data-stop]")`, 10000);
+    await sleep(800);
+    const foldsRendered = await b.eval(`[...new Set([...${fmd}.querySelectorAll(".md-fold .md-fold-text")].map(e => Number(/(\\d+) lines? folded/.exec(e.textContent)?.[1])))]`);
+    await b.screenshot(join(OUT, "shots", "ui-check-markdown-fold-count.png"));
+    const wholeFades = [await fadeOf(`${wholeFolds}.click()`), await fadeOf(`${wholeFolds}.click()`)];
+    await b.eval(`${toggleOf("docs/folds.md")}.click(); true`);
+    await waitFor(`!${fmd} && (${foldsItem})?.shadowRoot?.querySelector("[data-unmodified-lines]")`, 8000);
+    await sleep(600);
+    const foldsCode = await b.eval(`[...new Set([...(${foldsItem}).shadowRoot.querySelectorAll("[data-unmodified-lines]")].map(e => Number(/(\\d+) unmodified/.exec(e.textContent)?.[1])))]`);
+    wholeFades.push(await fadeOf(`${wholeFolds}.click()`), await fadeOf(`${wholeFolds}.click()`));
+    await b.eval(`${toggleOf("docs/folds.md")}.click(); true`);
+    await waitFor(`${fmd}?.querySelector("[data-stop]")`, 8000);
+    await sleep(600);
+    const foldsAgain = await b.eval(`[...new Set([...${fmd}.querySelectorAll(".md-fold .md-fold-text")].map(e => Number(/(\\d+) lines? folded/.exec(e.textContent)?.[1])))]`);
+    // the diff leaves out lines 5-84; the switch to code opened a screen of lines around the text read, in both views
+    check(
+      "a rendered fold bar counts the lines the code's bar over them counts, the blank lines around its blocks too",
+      JSON.stringify(foldsRendered) === JSON.stringify([80]) && foldsCode.length > 0 && JSON.stringify(foldsAgain) === JSON.stringify(foldsCode),
+      { foldsRendered, foldsCode, foldsAgain },
+    );
+    check("full file on and off, rendered and as code, fades the old view out over the new one, and the copy is gone soon after", wholeFades.every((f) => f.at && !f.later), wholeFades);
 
     // on a thread's page the same bars, and what they open shows in the thread's code too
     const readmeThread = JSON.parse(run(repo, ["bun", CLI, "comment", "add", "--file", "docs/readme.md", "--range", "3-3", "--at", String(longV - 1), "--body", "is the intro right?", "--as", "reviewer", "--json"])).id as number;
