@@ -1882,6 +1882,91 @@ try {
       landed,
     );
 
+    await keys(" ", "u", "g");
+    await waitFor(`document.querySelectorAll(".guide .guide-ref diffs-container").length === 2`, 5000);
+    await sleep(400);
+    await click(".guide .guide-ref[data-key='2.0'] .guide-fold");
+    const foldedRef = await waitFor(`(() => { const r = document.querySelector(".guide .guide-ref[data-key='2.0']"); return r?.classList.contains("folded") ? { bar: r.querySelector(".guide-unfold")?.textContent, chev: r.querySelector(".guide-fold .chev")?.textContent, stat: r.querySelector(".guide-ref-head .stat")?.textContent, code: !!r.querySelector("diffs-container"), text: document.querySelector(".guide-step[data-step='2'] .md")?.textContent.trim() } : null; })()`, 3000);
+    await click(".guide .guide-ref[data-key='2.0'] .guide-unfold");
+    const refUnfolded = await waitFor(`!document.querySelector(".guide .guide-ref[data-key='2.0']").classList.contains("folded") && !!document.querySelector(".guide .guide-ref[data-key='2.0'] diffs-container")`, 3000);
+    await keys("}", "}", "z", "a");
+    const foldedByKey = await waitFor(`document.querySelector(".guide .guide-ref[data-key='2.0']").classList.contains("folded")`, 3000);
+    await keys("z", "a");
+    await waitFor(`!document.querySelector(".guide .guide-ref[data-key='2.0']").classList.contains("folded")`, 3000);
+    check(
+      "a click on a step's file folds its diff to its head (path, + and −) and a bar, the step's text staying; the bar and z a open it again",
+      foldedRef?.bar === "▸ show 2 lines" && foldedRef.chev === "▸" && foldedRef.stat === "+2 −0" && !foldedRef.code && foldedRef.text === "A helper for it, as #1 asked." && !!refUnfolded && !!foldedByKey,
+      { foldedRef, refUnfolded, foldedByKey },
+    );
+
+    await b.eval(`[...document.querySelectorAll(".side-tabs button")].find(x => x.textContent.startsWith("Files")).click(); true`);
+    const activeFile = `[...document.querySelectorAll(".file-row.active .file-name")].map(x => x.textContent).join()`;
+    await keys("{");
+    const filesAt1 = await waitFor(`${activeFile} === "Guide.kt" ? ${activeFile} : null`, 3000);
+    await keys("}");
+    const filesAt2 = await waitFor(`${activeFile} === "GuideUtil.kt" ? ${activeFile} : null`, 3000);
+    await b.eval(`document.querySelector(".guide .guide-step[data-step='1'] .guide-step-text .md").dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })); true`);
+    const filesClicked = await waitFor(`${activeFile} === "Guide.kt" ? ${activeFile} : null`, 3000);
+    check("in the Guide tab the Files panel marks the file of the step gone to with } { or a click", !!filesAt1 && !!filesAt2 && !!filesClicked, { filesAt1, filesAt2, filesClicked });
+
+    const guideCell = (n: number) => b.eval(`(() => { const c = document.querySelector(".guide .guide-ref[data-key='1.0'] diffs-container"); const el = [...c.shadowRoot.querySelectorAll("code[data-additions] [data-column-number='${n}']")].pop(); const r = el.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`) as Promise<{ x: number; y: number }>;
+    await b.eval(`document.querySelector(".guide .guide-ref[data-key='1.0']").scrollIntoView({ block: "start" }); true`);
+    await sleep(300);
+    const g10 = await guideCell(10);
+    const g11 = await guideCell(11);
+    await pointer([{ type: "pointerMove", x: g10.x, y: g10.y }, { type: "pointerDown", button: 0 }, { type: "pointerMove", x: g11.x, y: g11.y, duration: 100 }, { type: "pointerUp", button: 0 }]);
+    const guideBox = await waitFor(`(() => { const n = document.querySelector(".guide .guide-ref[data-key='1.0'] .new-thread .note")?.textContent; return n ? { note: n, framed: document.querySelector(".guide").classList.contains("code-focus"), typing: document.activeElement?.tagName } : null; })()`, 3000);
+    await keys(..."why ten and eleven?".split(""));
+    await chord([CTRL], "s");
+    const guideCard = await waitFor(`(() => { const m = document.querySelector(".guide .guide-ref[data-key='1.0'] .thread-mini:not([data-thread='${guideThread}'])"); return m && !document.querySelector(".guide .new-thread") ? +m.getAttribute("data-thread") : null; })()`, 5000);
+    const guideDraft = (JSON.parse(run(repo, ["bun", CLI, "threads", "list", "--drafts", "--as", "reviewer", "--json"])) as { id: number; path: string; range: { start: number; end: number }; draft: boolean }[]).find((t) => t.id === guideCard);
+    check(
+      "a drag over the line numbers of a step's lines opens the comment box under them, the guide framed; Ctrl+S saves a draft on those lines, shown as a card in the guide",
+      /New thread on src\/Guide\.kt \(v\d+\) · lines 10–11/.test(guideBox?.note ?? "") && guideBox?.framed === true && guideBox.typing === "TEXTAREA" &&
+        guideDraft?.path === "src/Guide.kt" && guideDraft.range.start === 10 && guideDraft.range.end === 11 && guideDraft.draft === true,
+      { guideBox, guideCard, guideDraft },
+    );
+    await keys("\uE00C");
+    const leftCode = await waitFor(`document.querySelector(".guide") && !document.querySelector(".guide.code-focus")`, 2000);
+    await keys("i");
+    const guideKeyBox = await waitFor(`document.querySelector(".guide .new-thread .note")?.textContent ?? null`, 3000);
+    // the box's text first, then the box, the lines and the guide
+    for (let n = 0; n < 4; n++) {
+      await keys("\uE00C");
+      await sleep(150);
+    }
+    const backToDiff = await waitFor(`!document.querySelector(".guide")`, 2000);
+    check("Esc leaves the step's lines and the next Esc the guide; i in the guide opens a box on the cursor line", !!leftCode && /New thread on src\/Guide\.kt/.test(guideKeyBox ?? "") && !!backToDiff, { leftCode, guideKeyBox, backToDiff });
+
+    await b.eval(`location.hash = "#/drafts"; true`);
+    await waitFor(`document.querySelector(".ask-guide input:not([disabled])")`, 5000);
+    await click(".ask-guide input");
+    await click(".submit-actions .btn.primary");
+    await waitFor(`location.hash.startsWith("#/compare")`, 5000);
+    const guideAsked = JSON.parse(run(repo, ["bun", CLI, "status", "--json"])).guide;
+    writeFileSync(join(repo, "src/test/GuideTest.kt"), Array.from({ length: 120 }, (_, i) => `    @Test fun t${i + 1}() = assertEquals(${i + 1}, ${i + 1})`).join("\n") + "\n");
+    writeFileSync(join(repo, "src/Guide.kt"), guideKt.replace("val g11 = ELEVEN", "val g11 = TEN + 1"));
+    run(repo, ["git", "add", "-A"]);
+    writeFileSync(guideMd, "# Eleven\n\n1. Eleven is ten and one now, as #" + guideCard + " asked.\n   src/Guide.kt:11\n2. A test for each.\n   src/test/GuideTest.kt\n");
+    const answer = JSON.parse(run(repo, ["bun", CLI, "version", "create", "--label", "guide asked", "--guide", guideMd, "--json"])).version as { number: number; guideRequested?: boolean };
+    await b.eval(`location.hash = "#/compare/${guideV}..${answer.number}"; true`);
+    const openedOnGuide = await waitFor(`(() => { const r = document.querySelector(".guide .guide-ref[data-key='2.0']"); return r?.querySelector(".guide-unfold") ? { title: document.querySelector(".guide-title")?.textContent, folded: r.classList.contains("folded"), bar: r.querySelector(".guide-unfold").textContent } : null; })()`, 10000);
+    await waitFor(`document.querySelector(".guide .guide-ref[data-key='1.0'] diffs-container")?.shadowRoot?.querySelector("[data-column-number]")`, 5000);
+    await b.screenshot(join(OUT, "shots", "ui-check-guide-asked.png"));
+    await keys("\uE00C");
+    await waitFor(`!document.querySelector(".guide")`, 2000);
+    await b.eval(`location.hash = "#/compare/${blameB}..${guideV}"; true`);
+    await waitFor(`document.querySelector(".guide-tabs")`, 5000);
+    await b.eval(`location.hash = "#/compare/${guideV}..${answer.number}"; true`);
+    await waitFor(`document.querySelector(".guide-tabs") && document.querySelector(".range-title")?.textContent.includes("v${answer.number}")`, 5000);
+    await sleep(500);
+    const stayedOnDiff = await b.eval(`!document.querySelector(".guide")`);
+    check(
+      "asked for at submit: stet status tells the agent (guide: requested); the version that answers opens on the Guide tab, a test of 120 lines folded, and once left for the diff it stays there",
+      guideAsked === "requested" && answer.guideRequested === true && openedOnGuide?.title === "Eleven" && openedOnGuide.folded && openedOnGuide.bar === "▸ show 120 lines" && stayedOnDiff === true,
+      { guideAsked, answer, openedOnGuide, stayedOnDiff },
+    );
+
     await b.eval(`location.hash = "#/compare/${imgV - 1}..${imgV}"; true`);
     await waitFor(`[...document.querySelectorAll(".imgdiff img")].length >= 5`, 10000);
     await sleep(800);
