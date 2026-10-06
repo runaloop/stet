@@ -195,3 +195,79 @@ describe("a version with a guide", () => {
     expect((await stet(["guide", "now"], reviewer)).stderr).toContain("a guide belongs to a version");
   });
 });
+
+describe("a guide the reviewer asks for", () => {
+  const f = new Fixture();
+  const agent = { cwd: f.root, role: "agent" as const };
+  const reviewer = { cwd: f.root, role: "reviewer" as const };
+  const guideFile = join(f.root, "..", `${f.root.split("/").pop()}-asked.md`);
+
+  beforeAll(async () => {
+    f.write("a.ts", lines(10));
+    f.commit("init");
+    f.git(["checkout", "-q", "-b", "feat"]);
+    f.write("a.ts", edit(lines(10), (l) => (l[2] = "three, changed")));
+    await ok(stet(["version", "create"], agent));
+  });
+
+  afterAll(() => {
+    f.cleanup();
+    Bun.spawnSync(["rm", "-f", guideFile]);
+  });
+
+  const draft = (body: string) => ok(stet(["comment", "add", "--file", "a.ts", "--range", "3-3", "--at", "1", "--body", body, "--draft"], reviewer));
+
+  test("agent.guide is on unless set off, and status says so for the next version", async () => {
+    expect((await ok(stet(["status"], agent))).guide).toBe("on");
+    const bad = await stet(["config", "set", "agent.guide", "maybe"], agent);
+    expect(bad.stderr).toContain("agent.guide takes on or off");
+    await ok(stet(["config", "set", "agent.guide", "off"], agent));
+    const s = await ok(stet(["status"], agent));
+    expect(s.guide).toBe("off");
+    expect(formatStatus(s)).toContain("guide to the next version: none (agent.guide off)");
+  });
+
+  test("a review asks for one with --guide, not with an approval; status and wait tell the agent", async () => {
+    await draft("why three?");
+    const refused = await stet(["review", "submit", "--approve", "--guide"], reviewer);
+    expect(refused.code).toBe(1);
+    expect(refused.stderr).toContain("goes with a request for changes");
+    const r = await ok(stet(["review", "submit", "--guide"], reviewer));
+    expect(r.guide).toBe(true);
+    const s = await ok(stet(["status"], agent));
+    expect(s.guide).toBe("requested");
+    expect(formatStatus(s)).toContain("requested by the reviewer");
+    const w = await ok(stet(["wait", "--for", "review", "--timeout", "1s"], agent));
+    expect(w).toMatchObject({ reason: "pending", guide: "requested" });
+  });
+
+  test("a version without the guide asked for is made, with a warning; the request is then answered", async () => {
+    f.write("a.ts", edit(lines(10), (l) => (l[2] = "three, again")));
+    const r = await stet(["version", "create"], agent);
+    expect(r.code).toBe(0);
+    expect(r.json.version).toMatchObject({ number: 2, guideRequested: true });
+    expect(r.json.version.guide).toBeUndefined();
+    expect(r.json.warning).toContain("the reviewer asked for a guide to this version and it has none");
+    expect((await ok(stet(["status"], agent))).guide).toBe("off");
+  });
+
+  test("the version that brings the guide asked for is marked as its answer; a review that does not ask leaves the setting", async () => {
+    await draft("and four?");
+    await ok(stet(["review", "submit", "--guide"], reviewer));
+    f.write("a.ts", edit(lines(10), (l) => (l[3] = "four, changed")));
+    await Bun.write(guideFile, "# Four\n\n1. Four changed, as #2 asked.\n   a.ts:4\n");
+    const v3 = await ok(stet(["version", "create", "--guide", guideFile], agent));
+    expect(v3).toEqual({ version: expect.objectContaining({ number: 3, guide: true, guideRequested: true }) });
+    await draft("and five?");
+    await ok(stet(["review", "submit"], reviewer));
+    expect((await ok(stet(["status"], agent))).guide).toBe("off");
+    await ok(stet(["config", "set", "agent.guide", "--unset"], agent));
+    expect((await ok(stet(["status"], agent))).guide).toBe("on");
+    const vs = await ok(stet(["versions", "list"], agent));
+    expect(vs.map((v: { guide?: true; guideRequested?: true }) => [v.guide ?? false, v.guideRequested ?? false])).toEqual([
+      [false, false],
+      [false, true],
+      [true, true],
+    ]);
+  });
+});

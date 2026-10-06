@@ -35,9 +35,13 @@ stopped after a time limit, and the review UI dies with them in the middle of th
 `version create` exits with code 3 when nothing changed since the last version: that is fine
 if you only answered questions.
 
-For the first version of a task, and for a round where you changed more than the threads asked for, add a
-guide (experimental, optional): `--guide <file>`, a Markdown file outside the repository that explains the
-change as a few steps, in the order that makes it easiest to understand. Skip it for a small or obvious version.
+A guide (experimental): `--guide <file>`, a Markdown file outside the repository that explains the change as a
+few steps, in the order that makes it easiest to understand. `.guide` in `stet status --json` says when:
+
+- `requested`: the reviewer asked for one in their review. Add it, whatever the size of the version.
+- `on`: add one for the first version of a task and for a round where you changed more than the threads asked
+  for; skip it for a small or obvious version.
+- `off`: no guide.
 
 ```markdown
 # <what the version does>
@@ -74,7 +78,7 @@ it again: the human will call you back.
 
 First check the verdict: `stet status --json`. `.lastSubmission.verdict` is `changes` (answer the threads)
 or `approved`: the reviewer accepted version `.lastSubmission.version` (`.lastSubmission.body` is their
-summary, if any). On an approval:
+summary, if any). `.guide` says whether your next version gets a guide (step 1). On an approval:
 
 - no thread waits for you (`.counts.needsAgent` is 0): the work is done. Write the human a short summary
   of it and stop. Commit or push only if they asked.
@@ -137,7 +141,7 @@ the version that brought each line and the threads that version answered (`fixed
 ## 5. Hand over the next version
 
 ```bash
-stet version create --label "fixes for review <N>"   # --guide <file> when you changed more than the threads asked for
+stet version create --label "fixes for review <N>"   # --guide <file> as .guide in stet status says (step 1)
 ```
 
 Report to the human: how many threads fixed / answered / disagreed / questions, and the

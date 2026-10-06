@@ -15,7 +15,7 @@ import {
   type Ctx,
 } from "../core/context.ts";
 import { unifiedPatch } from "../core/diff.ts";
-import { guideMarkdown, parseGuide, requireGuide } from "../core/guide.ts";
+import { GUIDE_KEY, guideMarkdown, parseGuide, requireGuide } from "../core/guide.ts";
 import * as svc from "../core/service.ts";
 import type { Intent, ResolveReason, Role } from "../core/store/db.ts";
 import type { SubmittedDto } from "../core/types.ts";
@@ -32,7 +32,8 @@ Review
                                                 the index against HEAD instead of the whole working tree;
                                                 --base empty: every file is new, e.g. for the first commit
   status                                        versions, thread counts, the last review's verdict, UI url
-  review submit [--body <text>]                 publish all your drafts as one review: request changes
+  review submit [--body <text>] [--guide]       publish all your drafts as one review: request changes;
+                                                --guide asks the agent for a guide to the next version
   review submit --approve [--body <text>] [--force|--resolve-all]
                                                 approve the latest version; drafts go along as nits the
                                                 agent fixes without a new round. With other threads open
@@ -80,7 +81,10 @@ Tools
                                                 keys: snapshot.exclude, snapshot.max_untracked_bytes,
                                                 compare.tests, compare.skip_markers, compare.collapse,
                                                 compare.order, compare.markdown (rendered or code: how
-                                                Markdown files open on the Changes page; default rendered)
+                                                Markdown files open on the Changes page; default rendered),
+                                                agent.guide (on: the agent adds a guide to the first version
+                                                and to rounds that changed more than the threads asked; off:
+                                                only when a review asks with --guide; default on)
   prune [--dry-run]
   export [--all] [--out <file> [--force]] [--review <id>]
                                                 the review as Markdown, also when piped (--json: the data):
@@ -107,9 +111,10 @@ Environment
 const CONFIG_KEYS = new Set([
   "snapshot.exclude", "snapshot.max_untracked_bytes",
   "compare.tests", "compare.skip_markers", "compare.collapse", "compare.order", "compare.markdown",
+  GUIDE_KEY,
 ]);
 
-const CONFIG_VALUES: Record<string, string[]> = { "compare.markdown": ["rendered", "code"] };
+const CONFIG_VALUES: Record<string, string[]> = { "compare.markdown": ["rendered", "code"], [GUIDE_KEY]: ["on", "off"] };
 
 function configKey(key: string | undefined, usageText: string): string {
   if (!key) throw usage(usageText);
@@ -187,7 +192,9 @@ const commands: Record<string, { options: Options; run: (p: Parsed) => Promise<n
       const ctx = await context(p);
       const review = await ensureReview(ctx, str(p, "branch"));
       const v = await svc.createVersion(ctx, review, { label: str(p, "label"), allowEmpty: bool(p, "allow-empty"), at: str(p, "at"), guide });
-      emit(p, { version: v }, () => `created v${v.number} (${v.snapshot.slice(0, 10)})${guide ? ` with a guide of ${guide.steps.length} step${guide.steps.length === 1 ? "" : "s"}` : ""}`);
+      const warning = v.guideRequested && !guide ? "the reviewer asked for a guide to this version and it has none: explain the change step by step in your report" : null;
+      emit(p, { version: v, ...(warning ? { warning } : {}) }, () =>
+        `created v${v.number} (${v.snapshot.slice(0, 10)})${guide ? ` with a guide of ${guide.steps.length} step${guide.steps.length === 1 ? "" : "s"}` : ""}${warning ? `\nwarning: ${warning}` : ""}`);
     },
   },
 
@@ -382,10 +389,11 @@ const commands: Record<string, { options: Options; run: (p: Parsed) => Promise<n
   },
 
   "review submit": {
-    options: { body: { type: "string", short: "m" }, approve: { type: "boolean" }, force: { type: "boolean" }, "resolve-all": { type: "boolean" } },
+    options: { body: { type: "string", short: "m" }, approve: { type: "boolean" }, force: { type: "boolean" }, "resolve-all": { type: "boolean" }, guide: { type: "boolean" } },
     async run(p) {
       const approve = bool(p, "approve");
       if (!approve && (bool(p, "force") || bool(p, "resolve-all"))) throw usage("--force and --resolve-all go with --approve");
+      if (approve && bool(p, "guide")) throw usage("--guide asks for a guide to the next version: it goes with a request for changes, not with --approve");
       if (bool(p, "force") && bool(p, "resolve-all")) throw usage("--force or --resolve-all, not both");
       const ctx = await context(p);
       const review = await requireReview(ctx, str(p, "branch"));
@@ -395,6 +403,7 @@ const commands: Record<string, { options: Options; run: (p: Parsed) => Promise<n
           body: str(p, "body"),
           verdict: approve ? "approved" : "changes",
           open: bool(p, "force") ? "keep" : bool(p, "resolve-all") ? "resolve" : undefined,
+          guide: bool(p, "guide"),
         });
       } catch (e) {
         if (e instanceof StetError && e.code === "open_threads") {
@@ -406,7 +415,7 @@ const commands: Record<string, { options: Options; run: (p: Parsed) => Promise<n
       emit(p, r, () =>
         r.verdict === "approved"
           ? `approved v${r.version}${r.comments ? `; ${sent} went to the agent as nits` : ""}${r.resolved.length ? `; resolved ${r.resolved.map((i) => "#" + i).join(" ")}` : ""}`
-          : `submitted review ${r.submission}: ${sent}`);
+          : `submitted review ${r.submission}: ${sent}${r.guide ? "; asked for a guide to the next version" : ""}`);
     },
   },
 
@@ -497,7 +506,10 @@ const commands: Record<string, { options: Options; run: (p: Parsed) => Promise<n
         timeoutMs: duration(str(p, "timeout")),
         signal: ac.signal,
       });
-      emit(p, r, () => (r.reason === "timeout" ? "timed out" : `${r.reason === "approved" ? `approved v${r.version}` : r.reason}: threads ${r.threads.map((i) => "#" + i).join(" ") || "-"}`));
+      emit(p, r, () =>
+        r.reason === "timeout"
+          ? "timed out"
+          : `${r.reason === "approved" ? `approved v${r.version}` : r.reason}: threads ${r.threads.map((i) => "#" + i).join(" ") || "-"}${r.guide === "requested" ? "; the reviewer asked for a guide to the next version" : ""}`);
       return r.reason === "timeout" ? 5 : 0;
     },
   },

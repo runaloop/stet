@@ -190,4 +190,7 @@ export const MIGRATIONS: string[] = [
     CHECK(start_line IS NULL OR (start_line >= 1 AND end_line >= start_line))
   );
   `,
+  `
+  ALTER TABLE submissions ADD COLUMN guide INTEGER NOT NULL DEFAULT 0 CHECK(guide IN (0,1));
+  `,
 ];

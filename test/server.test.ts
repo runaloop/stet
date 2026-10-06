@@ -202,3 +202,12 @@ test("a version's guide through the API, and which versions have one", async () 
   expect((await api("/api/guide?version=1")).status).toBe(404);
   expect((await api("/api/guide")).status).toBe(400);
 });
+
+test("a review through the API asks for a guide to the next version, and the review says it is asked for", async () => {
+  const post = (b: unknown) => api("/api/review/submit", { method: "POST", body: JSON.stringify(b) });
+  await api("/api/threads", { method: "POST", body: JSON.stringify({ path: "a.kt", start: 1, end: 1, at: "1", body: "and this?" }) });
+  expect((await post({ guide: "yes" })).status).toBe(400);
+  expect((await post({ verdict: "approved", open: "keep", guide: true })).status).toBe(400);
+  expect(await (await post({ guide: true })).json()).toMatchObject({ verdict: "changes", guide: true });
+  expect((await (await api("/api/review")).json()).guide).toBe("requested");
+});

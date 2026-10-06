@@ -133,6 +133,31 @@ test("guides come to a database that has versions, and go with their version", (
   }
 });
 
+test("a database with guides keeps its reviews when submissions learn to ask for one", () => {
+  const dir = mkdtempSync(join(tmpdir(), "stet-mig-"));
+  const path = join(dir, "review.db");
+  try {
+    const old = new Database(path, { create: true, strict: true });
+    const at = before("ADD COLUMN guide");
+    for (const sql of MIGRATIONS.slice(0, at)) old.exec(sql);
+    old.exec(`PRAGMA user_version = ${at}`);
+    old.exec(`
+      INSERT INTO reviews(id, branch, created_at) VALUES (1, 'feat', 't');
+      INSERT INTO submissions(id, review_id, role, author, submitted_at, verdict) VALUES (1, 1, 'reviewer', 'alice', 't', 'changes');
+    `);
+    old.close();
+
+    const store = new Store(path);
+    expect(store.db.query("SELECT id, verdict, guide FROM submissions").all()).toEqual([{ id: 1, verdict: "changes", guide: 0 }]);
+    expect(store.db.query<{ user_version: number }, []>("PRAGMA user_version").get()?.user_version).toBe(MIGRATIONS.length);
+    store.db.run("UPDATE submissions SET guide = 1");
+    expect(() => store.db.run("UPDATE submissions SET guide = 2")).toThrow();
+    store.db.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("a fresh database has no origin columns", () => {
   const store = new Store(":memory:");
   for (const table of ["threads", "comments"]) {

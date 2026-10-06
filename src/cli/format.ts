@@ -119,6 +119,7 @@ export function formatStatus(s: StatusDto, url?: string | null): string {
     const what = `${ls.verdict === "approved" ? "approved" : "changes requested"}${ls.version !== null ? ` at v${ls.version}` : ""}`;
     out.push(`last review: ${ls.verdict === "approved" ? green(what) : what}${ls.changedAfter ? yellow(", changed after") : ""} ${dim(`(${ls.at.replace("T", " ").slice(0, 16)})`)}`);
   }
+  out.push(`guide to the next version: ${s.guide === "requested" ? yellow("requested by the reviewer") : s.guide === "on" ? "when it changes more than the threads asked (agent.guide on)" : "none (agent.guide off)"}`);
   if (url) out.push(`ui: ${url}`);
   return out.join("\n");
 }

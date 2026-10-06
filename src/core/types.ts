@@ -39,7 +39,16 @@ export interface VersionDto {
   files?: number | null;
   /** Set when the agent wrote a guide to this version (experimental): `stet guide <N>`. */
   guide?: true;
+  /** Set when the review this version answers asked for a guide to it. */
+  guideRequested?: true;
 }
+
+/**
+ * Whether the agent writes a guide to its next version: `requested` by the reviewer's last review (whatever its
+ * size), `on` by the skill's rule (the first version of a task, a round that changed more than the threads asked),
+ * `off` none. `on` and `off` are the project's `agent.guide`.
+ */
+export type GuideWanted = "requested" | "on" | "off";
 
 /** Lines `range` of `path` in the guide's version, or the file's whole change when `range` is null. */
 export interface GuideRefDto {
@@ -84,6 +93,8 @@ export interface SubmittedDto {
   comments: number;
   /** Open threads resolved before an approval. */
   resolved: number[];
+  /** Set when the review asks for a guide to the next version. */
+  guide?: true;
 }
 
 export interface AnchorDto {
@@ -263,6 +274,8 @@ export interface StatusDto {
    * exists, or "now" differs from the version it was about.
    */
   lastSubmission: (SubmissionDto & { changedAfter: boolean }) | null;
+  /** Whether the next version gets a guide. */
+  guide: GuideWanted;
   lastSeq: number;
 }
 

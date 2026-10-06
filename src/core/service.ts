@@ -17,7 +17,7 @@ import {
 } from "./context.ts";
 import { diffTreeRaw, NULL_BLOB, numstat, type Hunk } from "./diff.ts";
 import { blobIdAt, git, Lru, readBlobById } from "./git.ts";
-import { checkGuide, saveGuide, type ParsedGuide } from "./guide.ts";
+import { checkGuide, guideWanted, saveGuide, type ParsedGuide } from "./guide.ts";
 import { imageType, isPng, sizeOf } from "./image.ts";
 import { direct, fileChange, linesAt, trace, type TimelinePoint } from "./placement.ts";
 import { mapLine, specAt, type AnchorSpec, type AnchorState } from "./reanchor.ts";
@@ -46,6 +46,7 @@ import type {
   ComparePlacement,
   EventDto,
   Excerpt,
+  GuideWanted,
   ImageFiles,
   ImageInfo,
   Range,
@@ -85,7 +86,10 @@ export function listReviews(ctx: Ctx, includeClosed = false): ReviewDto[] {
 export function versionRows(ctx: Ctx, reviewId: number): VersionRow[] {
   return ctx.store.db
     .query<VersionRow, [number]>(
-      "SELECT v.*, EXISTS(SELECT 1 FROM guides g WHERE g.version_id = v.id) AS guide FROM versions v WHERE v.review_id = ? ORDER BY v.number",
+      `SELECT v.*, EXISTS(SELECT 1 FROM guides g WHERE g.version_id = v.id) AS guide,
+         EXISTS(SELECT 1 FROM submissions s WHERE s.review_id = v.review_id AND s.role = 'reviewer' AND s.guide = 1
+           AND s.version_id IS (SELECT p.id FROM versions p WHERE p.review_id = v.review_id AND p.number = v.number - 1)) AS guide_requested
+       FROM versions v WHERE v.review_id = ? ORDER BY v.number`,
     )
     .all(reviewId);
 }
@@ -120,6 +124,7 @@ export function versionDto(v: VersionRow): VersionDto {
     author: v.author,
     createdAt: v.created_at,
     ...(v.guide ? { guide: true as const } : {}),
+    ...(v.guide_requested ? { guideRequested: true as const } : {}),
   };
 }
 
@@ -142,6 +147,7 @@ export async function createVersion(
     throw conflict(`nothing changed since version ${latest.number}`);
   }
   const baseSha = review.base_ref ? await baseBelow(ctx.repo.cwd, review.base_ref, snap.sha) : null;
+  const asked = guideWanted(ctx, review.id) === "requested";
   if (opts.guide) {
     const base = baseSha ?? (await resolveRef(ctx, review, "base", { baseFor: snap.sha }).catch(() => null))?.sha;
     await checkGuide(ctx, opts.guide, snap.sha, "this version", [base, latest?.snapshot].filter((x): x is string => !!x));
@@ -161,7 +167,7 @@ export async function createVersion(
     ctx.store.addEvent({ review_id: review.id, type: "version.created", role: ctx.role, thread_id: null, comment_id: null, version_id: id, submission_id: null });
     return versionById(ctx, id)!;
   });
-  return versionDto({ ...row, guide: opts.guide ? 1 : 0 });
+  return versionDto({ ...row, guide: opts.guide ? 1 : 0, guide_requested: asked ? 1 : 0 });
 }
 
 export interface ResolvedRef {
@@ -554,6 +560,8 @@ export interface SubmitOptions {
   verdict?: Verdict;
   /** An approval while threads outside it are open: `keep` leaves them open, `resolve` resolves them first. */
   open?: "keep" | "resolve";
+  /** With `changes`: the agent writes a guide to the next version, whatever `agent.guide` says. */
+  guide?: boolean;
 }
 
 /**
@@ -563,6 +571,7 @@ export interface SubmitOptions {
 export function submitReview(ctx: Ctx, review: ReviewRow, opts: SubmitOptions = {}): SubmittedDto {
   const verdict = opts.verdict ?? "changes";
   if (verdict === "approved" && ctx.role === "agent") throw forbidden("only the reviewer approves");
+  if (opts.guide && verdict !== "changes") throw usage("a guide is asked for with a request for changes, not with an approval");
   return ctx.store.tx(() => {
     const drafts = ctx.store.db
       .query<CommentRow, [number, Role]>(
@@ -586,13 +595,13 @@ export function submitReview(ctx: Ctx, review: ReviewRow, opts: SubmitOptions = 
       }
     }
     const r = ctx.store.db.run(
-      "INSERT INTO submissions(review_id, role, author, body, version_id, submitted_at, verdict) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [review.id, ctx.role, ctx.author, opts.body ?? null, version?.id ?? null, nowIso(), verdict],
+      "INSERT INTO submissions(review_id, role, author, body, version_id, submitted_at, verdict, guide) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      [review.id, ctx.role, ctx.author, opts.body ?? null, version?.id ?? null, nowIso(), verdict, opts.guide ? 1 : 0],
     );
     const submissionId = Number(r.lastInsertRowid);
     for (const d of drafts) publish(ctx, review, d.id, d.thread_id, submissionId);
     ctx.store.addEvent({ review_id: review.id, type: "review.submitted", role: ctx.role, thread_id: null, comment_id: null, version_id: version?.id ?? null, submission_id: submissionId });
-    return { submission: submissionId, verdict, version: version?.number ?? null, threads, comments: drafts.length, resolved };
+    return { submission: submissionId, verdict, version: version?.number ?? null, threads, comments: drafts.length, resolved, ...(opts.guide ? { guide: true as const } : {}) };
   });
 }
 
@@ -1389,6 +1398,7 @@ export async function status(ctx: Ctx, review: ReviewRow, opts: { pinnedNow?: st
       unread: published.filter((t) => t.unread).length,
     },
     lastSubmission: last ? { ...last, changedAfter } : null,
+    guide: guideWanted(ctx, review.id),
     lastSeq: ctx.store.maxSeq(review.id),
   };
 }
@@ -1402,6 +1412,8 @@ export interface WaitResult {
   cursor: number;
   /** With `approved`: the version the reviewer approved. */
   version?: number | null;
+  /** Whether the next version gets a guide, as `stet status` says. */
+  guide: GuideWanted;
 }
 
 /** The reviewer's latest submission when it approves the latest version, with the threads it published. */
@@ -1456,15 +1468,16 @@ export async function waitFor(
     const pending = pendingThreads(ctx, review, kind);
     const events = eventsSince(ctx, review, since).filter(matches);
     const cursor = ctx.store.maxSeq(review.id);
-    if (approval) return { reason: "approved", events, threads: approval.threads, cursor, version: approval.version };
+    const guide = () => guideWanted(ctx, review.id);
+    if (approval) return { reason: "approved", events, threads: approval.threads, cursor, version: approval.version, guide: guide() };
     if (pending.length > 0 && (kind === "review" || kind === "reply")) {
-      return { reason: "pending", events, threads: pending, cursor };
+      return { reason: "pending", events, threads: pending, cursor, guide: guide() };
     }
     if (events.length > 0 && kind !== "review" && kind !== "reply") {
-      return { reason: "event", events, threads: [...new Set(events.map((e) => e.threadId).filter((x): x is number => x !== null))], cursor };
+      return { reason: "event", events, threads: [...new Set(events.map((e) => e.threadId).filter((x): x is number => x !== null))], cursor, guide: guide() };
     }
     if (opts.signal?.aborted || (opts.timeoutMs !== undefined && Date.now() - start >= opts.timeoutMs)) {
-      return { reason: "timeout", events: [], threads: [], cursor };
+      return { reason: "timeout", events: [], threads: [], cursor, guide: guide() };
     }
     await Bun.sleep(poll);
   }

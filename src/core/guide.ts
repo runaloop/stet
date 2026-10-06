@@ -1,6 +1,6 @@
 import { notFound, usage, type Ctx } from "./context.ts";
 import { blobIdAt, readBlobById, splitLines } from "./git.ts";
-import type { GuideDto, GuideRefDto, GuideStepDto } from "./types.ts";
+import type { GuideDto, GuideRefDto, GuideStepDto, GuideWanted } from "./types.ts";
 import { nowIso } from "./store/db.ts";
 
 /**
@@ -191,4 +191,19 @@ export function requireGuide(ctx: Ctx, reviewId: number, number: number): GuideD
   const g = loadGuide(ctx, reviewId, number);
   if (!g) throw notFound(`a guide to v${number}`);
   return g;
+}
+
+/** The project's setting: whether the agent writes guides by the skill's rule (`on`, the default) or only when asked. */
+export const GUIDE_KEY = "agent.guide";
+
+/** Whether the next version of the review gets a guide: a review submitted on the latest version asked for one, or the setting. */
+export function guideWanted(ctx: Ctx, reviewId: number): GuideWanted {
+  const asked = ctx.store.db
+    .query<{ n: number }, [number, number]>(
+      `SELECT count(*) AS n FROM submissions WHERE review_id = ? AND role = 'reviewer' AND guide = 1
+       AND version_id IS (SELECT id FROM versions WHERE review_id = ? ORDER BY number DESC LIMIT 1)`,
+    )
+    .get(reviewId, reviewId);
+  if (asked?.n) return "requested";
+  return ctx.store.meta(GUIDE_KEY) === "off" ? "off" : "on";
 }

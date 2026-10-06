@@ -41,6 +41,8 @@ export interface VersionRow {
   created_at: string;
   /** 1 when the version has a guide; only `versionRows` reads it. */
   guide?: number;
+  /** 1 when the review it answers asked for a guide; only `versionRows` reads it. */
+  guide_requested?: number;
 }
 
 export interface ThreadRow {
@@ -119,6 +121,8 @@ export interface SubmissionRow {
   version_id: number | null;
   submitted_at: string;
   verdict: Verdict;
+  /** 1 when the reviewer asked for a guide to the next version. */
+  guide: number;
 }
 
 export function nowIso(): string {

@@ -219,10 +219,11 @@ route("POST", "/api/threads/:id/reopen", async (s, _req, url, p) => {
 route("GET", "/api/drafts", async (s, _req, url) => svc.listDrafts(s.ctx, review(s, url)));
 
 route("POST", "/api/review/submit", async (s, req, url) => {
-  const b = await body<{ body?: string; verdict?: Verdict; open?: "keep" | "resolve" }>(req).catch(() => ({ body: undefined, verdict: undefined, open: undefined }));
+  const b = await body<{ body?: string; verdict?: Verdict; open?: "keep" | "resolve"; guide?: boolean }>(req).catch(() => ({ body: undefined, verdict: undefined, open: undefined, guide: undefined }));
   if (b.verdict !== undefined && b.verdict !== "changes" && b.verdict !== "approved") throw usage("verdict must be changes or approved");
   if (b.open !== undefined && b.open !== "keep" && b.open !== "resolve") throw usage("open must be keep or resolve");
-  return svc.submitReview(s.ctx, review(s, url), { body: b.body || undefined, verdict: b.verdict, open: b.open });
+  if (b.guide !== undefined && typeof b.guide !== "boolean") throw usage("guide must be true or false");
+  return svc.submitReview(s.ctx, review(s, url), { body: b.body || undefined, verdict: b.verdict, open: b.open, guide: b.guide });
 });
 
 route("GET", "/api/compare", async (s, _req, url) => {
