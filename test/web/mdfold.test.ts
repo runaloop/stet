@@ -8,7 +8,7 @@ afterAll(async () => {
   if (mine) await GlobalRegistrator.unregister();
 });
 
-const { closeGaps, foldInside, opening } = await import("../../web/lib/mdfold.ts");
+const { closeGaps, foldInside, opening, withBlanks } = await import("../../web/lib/mdfold.ts");
 const { renderMarkdown } = await import("../../web/lib/markdown.ts");
 
 /** The top-level HTML of a Markdown text, folded to `spans`; a bar shows as [first-last]. */
@@ -84,6 +84,18 @@ describe("folding rendered Markdown to the lines shown", () => {
     expect(firstLines(folded(b.text, hunks.map((h) => ({ start: h.additionStart, end: h.additionStart + h.additionCount - 1 }))))).toEqual(["1", "3", "[5-55]", "57", "59"]);
     const opened = withSpan(NOTHING, { start: 29, end: 31 });
     expect(firstLines(folded(b.text, shownBy(revealedPatch(a, b, hunks, opened)!)))).toEqual(["1", "3", "[5-27]", "29", "31", "[33-55]", "57", "59"]);
+  });
+
+  test("a bar counts the blank lines around its blocks that are not shown, as the code's bar over them does", () => {
+    // 1 Title, 2-3 a paragraph the hunk ends in, 4 blank, 5-6 a paragraph, 7 blank, 8 a paragraph, 9-10 blank, 11 shown
+    const text = ["# Title", "First line,", "second line.", "", "Hidden one,", "two.", "", "Hidden three.", "", "", "Shown.", ""].join("\n");
+    const lines = text.split("\n");
+    const shown = [{ start: 1, end: 2 }, { start: 11, end: 11 }];
+    expect(withBlanks([{ start: 5, end: 6 }, { start: 8, end: 8 }], lines, shown)).toEqual([{ start: 4, end: 6 }, { start: 8, end: 10 }]);
+    expect(withBlanks([{ start: 5, end: 8 }], lines, [{ start: 1, end: 4 }, { start: 10, end: 11 }])).toEqual([{ start: 5, end: 9 }]);
+    // the empty string after the last line break is no line
+    expect(withBlanks([{ start: 11, end: 11 }], lines, [{ start: 1, end: 8 }])).toEqual([{ start: 9, end: 11 }]);
+    expect(withBlanks([], lines, shown)).toEqual([]);
   });
 
   test("a bar opens about 20 lines from its top or its bottom, in whole blocks, or all of them", () => {

@@ -29,7 +29,7 @@ import { paintTextHits } from "../lib/marks.ts";
 import { changesOf, pairsOf, renderMarkdown, rowsOf, slotsOf, stopsOf, stopsOn, subtree, type MdSide, type Row, type RowKind, type SideBlocks, type SideChanges, type Stop } from "../lib/markdown.ts";
 import { isSimple, markInline, markPairs, markWords, textOf as blockText, unitsOf } from "../lib/richdiff.ts";
 import { breakAfter, unitOf } from "../lib/breaks.ts";
-import { closeGaps, foldInside, meets, opening } from "../lib/mdfold.ts";
+import { closeGaps, foldInside, meets, opening, withBlanks } from "../lib/mdfold.ts";
 import { CHUNK, newLineOf, withSpan } from "../lib/reveal.ts";
 import type { NavBlock, Span } from "../lib/cursor.ts";
 import { compileQuery, type Side } from "../lib/search.ts";
@@ -101,12 +101,12 @@ function rowsShown(rows: readonly Row[], sides: { old: SideBlocks | null; new: S
   return rows.map((r) => on(sides.old, r.old, shown.old) || on(sides.new, r.new, shown.new));
 }
 
-/** The cells of the rows shown, and a fold for each run of rows between them. */
-function foldRows(cells: Cell[], rows: readonly Row[], keep: readonly boolean[], sides: { old: SideBlocks | null; new: SideBlocks | null }): (Cell | Fold)[] {
+/** The cells of the rows shown, and a fold for each run of rows between them; `around` adds the blank lines around a fold. */
+function foldRows(cells: Cell[], rows: readonly Row[], keep: readonly boolean[], sides: { old: SideBlocks | null; new: SideBlocks | null }, around: (hidden: Span[]) => Span[]): (Cell | Fold)[] {
   const out: (Cell | Fold)[] = [];
   let hidden: Span[] = [];
   const fold = (at: number) => {
-    if (hidden.length) out.push({ key: `fold${at}`, hidden });
+    if (hidden.length) out.push({ key: `fold${at}`, hidden: around(hidden) });
     hidden = [];
   };
   rows.forEach((r, i) => {
@@ -465,11 +465,11 @@ export function RenderedMarkdown({ file, fd, old, now, split: splitWanted, threa
       for (const f of frags) {
         if (!keep[f.row]) continue;
         let k = 0;
-        foldInside(f.t.content, fold[f.side], (hidden) => foldBar(hidden, f.side, `fold-${f.row}-${k++}`, revealing));
+        foldInside(f.t.content, fold[f.side], (hidden) => foldBar(withBlanks(hidden, sides[f.side]?.lines ?? [], fold[f.side]), f.side, `fold-${f.row}-${k++}`, revealing));
       }
     const shownStops = fold ? stops.filter((s) => keep[s.row] && !!root(s.row, s.side)?.querySelector(`[data-b="${s.block}"]`)) : stops;
     const cells: Cell[] = frags.filter((f) => keep[f.row]).map((f) => ({ key: f.key, row: f.row, side: f.side, kind: f.kind, html: sized(f.t.innerHTML) }));
-    return { rows, pairs, cells: fold ? foldRows(cells, rows, keep, sides) : cells, merged, stops: shownStops };
+    return { rows, pairs, cells: fold ? foldRows(cells, rows, keep, sides, (hidden) => withBlanks(hidden, sides.new?.lines ?? sides.old?.lines ?? [], sides.new ? fold.new : fold.old)) : cells, merged, stops: shownStops };
   }, [fd, sides, split, placedKey, pendingKey, shownKey, revealing]);
   const cells = layout?.cells ?? [];
   const seen = (e: Event) => {

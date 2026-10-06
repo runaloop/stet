@@ -141,6 +141,22 @@ export function closeGaps(spans: readonly Span[], count: number, small = 1): Spa
   return out;
 }
 
+/**
+ * The lines a bar stands for: the lines of its blocks and the blank lines around them that are not shown either, so
+ * it counts what the code's bar over the same lines counts. `lines` is the text line by line.
+ */
+export function withBlanks(hidden: readonly Span[], lines: readonly string[], shown: readonly Span[]): Span[] {
+  if (!hidden.length) return [];
+  const out = hidden.map((s) => ({ ...s }));
+  const count = lines.length && lines[lines.length - 1] === "" ? lines.length - 1 : lines.length;
+  const free = (n: number) => n >= 1 && n <= count && !lines[n - 1]!.trim() && !shown.some((s) => s.start <= n && n <= s.end);
+  const first = out[0]!;
+  const last = out[out.length - 1]!;
+  while (free(first.start - 1)) first.start--;
+  while (free(last.end + 1)) last.end++;
+  return out;
+}
+
 /** The lines a bar opens: from its top or its bottom about `CHUNK` lines, in whole blocks; or all of them. */
 export function opening(hidden: readonly Span[], how: "above" | "below" | "all"): Span | null {
   if (!hidden.length) return null;
