@@ -63,6 +63,7 @@ import { CHUNK, expansionOf, newLineOf, textLines, withSpan, type Reveal } from 
 import { rowPosition, type Cursor, type LineRange, type Seen } from "../lib/cursor.ts";
 import { compareOrder } from "../lib/nav.ts";
 import { PeekView } from "./Peek.tsx";
+import { plusLines } from "../plus.ts";
 import { blocksInSight, codeTop, lineAt, linesInSight, onScreen, placeAt, renderedTop, rowElement, stopElement } from "./anchor.ts";
 import { snapshot, visibleBox } from "../lib/fade.ts";
 import { Presets, rangeTitle, ReviewedButton, VersionStrip } from "../components/VersionStrip.tsx";
@@ -325,8 +326,8 @@ export function CompareView({ from, to }: { from: string; to: string }) {
   const visible = visibleFiles.value;
   const order = useMemo(() => compareOrder(shown, visible.map((f) => f.name)), [shown, visible]);
 
-  // Lines picked with the mouse, by a drag over the line numbers or +: the cursor goes to the last of them, so the keys
-  // go on from there.
+  // Lines picked with the mouse, by a drag over the line numbers or + (the lines of a text selection, if any): the
+  // cursor goes to the last of them, so the keys go on from there.
   const startThread = (range: SelectedLineRange | null, ctx: SelectionContext) => {
     if (!range) return;
     if (range.endSide && range.side && range.endSide !== range.side) {
@@ -336,6 +337,11 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     const at = cursorSpace.peek().locate(ctx.item.id, range.side === "deletions" ? "deletions" : "additions", hi(range));
     if (at) cursor.value = at;
     visualAnchor.value = null;
+    // pierre marks the line under + as selected once the click is over: the lines picked instead, after it
+    queueMicrotask(() => {
+      const shown = view.current?.getSelectedLines();
+      if (shown?.id !== ctx.item.id || shown.range.start !== range.start || shown.range.end !== range.end) view.current?.setSelectedLines({ id: ctx.item.id, range }, { notify: false });
+    });
     setPending({ path: ctx.item.id, oldPath: ctx.item.fileDiff?.prevName ?? ctx.item.id, range });
   };
 
@@ -870,6 +876,8 @@ export function CompareView({ from, to }: { from: string; to: string }) {
       viewers.set(path, { version, el });
       return el;
     };
+    // pierre ends a click on + as a selection of the line under it: the lines a text selection gave stay
+    let plus: SelectedLineRange | null = null;
     const options = {
       diffStyle: diffStyle.value,
       overflow: wrap.value ? ("wrap" as const) : ("scroll" as const),
@@ -911,8 +919,12 @@ export function CompareView({ from, to }: { from: string; to: string }) {
         const c = cursorSpace.peek().locate(ctx.item.id, p.annotationSide, p.lineNumber);
         if (c) setCursor(c, false);
       },
-      onLineSelectionEnd: (range: SelectedLineRange | null, ctx: SelectionContext) => latest.current.startThread(range, ctx),
-      onGutterUtilityClick: (range: SelectedLineRange, ctx: SelectionContext) => latest.current.startThread(range, ctx),
+      onLineSelectionEnd: (range: SelectedLineRange | null, ctx: SelectionContext) => latest.current.startThread(plus ?? range, ctx),
+      onGutterUtilityClick: (range: SelectedLineRange, ctx: SelectionContext) => {
+        plus = plusLines(cv.getRenderedItems().find((r) => r.id === ctx.item.id)?.element ?? null, range);
+        queueMicrotask(() => (plus = null));
+        latest.current.startThread(plus, ctx);
+      },
     };
     const cv = new CodeView<Anno>(options as never, workerPool());
     // Rows must be measured before they scroll into view: a wrapped line is 5-6x the estimated 20 px, and with

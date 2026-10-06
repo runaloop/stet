@@ -16,6 +16,7 @@ import type { ComponentChild } from "preact";
 import { render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { MARK_CSS, paintMarks, type LineMark } from "../lib/marks.ts";
+import { plusLines } from "../plus.ts";
 
 export interface SourceFile {
   name: string;
@@ -99,6 +100,8 @@ export function DiffView<M>(props: DiffViewProps<M>) {
   const inst = useRef<FileDiff<M> | null>(null);
   const painted = useRef<HTMLElement | null>(null);
   const focused = useRef<{ key: string; inst: unknown }>({ key: "", inst: null });
+  // pierre ends a click on + as a selection of the line under it: the lines a text selection gave stay
+  const plus = useRef<SelectedLineRange | null>(null);
   const latest = useRef(props);
   latest.current = props;
   const selectable = !!props.onSelect;
@@ -114,7 +117,11 @@ export function DiffView<M>(props: DiffViewProps<M>) {
       expandUnchanged: props.expandUnchanged ?? false,
       enableLineSelection: selectable,
       enableGutterUtility: selectable,
-      onGutterUtilityClick: (r: SelectedLineRange) => latest.current.onSelect?.(r),
+      onGutterUtilityClick: (r: SelectedLineRange) => {
+        plus.current = plusLines(painted.current, r);
+        queueMicrotask(() => (plus.current = null));
+        latest.current.onSelect?.(plus.current);
+      },
       // a click on a line number, or the one that ends a click on +, is a selection of lines, which moves the cursor itself
       onLineClick: selectable ? (p: { lineNumber: number; annotationSide: SelectionSide; numberColumn: boolean }) => p.numberColumn || latest.current.onLineClick?.(p.lineNumber, p.annotationSide) : undefined,
       unsafeCSS: MARK_CSS,
@@ -123,7 +130,7 @@ export function DiffView<M>(props: DiffViewProps<M>) {
         painted.current = node;
         paintMarks(node, latest.current.marks ?? []);
       },
-      onLineSelectionEnd: (r: SelectedLineRange | null) => latest.current.onSelect?.(r),
+      onLineSelectionEnd: (r: SelectedLineRange | null) => latest.current.onSelect?.(plus.current ?? r),
       renderAnnotation: (a: DiffLineAnnotation<M>) => {
         const child = latest.current.renderAnnotation?.(a);
         return child === undefined || child === null ? undefined : mount(child, "anno");
@@ -198,6 +205,8 @@ export function FileView<M>(props: FileViewProps<M>) {
   const inst = useRef<PierreFile<M> | null>(null);
   const painted = useRef<HTMLElement | null>(null);
   const focused = useRef<{ key: string; inst: unknown }>({ key: "", inst: null });
+  // pierre ends a click on + as a selection of the line under it: the lines a text selection gave stay
+  const plus = useRef<SelectedLineRange | null>(null);
   const latest = useRef(props);
   latest.current = props;
   const selectable = !!props.onSelect;
@@ -209,14 +218,18 @@ export function FileView<M>(props: FileViewProps<M>) {
       themeType: "system" as const,
       enableLineSelection: selectable,
       enableGutterUtility: selectable,
-      onGutterUtilityClick: (r: SelectedLineRange) => latest.current.onSelect?.(r),
+      onGutterUtilityClick: (r: SelectedLineRange) => {
+        plus.current = plusLines(painted.current, r);
+        queueMicrotask(() => (plus.current = null));
+        latest.current.onSelect?.(plus.current);
+      },
       unsafeCSS: MARK_CSS,
       onPostRender: (node: HTMLElement, _inst: unknown, phase: string) => {
         if (phase === "unmount") return;
         painted.current = node;
         paintMarks(node, latest.current.marks ?? []);
       },
-      onLineSelectionEnd: (r: SelectedLineRange | null) => latest.current.onSelect?.(r),
+      onLineSelectionEnd: (r: SelectedLineRange | null) => latest.current.onSelect?.(plus.current ?? r),
       renderAnnotation: (a: LineAnnotation<M>) => {
         const child = latest.current.renderAnnotation?.(a);
         return child === undefined || child === null ? undefined : mount(child, "anno");

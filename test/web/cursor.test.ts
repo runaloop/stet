@@ -1,6 +1,6 @@
 import { parsePatchFiles } from "@pierre/diffs";
 import { describe, expect, test } from "bun:test";
-import { CursorSpace, moveStart } from "../../web/lib/cursor.ts";
+import { CursorSpace, moveStart, selectionLines } from "../../web/lib/cursor.ts";
 
 const patch = (path: string, body: string) => `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n${body}`;
 const fs = parsePatchFiles(
@@ -103,6 +103,30 @@ describe("the cursor after a scroll with the mouse", () => {
   test("a place less than half on screen is not where a move starts", () => {
     expect(moveStart(s, a(0), [...seen([5], 0.3), ...seen([6, 7]), ...seen([8], 0.4)], 1)).toEqual(a(6));
     expect(moveStart(s, a(0), [...seen([5], 0.3), ...seen([6, 7]), ...seen([8], 0.4)], -1)).toEqual(a(7));
+  });
+});
+
+describe("a text selection as lines", () => {
+  const line = (side: "additions" | "deletions", n: number) => ({ [side]: { start: n, end: n } });
+  const context = (n: number, old: number) => ({ additions: { start: n, end: n }, deletions: { start: old, end: old } });
+
+  test("every line it touches, on the new side when each has one there", () => {
+    expect(selectionLines([line("additions", 10), line("additions", 11), line("additions", 12)])).toEqual({ side: "additions", start: 10, end: 12 });
+    expect(selectionLines([context(4, 4), line("additions", 5)])).toEqual({ side: "additions", start: 4, end: 5 });
+    expect(selectionLines([context(9, 8)])).toEqual({ side: "additions", start: 9, end: 9 });
+  });
+
+  test("removed lines with the unchanged lines around them go on the old side", () => {
+    expect(selectionLines([context(3, 3), line("deletions", 4), line("deletions", 5)])).toEqual({ side: "deletions", start: 3, end: 5 });
+  });
+
+  test("rendered blocks give their spans of lines", () => {
+    expect(selectionLines([{ additions: { start: 7, end: 9 }, deletions: { start: 5, end: 7 } }, { additions: { start: 11, end: 14 } }])).toEqual({ side: "additions", start: 7, end: 14 });
+  });
+
+  test("removed and added lines together have no one side; nothing touched is no selection", () => {
+    expect(selectionLines([line("deletions", 2), line("additions", 2)])).toBe("both");
+    expect(selectionLines([])).toBeNull();
   });
 });
 

@@ -576,6 +576,7 @@ a.img-frame:hover, a.img-frame.hover, a.img-frame.focused { border-width: 3px; b
 .md-cell { position: relative; min-width: 0; padding: 0 16px 12px 30px; }
 .md-cell:has(> :is(h1, h2, h3, h4, h5, h6):first-child) { padding-top: 8px; }
 .md-split :is(.md-head, .md-cell)[data-side="new"] { border-left: 1px solid var(--border); }
+.md-split .md-grid[data-selecting="old"] .md-cell[data-side="new"], .md-split .md-grid[data-selecting="new"] .md-cell[data-side="old"] { user-select: none; }
 .md-split .md-cell.md-empty { background: repeating-linear-gradient(-45deg, transparent 0 7px, color-mix(in srgb, var(--border) 60%, transparent) 7px 8px); }
 .md-one .md-cell[data-side="old"] { padding-top: 18px; box-shadow: inset 2px 0 0 color-mix(in srgb, var(--bad) 35%, transparent); }
 .md-one .md-cell[data-side="old"]::before { content: "was, at " attr(data-label); position: absolute; top: 0; left: 30px; font: 11px/16px var(--mono); color: var(--bad); }

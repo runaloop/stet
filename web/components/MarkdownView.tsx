@@ -33,6 +33,8 @@ import { closeGaps, foldInside, meets, opening, withBlanks } from "../lib/mdfold
 import { CHUNK, newLineOf, withSpan } from "../lib/reveal.ts";
 import type { NavBlock, Span } from "../lib/cursor.ts";
 import { compileQuery, type Side } from "../lib/search.ts";
+import { innermost, touchedBy } from "../lib/selection.ts";
+import { pickedBySelection } from "../plus.ts";
 import { compareFocus, diffStyle } from "../state.ts";
 import { rangeText } from "./Bits.tsx";
 import { hi, lo, PendingBox } from "./NewThread.tsx";
@@ -671,11 +673,31 @@ export function RenderedMarkdown({ file, fd, old, now, split: splitWanted, threa
   const at = (side: MdSide) => (side === "old" ? from : to);
   const sideOf = (el: Element): MdSide => (el.closest("[data-was]") || (el.closest(".md-cell") as HTMLElement | null)?.dataset.side === "old" ? "old" : "new");
 
+  // + on a block, or on every block a text selection takes some text of; the cursor goes to the last of them
   const comment = (k: number, side: MdSide) => {
+    const g = grid.current;
+    let last = k;
+    const blocks = (ranges: Range[]) => {
+      const stops = innermost(touchedBy(ranges, g!.querySelectorAll("[data-stop]"))).map((el) => Number((el as HTMLElement).dataset.stop));
+      last = Math.max(...stops);
+      return stops.map((stop) => {
+        const nav = layout.stops[stop]!.nav;
+        return { ...(nav.old ? { deletions: nav.old } : {}), ...(nav.new ? { additions: nav.new } : {}) };
+      });
+    };
+    const picked = g ? pickedBySelection(g, blocks, "block") : null;
     const r = side === "old" ? layout.stops[k]?.nav.old : layout.stops[k]?.nav.new;
-    if (!r) return;
-    setCursor({ path: file, row: k }, false);
-    linesNav()?.startComment({ path: file, side: diffSide(side), start: r.start, end: r.end });
+    const lines = picked ?? (r ? { side: diffSide(side), start: r.start, end: r.end } : null);
+    if (!lines) return;
+    setCursor({ path: file, row: picked ? last : k }, false);
+    linesNav()?.startComment({ path: file, ...lines });
+  };
+
+  // In split view a selection keeps to the column it starts in, as the code's does: without this it would take the
+  // other column's blocks between its ends.
+  const selecting = (e: PointerEvent) => {
+    const cell = (e.target as Element).closest?.<HTMLElement>(".md-cell");
+    if (cell && grid.current) grid.current.dataset.selecting = cell.dataset.side;
   };
 
   const toCode = (k: number, side: MdSide) => linesNav()?.showCode(file, k, side);
@@ -752,7 +774,7 @@ export function RenderedMarkdown({ file, fd, old, now, split: splitWanted, threa
           {live ? <span class="hint">click a block for the cursor · + or i comments on it · ‹/› shows its lines in the code</span> : null}
         </div>
       )}
-      <div class="md-grid" ref={grid} onClick={click} onMouseMove={move} onMouseLeave={() => setHover(null)} onErrorCapture={missing} onLoadCapture={seen}>
+      <div class="md-grid" ref={grid} onClick={click} onPointerDown={selecting} onMouseMove={move} onMouseLeave={() => setHover(null)} onErrorCapture={missing} onLoadCapture={seen}>
         {split ? (
           <>
             <div class="md-head" data-side="old">{from.label}</div>
@@ -781,7 +803,7 @@ export function RenderedMarkdown({ file, fd, old, now, split: splitWanted, threa
         )}
         {hover ? (
           <div class="md-gutter" style={{ top: `${hover.top}px`, left: `${hover.left}px` }}>
-            <button class="md-plus" title="comment on this block (i)" onClick={() => comment(hover.stop, hover.side)}>
+            <button class="md-plus" title="comment on this block (i), or on the blocks of the text selected" onMouseDown={(e) => e.preventDefault()} onClick={() => comment(hover.stop, hover.side)}>
               +
             </button>
             <button class="md-jump" title="show its lines in the code" onClick={() => toCode(hover.stop, hover.side)}>

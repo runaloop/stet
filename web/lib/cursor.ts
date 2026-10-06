@@ -236,6 +236,21 @@ export function moveStart(space: CursorSpace, c: Cursor, seen: readonly Seen[], 
   return space.at(dir === 1 ? Math.min(...flat) : Math.max(...flat)) ?? c;
 }
 
+/** The lines a piece of the page has on each side: a line of code, a rendered block. */
+export type SideLines = Partial<Record<Side, Span>>;
+
+/**
+ * The lines a text selection takes, from the pieces it takes some text of: on the new side when each of them has lines
+ * there, else on the old side when each has; "both" when it takes removed lines and added ones. Null for no pieces.
+ */
+export function selectionLines(pieces: readonly SideLines[]): { side: Side; start: number; end: number } | "both" | null {
+  if (pieces.length === 0) return null;
+  const side = (["additions", "deletions"] as const).find((s) => pieces.every((p) => p[s]));
+  if (!side) return "both";
+  const spans = pieces.map((p) => p[side]!);
+  return { side, start: Math.min(...spans.map((s) => s.start)), end: Math.max(...spans.map((s) => s.end)) };
+}
+
 const blockRowCache = new WeakMap<readonly NavBlock[], DiffRow[]>();
 
 /** Rendered blocks as rows of the diff: a changed block is an added or removed row, so `]c` finds it. */
