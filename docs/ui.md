@@ -170,6 +170,7 @@ picture (an image, an SVG shown as a picture) is one stop:
 | `]c` / `[c`, `]h` / `[h` | next / previous change, hunk |
 | `]b` / `[b` or `L` / `H` | next / previous file |
 | `]t` / `[t` · `Enter` | next / previous thread on the diff · open the thread under the cursor |
+| `gt` | back to the thread in focus (the last one opened or stepped to), marked ([thread page](#thread-page)) |
 | `]u` / `[u` · `n` / `N` | next / previous unread thread · next / previous search match (unread when there is no search) |
 | `V` then `j` / `k`, `o` | select lines, jump to the other end of the selection |
 | `i` · `a` · `c` · `gcc` | comment on the cursor line or the selection |
@@ -194,7 +195,7 @@ A selection over removed and added lines, or into another file, has no one range
 and a notice says so. The same goes for a thread's code, the Guide tab's lines and rendered Markdown (by blocks).
 
 In a thread: `j` / `k` next / previous thread, `n` / `N` unread, `[` / `]` timeline step, `t` diff / then /
-at step, `p` diff base, `r` reply, `x` / `X` resolve / reopen, `e` editor, `Space g b` blame the thread's lines in the code
+at step, `p` diff base, `gt` back to the thread's lines in the code, marked, `r` reply, `x` / `X` resolve / reopen, `e` editor, `Space g b` blame the thread's lines in the code
 shown, `/` search all
 files at the step shown, `*` find the selected word, `Space u l` the conversation left / right of the code, `Esc` close
 the preview, then back to the changes.
@@ -239,7 +240,12 @@ The side panel has three tabs on the Changes page and on a thread:
 
 ## Thread page
 
-The compare highlights every line of each thread; hovering a thread card highlights its lines stronger.
+The compare highlights every line of each thread, the thread in focus stronger. Pointing at a thread's card puts that
+thread in the spotlight: its lines (or rendered blocks) take a pink frame and fill with its number, `#12`, over the line
+number of its first line (at the top right of its first block in rendered Markdown), its card turns pink, and the other
+threads in the file, lines and cards, are dimmed. Several threads on the same lines stay apart this way. Going back to
+a thread does the same for four seconds, with a short flash first (none with reduced motion): `gt` or **↩ to the code**
+on a thread page, `]t` / `[t`, `gt` and coming back from a thread page on the Changes page.
 
 A thread page shows the code around the thread the same way in Diff, Then and At step: the commented
 lines with a few lines around them, the ⋯ bars expand more, and "whole file" / "all changes in this
@@ -265,6 +271,11 @@ code, next to the threads: threads | messages | code. On the Changes page the sa
 puts the panel right of the diff. Each page remembers its order in the browser, a column keeps its width wherever it
 sits, and `Space u L` puts the page's columns back in their default order and widths. A narrower window lays the
 columns out as before, whatever the order.
+
+The thread's card heads its messages (`#12 Cache.kt:40–43`). Pointing at it marks the thread's lines in the code, and
+when you scrolled the code so far that none of them is on screen, it shows **↩ to the code**: like `gt`, it scrolls
+the code back to them, puts the cursor on the first one and marks them (a scope that leaves them out, "all changes in
+this file", goes back to "around the thread" first).
 
 A thread opens at the first message you have not read, under a "new" line, or at the last message with
 the reply box when nothing is new; the header of the messages counts them ("7 messages · 2 new", a click

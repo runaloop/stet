@@ -325,16 +325,21 @@ try {
     await sleep(500);
     const zbig = `[...document.querySelectorAll(".codeview-host diffs-container")].find(c => c.shadowRoot.textContent.includes("HUNDRED_V2")).shadowRoot`;
     const marked = (tag: string) => b.eval(`[...${zbig}.querySelectorAll('code[data-additions] [data-content] > [data-stet-mark~="${tag}"]')].map(e => +e.getAttribute("data-line"))`) as Promise<number[]>;
-    const ranged = await marked("thread");
+    // back on the compare, the thread in focus is in the spotlight for a moment, and the others dimmed
+    const ranged = [...(await marked("thread")), ...(await marked("dim"))];
     check("every line of a multi-line thread is highlighted on the compare", [98, 99, 100, 101].every((n) => ranged.includes(n)), ranged);
     await b.eval(`document.querySelector('.codeview-host .thread-mini[data-thread="${tr}"]')?.scrollIntoView({ block: "center" }); true`);
     await sleep(400);
     const card = await rect(`.codeview-host .thread-mini[data-thread="${tr}"]`);
     if (card) await pointer([{ type: "pointerMove", x: card.x, y: card.y }]);
     await sleep(300);
-    const focusedRange = await marked("focus");
+    const focusedRange = { spot: await marked("spot"), dim: await marked("dim"), others: await b.eval(`[...document.querySelectorAll(".codeview-host .thread-mini.dim")].map(e => +e.dataset.thread)`) };
     await b.screenshot(join(OUT, "shots", "ui-check-range.png"));
-    check("hovering the thread card highlights its lines stronger", [98, 99, 100, 101].every((n) => focusedRange.includes(n)), focusedRange);
+    check(
+      "hovering the thread card marks its lines in its own colour and dims the other thread there, its card too",
+      JSON.stringify(focusedRange.spot) === "[98,99,100,101]" && focusedRange.dim.includes(100) && focusedRange.others.includes(t100) && !focusedRange.others.includes(tr),
+      focusedRange,
+    );
     await pointer([{ type: "pointerMove", x: 5, y: 5 }]);
 
     await chord([CTRL], "f");
@@ -2218,6 +2223,100 @@ try {
       { clickedOn, threadSelected, threadBox, threadCursor },
     );
     await cancel();
+    // Two threads at one place: going back to one (gt) marks it unmistakably, and so does pointing at a card.
+    writeFileSync(join(repo, "src/Spot.kt"), Array.from({ length: 90 }, (_, i) => `val p${i + 1} = ${i + 1}`).join("\n") + "\n");
+    writeFileSync(join(repo, "docs/spot.md"), ["# Spot", "", ...Array.from({ length: 40 }, (_, i) => [`Paragraph ${i + 1}.`, ""]).flat()].join("\n"));
+    run(repo, ["git", "add", "-A"]);
+    const hlV = JSON.parse(run(repo, ["bun", CLI, "version", "create", "--label", "spot", "--json"])).version.number as number;
+    const hlOn = (file: string, range: string, body: string) =>
+      JSON.parse(run(repo, ["bun", CLI, "comment", "add", "--file", file, "--range", range, "--at", String(hlV), "--body", body, "--as", "reviewer", "--json"])).id as number;
+    const hlA = hlOn("src/Spot.kt", "40-43", "why these four?");
+    const hlB = hlOn("src/Spot.kt", "42-45", "and these?");
+    const hlCode = `document.querySelector(".code-area diffs-container")?.shadowRoot`;
+    const hlMarks = () =>
+      b.eval(`(() => { const r = ${hlCode}; if (!r) return null; const rows = (t) => [...r.querySelectorAll('[data-content] > [data-stet-mark~="' + t + '"]')].map(e => +e.getAttribute("data-line")); const l = r.querySelector("[data-stet-label]");
+        return { spot: rows("spot"), dim: rows("dim"), flash: rows("flash").length, label: l ? l.getAttribute("data-stet-label") + "@" + l.getAttribute("data-column-number") : null }; })()`) as Promise<{ spot: number[]; dim: number[]; flash: number; label: string | null } | null>;
+    // scrolls the box that scrolls the code (its column, or the page) to its end
+    const hlAway = () => b.eval(`(() => { let box = document.querySelector(".code-area").parentElement; while (box && !(box.scrollHeight > box.clientHeight && /auto|scroll/.test(getComputedStyle(box).overflowY))) box = box.parentElement; (box ?? document.scrollingElement).scrollTop = 1e6; document.activeElement?.blur(); return box?.className ?? "page"; })()`);
+    const hlScope = (name: string) => b.eval(`[...document.querySelectorAll(".code-label .seg button")].find(x => x.textContent === ${JSON.stringify(name)}).click(); true`);
+    await pointer([{ type: "pointerMove", x: 5, y: 5 }]);
+    await b.eval(`location.hash = "#/thread/${hlA}"; true`);
+    await waitFor(`${hlCode}?.querySelector('[data-stet-mark~="focus"]')`, 10000);
+    await hlScope("whole file");
+    await waitFor(`${hlCode}?.querySelector("[data-column-number='90']")`, 5000);
+    await hlAway();
+    const hlButton = await waitFor(`document.querySelector(".thread-place .to-code")?.textContent ?? null`, 3000);
+    await keys("g", "t");
+    const hlBack = await hlMarks();
+    const hlInView = await b.eval(`(() => { const row = ${hlCode}.querySelector('[data-content] > [data-stet-mark~="spot"]'); const r = row.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; })()`);
+    const hlCards = await waitFor(`(() => { const dim = [...document.querySelectorAll(".code-area .anno .thread-mini.dim")].map(e => +e.dataset.thread); return dim.length ? dim : null; })()`, 1000);
+    await sleep(1300);
+    const hlSettled = { marks: await hlMarks(), button: await b.eval(`!!document.querySelector(".thread-place .to-code")`) };
+    await b.screenshot(join(OUT, "shots", "ui-check-thread-spot.png"));
+    check(
+      "a thread page: with the thread's lines scrolled away, its card offers ↩ to the code; gt brings them back framed with #N, flashing at first, and the thread at the same place is dimmed",
+      /to the code/.test(hlButton ?? "") &&
+        JSON.stringify(hlBack?.spot) === "[40,41,42,43]" && hlBack?.label === `#${hlA}@40` && (hlBack?.flash ?? 0) > 0 && [42, 43, 44, 45].every((n) => hlBack?.dim.includes(n)) &&
+        hlInView === true && JSON.stringify(hlCards) === JSON.stringify([hlB]) && hlSettled.marks?.flash === 0 && !hlSettled.button,
+      { hlButton, hlBack, hlInView, hlCards, hlSettled },
+    );
+    await sleep(3000);
+    await b.eval(`document.querySelector('.code-area .anno .thread-mini[data-thread="${hlB}"]').scrollIntoView({ block: "center" }); true`);
+    await sleep(300);
+    const hlCard = await rect(`.code-area .anno .thread-mini[data-thread="${hlB}"]`);
+    if (hlCard) await pointer([{ type: "pointerMove", x: hlCard.x, y: hlCard.y }]);
+    await sleep(300);
+    const hlHover = await hlMarks();
+    await b.eval(`document.querySelector(".thread-place").scrollIntoView({ block: "center" }); true`);
+    await sleep(300);
+    const hlOwn = await rect(".thread-place");
+    if (hlOwn) await pointer([{ type: "pointerMove", x: hlOwn.x, y: hlOwn.y }]);
+    await sleep(300);
+    const hlHoverOwn = await hlMarks();
+    await pointer([{ type: "pointerMove", x: 5, y: 5 }]);
+    await sleep(300);
+    const hlLeft = await hlMarks();
+    check(
+      "pointing at a thread's card marks that thread the same way, without the flash; the thread's own card over its messages marks it too",
+      JSON.stringify(hlHover?.spot) === "[42,43,44,45]" && hlHover?.label === `#${hlB}@42` && hlHover?.flash === 0 && [40, 41].every((n) => hlHover?.dim.includes(n)) &&
+        JSON.stringify(hlHoverOwn?.spot) === "[40,41,42,43]" && hlHoverOwn?.label === `#${hlA}@40` &&
+        hlLeft?.spot.length === 0 && hlLeft?.dim.length === 0 && !hlLeft?.label,
+      { hlHover, hlHoverOwn, hlLeft },
+    );
+
+    // the same in rendered Markdown
+    const hlMdA = hlOn("docs/spot.md", "7-9", "paragraphs 3 and 4?");
+    const hlMdB = hlOn("docs/spot.md", "9-11", "paragraphs 4 and 5?");
+    const hlMd = `document.querySelector(".code-area .md-view")`;
+    const hlBlocks = () =>
+      b.eval(`(() => { const v = ${hlMd}; if (!v) return null; const text = (s) => [...v.querySelectorAll(s)].map(e => e.textContent.trim()); return { spot: text(".md-thread-spot"), dim: text(".md-thread-dim"), flash: v.querySelectorAll(".md-thread-flash").length, label: [...v.querySelectorAll("[data-spot]")].map(e => e.dataset.spot + "@" + e.textContent.trim()) }; })()`) as Promise<{ spot: string[]; dim: string[]; flash: number; label: string[] } | null>;
+    await b.eval(`location.hash = "#/thread/${hlMdA}"; true`);
+    await waitFor(`${hlMd}?.querySelector(".md-thread-focus")`, 10000);
+    await hlScope("whole file");
+    await waitFor(`${hlMd}?.textContent.includes("Paragraph 40.") && !document.querySelector(".view-fade")`, 5000);
+    await sleep(500);
+    const hlMdScroller = await hlAway();
+    const hlMdButton = await waitFor(`!!document.querySelector(".thread-place .to-code")`, 3000);
+    const hlMdAway = await b.eval(`({ tops: [...document.querySelectorAll('.code-body [data-threads~="${hlMdA}"]')].map(e => Math.round(e.getBoundingClientRect().top)), page: document.scrollingElement.scrollTop, h: document.scrollingElement.scrollHeight, view: !!document.querySelector(".code-area .md-view"), paras: document.querySelectorAll(".code-area .md-view p").length })`);
+    await keys("g", "t");
+    const hlMdBack = await hlBlocks();
+    const hlMdInView = await b.eval(`(() => { const r = ${hlMd}.querySelector(".md-thread-spot").getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; })()`);
+    await sleep(4300);
+    await b.eval(`document.querySelector('.code-area .md-threads .thread-mini[data-thread="${hlMdB}"]').scrollIntoView({ block: "center" }); true`);
+    await sleep(300);
+    const hlMdCard = await rect(`.code-area .md-threads .thread-mini[data-thread="${hlMdB}"]`);
+    if (hlMdCard) await pointer([{ type: "pointerMove", x: hlMdCard.x, y: hlMdCard.y }]);
+    await sleep(300);
+    const hlMdHover = await hlBlocks();
+    await pointer([{ type: "pointerMove", x: 5, y: 5 }]);
+    check(
+      "in rendered Markdown, gt marks the thread's blocks with #N and dims the other thread's, and pointing at that thread's card marks its blocks instead",
+      !!hlMdButton && JSON.stringify(hlMdBack?.spot) === JSON.stringify(["Paragraph 3.", "Paragraph 4."]) && JSON.stringify(hlMdBack?.dim) === JSON.stringify(["Paragraph 5."]) &&
+        JSON.stringify(hlMdBack?.label) === JSON.stringify([`#${hlMdA}@Paragraph 3.`]) && (hlMdBack?.flash ?? 0) > 0 && hlMdInView === true &&
+        JSON.stringify(hlMdHover?.spot) === JSON.stringify(["Paragraph 4.", "Paragraph 5."]) && JSON.stringify(hlMdHover?.dim) === JSON.stringify(["Paragraph 3."]) &&
+        JSON.stringify(hlMdHover?.label) === JSON.stringify([`#${hlMdB}@Paragraph 4.`]) && hlMdHover?.flash === 0,
+      { hlMdButton, hlMdScroller, hlMdAway, hlMdBack, hlMdInView, hlMdHover },
+    );
 
     await b.eval(`location.hash = "#/compare/${imgV - 1}..${imgV}"; true`);
     await waitFor(`[...document.querySelectorAll(".imgdiff img")].length >= 5`, 10000);
