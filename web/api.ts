@@ -26,7 +26,7 @@ export type ReviewStatus = StatusDto & {
   pinnedNow: string | null;
   versionsList: VersionDto[];
   submissions?: SubmissionDto[];
-  ui?: { tests: string | null; skipMarkers: string | null; collapse: string | null; order: string | null; markdown: string | null };
+  ui?: { tests: string | null; skipMarkers: string | null; collapse: string | null; order: string | null; markdown: string | null; guide: string | null };
 };
 
 export interface BlobDto {
@@ -120,6 +120,7 @@ export const api = {
     call<{ threadId: number; path: string; range: { start: number; end: number }; state: AnchorState }[]>("GET", "/api/placements", { query: { review, sha, path } }),
   cursors: (review: number) => call<CursorsDto>("GET", "/api/cursors", { query: { review } }),
   markReviewed: (review: number, ref: string) => call<ReviewedDto>("POST", "/api/reviewed", { query: { review }, body: { ref } }),
+  setConfig: (key: string, value: string) => call<{ key: string; value: string }>("POST", "/api/config", { body: { key, value } }),
   setViewed: (review: number, keys: string[], on: boolean) => call("POST", "/api/viewed", { query: { review }, body: { keys, on } }),
   blame: (review: number, q: { path: string; from: number; to: number; at: string }) => call<BlameDto>("GET", "/api/blame", { query: { review, ...q } }),
   grep: (sha: string, q: string, regex: boolean) => call<GrepResultDto>("GET", "/api/grep", { query: { sha, q, regex: regex ? 1 : 0 } }),

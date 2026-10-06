@@ -4,7 +4,7 @@ import { api } from "../api.ts";
 import { Body, Kbd } from "../components/Bits.tsx";
 import { ask } from "../components/Choice.tsx";
 import { RestoreBlock } from "../components/Restore.tsx";
-import { drafts, guard, lastCompare, link, loadDrafts, navigate, notify, reloadAll, reviewId, status, threads, versions } from "../state.ts";
+import { drafts, guard, lastCompare, link, loadDrafts, loadStatus, navigate, notify, reloadAll, reviewId, status, threads, versions } from "../state.ts";
 
 /** The summary for the whole review: kept while you move around, so S sends it too. */
 const summary = signal("");
@@ -84,6 +84,15 @@ export async function approveReview(body = summary.value): Promise<boolean> {
   return true;
 }
 
+const GUIDES_TITLE =
+  "agent.guide, for every review of this repository (stet config set agent.guide on|off). on: the agent adds a guide to the first version of a task and to rounds that changed more than the threads asked; off: only when a review asks for one";
+
+async function setGuides(value: "on" | "off"): Promise<void> {
+  if (!(await guard(api.setConfig("agent.guide", value)))) return;
+  notify(value === "on" ? "guides on: the agent adds one to the first version and to rounds that change more than the threads ask" : "guides off: the agent writes one only when a review asks");
+  await loadStatus();
+}
+
 export function DraftsView() {
   useEffect(() => {
     void loadDrafts();
@@ -92,6 +101,7 @@ export function DraftsView() {
   const byId = new Map(threads.value.map((t) => [t.id, t]));
   const rid = reviewId.value;
   const latest = versions.value.length;
+  const guides = status.value?.ui?.guide === "off" ? "off" : "on";
 
   return (
     <div class="drafts">
@@ -138,17 +148,27 @@ export function DraftsView() {
           ✓ Approve{latest ? ` v${latest}` : ""} {list.length ? null : <Kbd>S</Kbd>}
         </button>
       </div>
-      <label
-        class={`ask-guide${list.length ? "" : " off"}`}
-        title={`with Request changes: the agent explains its next version in a few steps, each with its lines, shown in the Guide tab (experimental). ${
-          status.value?.guide === "off"
-            ? "agent.guide is off: without this the agent writes none"
-            : "Without this the agent writes one only when the round changes more than the threads ask (agent.guide on)"
-        }`}
-      >
-        <input type="checkbox" disabled={list.length === 0} checked={askGuide.value} onChange={(e) => (askGuide.value = (e.target as HTMLInputElement).checked)} /> ask the agent for
-        a guide to the next version
-      </label>
+      <div class="guide-prefs">
+        <label
+          class={`ask-guide${list.length ? "" : " off"}`}
+          title={`with Request changes: the agent explains its next version in a few steps, each with its lines, shown in the Guide tab (experimental). ${
+            guides === "off" ? "Guides are off: without this the agent writes none" : "Without this the agent writes one only when the round changes more than the threads ask"
+          }`}
+        >
+          <input type="checkbox" disabled={list.length === 0} checked={askGuide.value} onChange={(e) => (askGuide.value = (e.target as HTMLInputElement).checked)} /> ask the agent for
+          a guide to the next version
+        </label>
+        <span class="guide-setting" title={GUIDES_TITLE}>
+          Guides in this repository:{" "}
+          <span class="seg small">
+            {(["on", "off"] as const).map((v) => (
+              <button class={guides === v ? "on" : ""} aria-pressed={guides === v} onClick={() => guides !== v && void setGuides(v)}>
+                {v}
+              </button>
+            ))}
+          </span>
+        </span>
+      </div>
     </div>
   );
 }

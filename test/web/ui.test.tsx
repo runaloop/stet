@@ -331,7 +331,8 @@ describe("which range opens by default", () => {
 describe("request changes or approve", () => {
   const submits: { body: string; verdict?: string; open?: string; guide?: boolean }[] = [];
   let serverDrafts: unknown[] = [];
-  const review = {
+  const configs: { key: string; value: string }[] = [];
+  const review: Record<string, unknown> = {
     versions: 2,
     versionsList: [1, 2].map((number) => ({ number, snapshot: `s${number}`, createdAt: "2026-09-24T10:00:00Z", author: "claude", role: "agent" })),
     now: { sha: "s2", changedSinceLatest: false },
@@ -347,6 +348,12 @@ describe("request changes or approve", () => {
     choice = await import("../../web/components/Choice.tsx");
     document.body.appendChild(host);
     respond = (url, init) => {
+      if (url.startsWith("/api/config")) {
+        const b = JSON.parse(String(init?.body));
+        configs.push(b);
+        review.ui = { guide: b.value };
+        return Response.json(b);
+      }
       if (url.startsWith("/api/review/submit")) {
         const b = JSON.parse(String(init?.body));
         submits.push(b);
@@ -438,6 +445,25 @@ describe("request changes or approve", () => {
     await tick(60);
     expect(dialog()).toBeNull();
     expect(submits).toEqual([{ body: "" }]);
+  });
+
+  test("a switch beside it turns guides on or off for the repository: agent.guide", async () => {
+    await show([], [draft(8)]);
+    const buttons = () => [...host.querySelectorAll<HTMLButtonElement>(".guide-setting button")];
+    expect(buttons().map((b) => [b.textContent, b.classList.contains("on")])).toEqual([["on", true], ["off", false]]);
+    expect(host.querySelector(".guide-setting")!.getAttribute("title")).toContain("off: only when a review asks for one");
+    buttons()[1]!.click();
+    await tick(60);
+    expect(configs).toEqual([{ key: "agent.guide", value: "off" }]);
+    expect(buttons().map((b) => b.classList.contains("on"))).toEqual([false, true]);
+    buttons()[1]!.click();
+    await tick(60);
+    expect(configs).toHaveLength(1);
+    buttons()[0]!.click();
+    await tick(60);
+    expect(configs.at(-1)).toEqual({ key: "agent.guide", value: "on" });
+    expect(buttons().map((b) => b.classList.contains("on"))).toEqual([true, false]);
+    delete review.ui;
   });
 
   test("a request for changes can ask for a guide to the next version, for that review only", async () => {

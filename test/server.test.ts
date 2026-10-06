@@ -211,3 +211,23 @@ test("a review through the API asks for a guide to the next version, and the rev
   expect(await (await post({ guide: true })).json()).toMatchObject({ verdict: "changes", guide: true });
   expect((await (await api("/api/review")).json()).guide).toBe("requested");
 });
+
+test("the page sets agent.guide, and only that setting, with the values the CLI takes", async () => {
+  const set = (b: unknown, headers: Record<string, string> = {}) => api("/api/config", { method: "POST", body: JSON.stringify(b), headers });
+  expect(await (await set({ key: "agent.guide", value: "off" })).json()).toEqual({ key: "agent.guide", value: "off" });
+  const s = await (await api("/api/review")).json();
+  expect(s.ui.guide).toBe("off");
+  expect((await ok(stet(["config", "get", "agent.guide"], { cwd: f.root }))).value).toBe("off");
+  expect(["off", "requested"]).toContain((await ok(stet(["status"], { cwd: f.root }))).guide);
+  const bad = await set({ key: "agent.guide", value: "maybe" });
+  expect(bad.status).toBe(400);
+  expect((await bad.json()).error.message).toContain("agent.guide takes on or off");
+  expect((await set({ key: "agent.gide", value: "on" })).status).toBe(400);
+  const cliOnly = await set({ key: "compare.order", value: "docs" });
+  expect(cliOnly.ok).toBe(false);
+  expect((await cliOnly.json()).error.code).toBe("forbidden");
+  expect((await fetch(`${base}/api/config`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ key: "agent.guide", value: "on" }) })).status).toBe(401);
+  expect((await ok(stet(["config", "get", "agent.guide"], { cwd: f.root }))).value).toBe("off");
+  await set({ key: "agent.guide", value: "on" });
+  expect((await (await api("/api/review")).json()).ui.guide).toBe("on");
+});

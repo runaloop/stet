@@ -15,7 +15,8 @@ import {
   type Ctx,
 } from "../core/context.ts";
 import { unifiedPatch } from "../core/diff.ts";
-import { GUIDE_KEY, guideMarkdown, parseGuide, requireGuide } from "../core/guide.ts";
+import { configKey, configValue } from "../core/config.ts";
+import { guideMarkdown, parseGuide, requireGuide } from "../core/guide.ts";
 import * as svc from "../core/service.ts";
 import type { Intent, ResolveReason, Role } from "../core/store/db.ts";
 import type { SubmittedDto } from "../core/types.ts";
@@ -84,7 +85,8 @@ Tools
                                                 Markdown files open on the Changes page; default rendered),
                                                 agent.guide (on: the agent adds a guide to the first version
                                                 and to rounds that changed more than the threads asked; off:
-                                                only when a review asks with --guide; default on)
+                                                only when a review asks with --guide; default on; also the
+                                                Drafts page's "Guides in this repository" switch)
   prune [--dry-run]
   export [--all] [--out <file> [--force]] [--review <id>]
                                                 the review as Markdown, also when piped (--json: the data):
@@ -107,20 +109,6 @@ Environment
                                                 e.g. "zed {file}:{line}"; {root} and {path} work too
   STET_WATCH_MS                                  how often \`serve\` checks the working tree (default 3000)
 `;
-
-const CONFIG_KEYS = new Set([
-  "snapshot.exclude", "snapshot.max_untracked_bytes",
-  "compare.tests", "compare.skip_markers", "compare.collapse", "compare.order", "compare.markdown",
-  GUIDE_KEY,
-]);
-
-const CONFIG_VALUES: Record<string, string[]> = { "compare.markdown": ["rendered", "code"], [GUIDE_KEY]: ["on", "off"] };
-
-function configKey(key: string | undefined, usageText: string): string {
-  if (!key) throw usage(usageText);
-  if (!CONFIG_KEYS.has(key)) throw usage(`unknown config key '${key}'; known: ${[...CONFIG_KEYS].join(", ")}`);
-  return key;
-}
 
 async function context(p: Parsed, defaultRole?: Role): Promise<Ctx> {
   const as = str(p, "as");
@@ -588,9 +576,7 @@ const commands: Record<string, { options: Options; run: (p: Parsed) => Promise<n
       const [rawKey, value] = p.positionals;
       const key = configKey(rawKey, "usage: stet config set <key> <value> | --unset <key>");
       if (value === undefined && !bool(p, "unset")) throw usage("usage: stet config set <key> <value> | --unset <key>");
-      const allowed = CONFIG_VALUES[key];
-      if (allowed && value !== undefined && !allowed.includes(value)) throw usage(`${key} takes ${allowed.join(" or ")}`);
-      ctx.store.setMeta(key, bool(p, "unset") ? null : value!);
+      ctx.store.setMeta(key, configValue(key, bool(p, "unset") ? null : value!));
       emit(p, { key, value: bool(p, "unset") ? null : value }, () => `${key} = ${value ?? "(unset)"}`);
     },
   },

@@ -126,7 +126,7 @@ Stored per repository with `stet config set <key> <value>`:
 | `compare.skip_markers` | `@Ignore`, `@Disabled`, `.skip(`, `xit(`, … | a test file adding one of these never folds |
 | `compare.collapse` | lock files | comma-separated globs that always fold (generated code, lock files) |
 | `compare.order` | `code; config: **/*.json, …; tests; docs: **/*.md, docs/**` | groups of files top to bottom, `;` between groups, globs after `name:`; first match wins, a group without globs takes the rest, `tests` takes the changed tests of `compare.tests` |
-| `agent.guide` | `on` | `on`: the agent adds a guide (experimental) to the first version of a task and to rounds that changed more than the threads asked; `off`: only when a review asks for one. `stet status` tells the agent which (`guide`: `requested`, `on` or `off`) |
+| `agent.guide` | `on` | `on`: the agent adds a guide (experimental) to the first version of a task and to rounds that changed more than the threads asked; `off`: only when a review asks for one. Also the Drafts page's **Guides in this repository** switch. `stet status` tells the agent which (`guide`: `requested`, `on` or `off`) |
 
 The "Editor" button runs the command in `STET_EDITOR`, set in the environment of `stet serve`, e.g.
 `STET_EDITOR="zed {file}:{line}" stet serve` (`{file}`, `{line}`, `{root}`, `{path}`; no shell is involved).

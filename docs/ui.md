@@ -136,7 +136,9 @@ In the Guide tab: `}` / `{` next / previous step, `Enter` opens the step's first
 into the lines, `Esc` or `Space u g` back to the Diff. The agent reads it back with `stet guide [N]`.
 
 When the agent writes one: by default (`agent.guide` `on`) for the first version of a task and for a round that
-changed more than the threads asked; with `stet config set agent.guide off`, only when you ask. To ask, tick **ask
+changed more than the threads asked; with guides off, only when you ask. The switch **Guides in this repository: on |
+off** on the Drafts page sets it for every review of the repository (`stet config set agent.guide off` does the same;
+another open page shows the change once it reloads the review, on its next change or a reload). To ask, tick **ask
 the agent for a guide to the next version** under the Drafts page's buttons (or `stet review submit --guide`): it
 goes with that review only, and the agent writes the guide whatever the size of the version. A version that
 brings a guide you asked for opens on the Guide tab the first time it is on the right; after that the tab stays as
@@ -285,7 +287,8 @@ With drafts it asks whether they go along as nits (the agent fixes them without 
 request for changes; with other threads still open, whether to leave them open or resolve them all first
 (`j` / `k` and `Enter` pick, `Esc` cancels). `S` on the page does what its key mark shows: it requests changes
 when there are drafts and approves when there are none. Under the buttons, **ask the agent for a guide to the next
-version** goes with Request changes ([the agent's guide](#the-agents-guide-to-a-version-experimental)).
+version** goes with Request changes, and **Guides in this repository: on | off** turns the agent's guides on or off
+for the repository; the box still asks for one when they are off ([the agent's guide](#the-agents-guide-to-a-version-experimental)).
 
 After an approval the header says **approved at v3**, and **approved at v3 · changed after** once a newer
 version exists or the working tree differs from v3 (a click shows what changed since). The agent sees the

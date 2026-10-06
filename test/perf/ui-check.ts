@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Bidi } from "./bidi.ts";
 import { card as pngCard } from "../helpers/png.ts";
+import { Store } from "../../src/core/store/db.ts";
 
 const ROOT = join(import.meta.dir, "..", "..");
 const CLI = join(ROOT, "src", "cli.ts");
@@ -1965,6 +1966,29 @@ try {
       "asked for at submit: stet status tells the agent (guide: requested); the version that answers opens on the Guide tab, a test of 120 lines folded, and once left for the diff it stays there",
       guideAsked === "requested" && answer.guideRequested === true && openedOnGuide?.title === "Eleven" && openedOnGuide.folded && openedOnGuide.bar === "▸ show 120 lines" && stayedOnDiff === true,
       { guideAsked, answer, openedOnGuide, stayedOnDiff },
+    );
+
+    const guidesSetting = () => {
+      const store = new Store(join(repo, ".git", "stet", "review.db"));
+      try {
+        return store.meta("agent.guide");
+      } finally {
+        store.db.close();
+      }
+    };
+    const guidesSwitch = `[...document.querySelectorAll(".guide-setting button")].map(x => x.textContent + (x.classList.contains("on") ? "*" : "")).join()`;
+    await b.eval(`location.hash = "#/drafts"; true`);
+    const switchBefore = await waitFor(`document.querySelector(".guide-setting") ? ${guidesSwitch} : null`, 5000);
+    await b.eval(`[...document.querySelectorAll(".guide-setting button")].find(x => x.textContent === "off").click(); true`);
+    const switchOff = await waitFor(`${guidesSwitch} === "on,off*" ? ${guidesSwitch} : null`, 5000);
+    const storedOff = guidesSetting();
+    await b.eval(`[...document.querySelectorAll(".guide-setting button")].find(x => x.textContent === "on").click(); true`);
+    const switchOn = await waitFor(`${guidesSwitch} === "on*,off" ? ${guidesSwitch} : null`, 5000);
+    const storedOn = guidesSetting();
+    check(
+      "the Drafts page's switch turns guides off and on for the repository: agent.guide in its settings",
+      switchBefore === "on*,off" && !!switchOff && storedOff === "off" && !!switchOn && storedOn === "on",
+      { switchBefore, switchOff, storedOff, switchOn, storedOn },
     );
 
     // a step whose lines the diff viewer gets without the changes around them, which add lines above and below
