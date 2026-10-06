@@ -51,7 +51,8 @@ gets the image with the area framed and the area at full size as PNG files (`ste
 
 A Markdown file shows rendered. Like its code, it shows what changed with the text around it (the blocks the code's
 hunks touch) and folds the rest into bars: whole blocks, and in a long list or table the items or rows, with the
-table's header again below a bar. **show above** and **show below** on a bar open about 20 more lines of it, in whole
+table's header again below a bar. A bar counts the lines it folds, the blank ones around its blocks too, so it says
+what the code's bar over the same lines says. **show above** and **show below** on a bar open about 20 more lines of it, in whole
 blocks, from its top or its bottom, and **show all N** opens all of it. The bars of the code open lines the same way,
 and the two views share what is open: lines opened in one show in the other. **full file** on the file's header shows
 the whole file, rendered and as code, while the page is open; like the switch below, the old view fades out over the
