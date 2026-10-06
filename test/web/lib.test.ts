@@ -3,6 +3,7 @@ import type { ThreadDetail } from "../../src/core/types.ts";
 import { thread } from "../helpers/threads.ts";
 import { applyFilters, DEFAULT_FILTERS, matchesFile } from "../../web/lib/filters.ts";
 import { compareOrder, stepFile, stepThread, stepUnread } from "../../web/lib/nav.ts";
+import { threadMarks } from "../../web/lib/marks.ts";
 import { filePatch, regionDiff, regionPatch } from "../../web/lib/region.ts";
 import { parseHash, routeHash, takeToken } from "../../web/lib/route.ts";
 import { diffPair } from "../../web/lib/timeline.ts";
@@ -213,5 +214,25 @@ describe("routes", () => {
     expect(takeToken("#/?review=2&token=ab12")).toEqual({ token: "ab12", hash: "#/?review=2" });
     expect(takeToken("#/overview?token=ab12&review=3")).toEqual({ token: "ab12", hash: "#/overview?review=3" });
     expect(takeToken("#/compare/1..2")).toBeNull();
+  });
+});
+
+describe("thread marks", () => {
+  const ours = { threadId: 1, side: "additions" as const, range: { start: 49, end: 52 } };
+  const theirs = { threadId: 2, side: "additions" as const, range: { start: 50, end: 51 } };
+  const tags = (marks: ReturnType<typeof threadMarks>) => marks.map((m) => `${m.tag}:${m.start}-${m.end}${m.label ? ` ${m.label}` : ""}`);
+
+  test("the focused thread is marked stronger than the others", () => {
+    expect(tags(threadMarks([ours, theirs], 1, null))).toEqual(["focus:49-52", "thread:50-51"]);
+    expect(tags(threadMarks([ours, theirs], null, null))).toEqual(["thread:49-52", "thread:50-51"]);
+  });
+
+  test("the thread in the spotlight is framed with its number, flashes at first, and the others are dimmed", () => {
+    expect(tags(threadMarks([ours, theirs], 1, { id: 1, flash: true }))).toEqual(["spot:49-52 #1", "spot-first:49-49", "spot-last:52-52", "flash:49-52", "dim:50-51"]);
+    expect(tags(threadMarks([ours, theirs], 1, { id: 2, flash: false }))).toEqual(["dim:49-52", "spot:50-51 #2", "spot-first:50-50", "spot-last:51-51"]);
+  });
+
+  test("a thread in the spotlight in another file dims nothing here", () => {
+    expect(tags(threadMarks([ours, theirs], 1, { id: 7, flash: false }))).toEqual(["focus:49-52", "thread:50-51"]);
   });
 });

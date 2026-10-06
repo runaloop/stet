@@ -13,10 +13,13 @@ import {
   cursor,
   cursorLayer,
   cursorSpace,
+  hoverThread,
   leaveCode,
   markdownView,
   pendingLines,
   setCursor,
+  spotted,
+  spotThread,
   threadCode,
   threadNav,
   visualAnchor,
@@ -39,7 +42,7 @@ import { stepThread, stepUnread } from "../lib/nav.ts";
 import { isMarkdown } from "../lib/markdown.ts";
 import { contextPatch, filePatch, regionPatch } from "../lib/region.ts";
 import { snapshot, visibleBox, type Fade } from "../lib/fade.ts";
-import { drawnLines } from "../lib/marks.ts";
+import { drawnLines, threadMarks, type ThreadLines } from "../lib/marks.ts";
 import { CHUNK, expansionOf, hydrateSubset, NOTHING, revealedPatch, textLines, withSpan, type Reveal } from "../lib/reveal.ts";
 import type { Cursor, CursorFile, LineRange, NavBlock, Seen, Span } from "../lib/cursor.ts";
 import type { Side } from "../lib/search.ts";
@@ -66,9 +69,15 @@ import {
 } from "../state.ts";
 import { PeekView } from "./Peek.tsx";
 
+/** Pointing at a thread's card puts it in the spotlight. */
+const hoverProps = (id: number) => ({
+  onMouseEnter: () => (hoverThread.value = id),
+  onMouseLeave: () => hoverThread.value === id && (hoverThread.value = null),
+});
+
 function Marker({ id, step }: { id: number; step: TimelineStepDto }) {
   return (
-    <div class="anno-focus thread-marker">
+    <div class={`anno-focus thread-marker${spotted.value?.id === id ? " spot" : ""}`} {...hoverProps(id)}>
       ▲ thread #{id} · {step.label} · <StateBadge state={step.state} label={step.index === 0 ? "written here" : step.state} />
     </div>
   );
@@ -87,15 +96,36 @@ function hydrated(patch: string, key: string, oldFile: { name: string; contents:
   return hydrateSubset(fd, oldFile, newFile);
 }
 
+/** The box that scrolls the code: its column on a wide screen, else none (the page). */
+function scrollerOf(el: Element): HTMLElement | null {
+  let box = el.parentElement;
+  while (box && !(box.scrollHeight > box.clientHeight && /auto|scroll/.test(getComputedStyle(box).overflowY))) box = box.parentElement;
+  return box;
+}
+
+/** The part of the screen a scroller shows. */
+function viewOf(box: Element | null): { top: number; bottom: number } {
+  const r = box ? box.getBoundingClientRect() : { top: 0, bottom: innerHeight };
+  return { top: Math.max(0, r.top), bottom: Math.min(innerHeight, r.bottom) };
+}
+
 /** Brings the thread's blocks to the middle of the code, when asked or when they are out of sight. */
 function reveal(host: HTMLElement | null, always: boolean): void {
   const el = host?.querySelector(".md-thread-focus");
   if (!host || !el) return;
-  let box = host.parentElement;
-  while (box && !(box.scrollHeight > box.clientHeight && /auto|scroll/.test(getComputedStyle(box).overflowY))) box = box.parentElement;
-  const view = box?.getBoundingClientRect() ?? { top: 0, bottom: innerHeight };
+  const view = viewOf(scrollerOf(host));
   const r = el.getBoundingClientRect();
   if (always || r.top < view.top || r.bottom > view.bottom) el.scrollIntoView({ block: "center", behavior: "instant" as ScrollBehavior });
+}
+
+/** Whether the thread's lines are off screen, which shows the button that brings them back. */
+const rangeAway = signal(false);
+/** Brings the code back to the thread's lines and puts them in the spotlight; false when the code does not show them. */
+const backToCode: { current: (() => boolean) | null } = { current: null };
+
+export function showThreadCode(): boolean {
+  if (!backToCode.current?.()) notify("the code shown here has no lines of this thread");
+  return true;
 }
 
 const refOf = (s: TimelineStepDto) => (s.kind === "now" ? "now" : /^v\d+$/.test(s.label) ? s.label.slice(1) : s.sha);
@@ -312,6 +342,77 @@ function CodeBlock({ d, from, to }: { d: Detail; from: TimelineStepDto; to: Time
     };
   }, []);
 
+  // The thread's lines (its blocks, rendered) as drawn, for going back to them and for the button that does it.
+  const rangeElements = (): Element[] => {
+    const range = to.range;
+    const host = body.current;
+    if (!range || !host) return [];
+    if (rendered) return [...host.querySelectorAll(`[data-threads~="${d.thread.id}"]`)];
+    const code = host.querySelector("diffs-container");
+    return code ? drawnLines(code).filter((r) => r.at.some(([s, n]) => s === "additions" && n >= range.start && n <= range.end)).map((r) => r.el) : [];
+  };
+  const backAfterDraw = useRef(false);
+  const back = (): boolean => {
+    const els = rangeElements();
+    if (els.length === 0) {
+      if (scope !== "changes" || !to.range) return false;
+      // every change of the file may leave the thread's lines out: around the thread has them
+      backAfterDraw.current = true;
+      setScope("region");
+      return true;
+    }
+    const box = body.current && scrollerOf(body.current);
+    const view = viewOf(box);
+    const top = els[0]!.getBoundingClientRect().top;
+    const bottom = els[els.length - 1]!.getBoundingClientRect().bottom;
+    const by = bottom - top > view.bottom - view.top - 80 ? top - view.top - 40 : (top + bottom - view.top - view.bottom) / 2;
+    (box ?? window).scrollBy({ top: by, behavior: "instant" as ScrollBehavior });
+    const at = cursorSpace.peek().locate(to.path!, "additions", to.range!.start);
+    if (at) cursor.value = at;
+    spotThread(d.thread.id);
+    return true;
+  };
+  const place = useRef({ rangeElements, back });
+  place.current = { rangeElements, back };
+  useEffect(() => {
+    if (!to.range) return;
+    const own = () => place.current.back();
+    backToCode.current = own;
+    let frame = 0;
+    const check = () => {
+      frame = 0;
+      const els = place.current.rangeElements();
+      const view = viewOf(body.current && scrollerOf(body.current));
+      rangeAway.value = !els.some((el) => {
+        const r = el.getBoundingClientRect();
+        return r.bottom > view.top && r.top < view.bottom;
+      });
+    };
+    const soon = () => void (frame ||= requestAnimationFrame(check));
+    document.addEventListener("scroll", soon, { capture: true, passive: true });
+    window.addEventListener("resize", soon);
+    // the code is also drawn anew without a scroll: another scope or step, more lines, rendered or not
+    const timer = setInterval(soon, 1000);
+    soon();
+    return () => {
+      if (backToCode.current === own) backToCode.current = null;
+      document.removeEventListener("scroll", soon, { capture: true });
+      window.removeEventListener("resize", soon);
+      clearInterval(timer);
+      cancelAnimationFrame(frame);
+      rangeAway.value = false;
+    };
+  }, [!!to.range]);
+  useEffect(() => {
+    if (!backAfterDraw.current || scope !== "region" || !file) return;
+    const frame = requestAnimationFrame(() => {
+      if (place.current.rangeElements().length === 0) return;
+      backAfterDraw.current = false;
+      place.current.back();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [file, scope, stops]);
+
   const p = pendingLines.value;
   const mine = p && p.path === to.path ? p : null;
   const mineSide: Side = mine?.range.side === "deletions" ? "deletions" : "additions";
@@ -331,14 +432,15 @@ function CodeBlock({ d, from, to }: { d: Detail; from: TimelineStepDto; to: Time
     [toEnd, mine, othersKey],
   );
   const selected = useMemo(() => (mine ? { start: lo(mine.range), end: hi(mine.range), side: mineSide } : null), [mine]);
-  const marks = useMemo(
-    () => [
-      ...others.map((x) => ({ side: "additions" as const, start: x.range.start, end: x.range.end, tag: "thread" })),
-      ...(to.range ? [{ side: "additions" as const, start: to.range.start, end: to.range.end, tag: "focus" }] : []),
-      ...(!single && from.range ? [{ side: "deletions" as const, start: from.range.start, end: from.range.end, tag: "thread" }] : []),
-    ],
-    [to.range?.start, to.range?.end, from.range?.start, from.range?.end, single, othersKey],
-  );
+  const spot = spotted.value;
+  const marks = useMemo(() => {
+    const placed: ThreadLines[] = [
+      ...(to.range ? [{ threadId: d.thread.id, side: "additions" as const, range: to.range }] : []),
+      ...(!single && from.range ? [{ threadId: d.thread.id, side: "deletions" as const, range: from.range }] : []),
+      ...others.map((x) => ({ threadId: x.threadId, side: "additions" as const, range: x.range })),
+    ];
+    return threadMarks(placed, d.thread.id, spot);
+  }, [to.range?.start, to.range?.end, from.range?.start, from.range?.end, single, othersKey, spot?.id, spot?.flash]);
   const layer = codeFocus.value && to.path ? cursorLayer.value.get(to.path) : undefined;
   const shownMarks = useMemo(() => (layer ? [...marks, ...layer] : marks), [marks, layer]);
 
@@ -637,6 +739,24 @@ function StateStrip({ d }: { d: Detail }) {
   );
 }
 
+/** The thread's card over its messages: pointing at it marks the thread's lines, and its button brings them back in view. */
+function ThreadPlace({ d }: { d: Detail }) {
+  const t = d.thread;
+  const path = t.anchor.path ?? t.path;
+  return (
+    <div class={`thread-place${spotted.value?.id === t.id ? " spot" : ""}`} {...hoverProps(t.id)}>
+      <b>#{t.id}</b>
+      <span class="path" title={path}>{path.split("/").pop()}:{rangeText(t.anchor.range ?? t.range)}</span>
+      <span class="spacer" />
+      {rangeAway.value ? (
+        <button class="btn small to-code" title="the thread's lines in the code, marked" onClick={() => void showThreadCode()}>
+          ↩ to the code <Kbd>gt</Kbd>
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 export function ThreadDetailView({ id }: { id: number }) {
   const d = detail.value;
   const rid = reviewId.value;
@@ -645,6 +765,7 @@ export function ThreadDetailView({ id }: { id: number }) {
 
   useEffect(() => {
     compareFocus.value = id;
+    hoverThread.value = null;
   }, [id]);
 
   useEffect(() => {
@@ -717,7 +838,7 @@ export function ThreadDetailView({ id }: { id: number }) {
           {next !== null && next !== t.id ? <a class="btn ghost small" {...link({ name: "thread", id: next })}>next <Kbd>j</Kbd> ›</a> : <button class="btn ghost small" disabled>next <Kbd>j</Kbd> ›</button>}
           {unread !== null ? <a class="btn ghost small" {...link({ name: "thread", id: unread })}>next unread <Kbd>n</Kbd></a> : <button class="btn ghost small" disabled>next unread <Kbd>n</Kbd></button>}
           <span class="hint">
-            <Kbd>[</Kbd> <Kbd>]</Kbd> timeline step · <Kbd>t</Kbd> diff / then / at step · <Kbd>r</Kbd> reply · <Kbd>x</Kbd> resolve · <Kbd>/</Kbd> search files · <Kbd>Ctrl+O</Kbd> jump back · <Kbd>Esc</Kbd> back
+            <Kbd>[</Kbd> <Kbd>]</Kbd> timeline step · <Kbd>t</Kbd> diff / then / at step · <Kbd>gt</Kbd> to its lines · <Kbd>r</Kbd> reply · <Kbd>x</Kbd> resolve · <Kbd>/</Kbd> search files · <Kbd>Ctrl+O</Kbd> jump back · <Kbd>Esc</Kbd> back
           </span>
         </div>
       </div>
@@ -737,6 +858,7 @@ export function ThreadDetailView({ id }: { id: number }) {
         swap={{ title: `conversation to the ${left ? "right" : "left"} of the code · Space u l`, run: () => toggleSwap("thread") }}
       />
       <div class="thread-msgs" ref={msgs}>
+        {t.region ? null : <ThreadPlace d={d} />}
         <Conversation detail={d} />
         <Composer
           key={`reply-${t.id}`}

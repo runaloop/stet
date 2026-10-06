@@ -1,14 +1,18 @@
-import type { AnchorState } from "../../src/core/types.ts";
-import { hoverThread } from "../compare.ts";
+import type { AnchorState, ThreadSummary } from "../../src/core/types.ts";
+import { hoverThread, spotted } from "../compare.ts";
 import { compareFocus, link, navigate, threads } from "../state.ts";
 import { Badge, StateBadge } from "./Bits.tsx";
+
+const fileOf = (t: ThreadSummary | undefined) => t && (t.anchor.path ?? t.path);
 
 export function ThreadMini({ id, state }: { id: number; state: string }) {
   const t = threads.value.find((x) => x.id === id);
   if (!t) return null;
+  const spot = spotted.value;
+  const lit = spot === null ? "" : spot.id === id ? " spot" : fileOf(threads.value.find((x) => x.id === spot.id)) === fileOf(t) ? " dim" : "";
   return (
     <a
-      class={`thread-mini${compareFocus.value === id ? " focused" : ""}${t.status === "resolved" ? " resolved" : ""}`}
+      class={`thread-mini${compareFocus.value === id ? " focused" : ""}${t.status === "resolved" ? " resolved" : ""}${lit}`}
       data-thread={id}
       onMouseEnter={() => (hoverThread.value = t.id)}
       onMouseLeave={() => hoverThread.value === t.id && (hoverThread.value = null)}

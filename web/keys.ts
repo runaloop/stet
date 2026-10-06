@@ -22,6 +22,7 @@ import {
   searchScope,
   setCursor,
   sideTab,
+  spotThread,
   stepHit,
   threadCode,
   visualAnchor,
@@ -67,7 +68,7 @@ import { resetLayout, swapped, toggleSwap, type SwapPage } from "./layout.ts";
 import { findUsages } from "./usages.ts";
 import { question } from "./components/Choice.tsx";
 import { approveReview, submitReview } from "./views/Drafts.tsx";
-import { openExternal, reopenCurrent, resolveCurrent } from "./views/ThreadDetail.tsx";
+import { openExternal, reopenCurrent, resolveCurrent, showThreadCode } from "./views/ThreadDetail.tsx";
 
 /** `code`: a thread's code or the Guide tab's lines while they have the focus; there these come before the page's own keys. */
 export type Where = "compare" | "guide" | "thread" | "code" | "drafts" | "everywhere";
@@ -321,6 +322,19 @@ function toThread(dir: 1 | -1): boolean {
   return true;
 }
 
+function backToThread(): boolean {
+  const id = compareFocus.value;
+  if (id === null || !compareHandle.current?.scrollToThread(id)) {
+    notify("no thread to go back to: open one, or step to one with ]t");
+    return true;
+  }
+  spotThread(id);
+  const p = compareHandle.current.order.find((x) => x.threadId === id);
+  const at = p ? cursorSpace.value.locate(p.path, p.side, p.range.start) : null;
+  if (at) cursor.value = at;
+  return true;
+}
+
 function reviewAction(): boolean {
   if (route.value.name !== "drafts") navigate({ name: "drafts" });
   else if (drafts.value.length > 0) void submitReview();
@@ -381,6 +395,7 @@ export const BINDINGS: Binding[] = [
   { keys: "H", desc: "previous file", where: "compare", run: (n) => repeat(n, -1, (c) => cursorSpace.value.nextFile(c, -1)) },
   { keys: "]t", desc: "next thread on this diff", where: "compare", run: () => toThread(1) },
   { keys: "[t", desc: "previous thread on this diff", where: "compare", run: () => toThread(-1) },
+  { keys: "gt", desc: "back to the thread last opened or stepped to, marked in the code", where: "compare", run: backToThread },
   { keys: "]u", desc: "next unread thread", where: "compare", run: () => unread(1) },
   { keys: "[u", desc: "previous unread thread", where: "compare", run: () => unread(-1) },
   { keys: "n", desc: "next search match (no search: next unread thread)", where: "compare", run: () => (searching() ? stepHit(1) || true : unread(1)) },
@@ -484,6 +499,7 @@ export const BINDINGS: Binding[] = [
     if (peek.value) peek.value = null;
     else navigate(lastCompare.value ? { name: "compare", ...lastCompare.value } : { name: "home" });
   }) },
+  { keys: "gt", desc: "back to the thread's lines in the code, marked", where: "thread", run: showThreadCode },
   { keys: "V", desc: "into the code: select lines from the cursor, at first on the thread's lines", where: "thread", run: intoCode(visual) },
   { keys: "i", desc: "into the code: comment on the cursor line, at first the thread's first line", where: "thread", run: intoCode(comment) },
   { keys: "a", desc: "into the code: comment (same as i)", where: "thread", run: intoCode(comment) },

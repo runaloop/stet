@@ -23,6 +23,7 @@ import {
   setCursor,
   setFileBlocks,
   shownPlacements,
+  spotted,
   visualAnchor,
 } from "../compare.ts";
 import { paintTextHits } from "../lib/marks.ts";
@@ -583,6 +584,31 @@ export function RenderedMarkdown({ file, fd, old, now, split: splitWanted, threa
     for (const el of g.querySelectorAll(".md-thread-focus")) el.classList.remove("md-thread-focus");
     if (focus !== null) for (const el of g.querySelectorAll(`[data-threads~="${focus}"]`)) el.classList.add("md-thread-focus");
   }, [focus, layout, placedKey]);
+
+  // The thread in the spotlight: its blocks in its colour with its number on the first of them in each column, the
+  // other threads' blocks dimmed.
+  const spot = spotted.value;
+  useLayoutEffect(() => {
+    const g = grid.current;
+    if (!g || !spot) return;
+    const lit = [...g.querySelectorAll<HTMLElement>(`[data-threads~="${spot.id}"]`)];
+    if (lit.length === 0) return;
+    const dim = [...g.querySelectorAll<HTMLElement>(".md-thread")].filter((el) => !lit.includes(el));
+    const labels = new Map<string, HTMLElement>();
+    for (const el of lit) {
+      el.classList.add("md-thread-spot");
+      if (spot.flash) el.classList.add("md-thread-flash");
+      const column = el.closest<HTMLElement>(".md-cell")?.dataset.side ?? "";
+      if (!labels.has(column)) labels.set(column, /^(TR|THEAD|TBODY)$/.test(el.tagName) ? (el.querySelector<HTMLElement>("th, td") ?? el) : el);
+    }
+    for (const el of labels.values()) el.dataset.spot = `#${spot.id}`;
+    for (const el of dim) el.classList.add("md-thread-dim");
+    return () => {
+      for (const el of lit) el.classList.remove("md-thread-spot", "md-thread-flash");
+      for (const el of labels.values()) delete el.dataset.spot;
+      for (const el of dim) el.classList.remove("md-thread-dim");
+    };
+  }, [spot?.id, spot?.flash, layout, placedKey]);
 
   useLayoutEffect(() => {
     const g = grid.current;

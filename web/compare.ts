@@ -1,9 +1,9 @@
 import { hydratePartialDiff, parsePatchFiles, type FileDiffMetadata, type SelectedLineRange } from "@pierre/diffs";
 import { computed, effect, signal } from "@preact/signals";
-import type { CompareDto, GrepResultDto, Region } from "../src/core/types.ts";
+import type { CompareDto, ComparePlacement, GrepResultDto, Region } from "../src/core/types.ts";
 import { DEFAULT_COLLAPSE_GLOBS, DEFAULT_SKIP_MARKERS, foldOf, isTestPath, parseList, viewedKey, type FoldDecision, type FoldGroup } from "./lib/fold.ts";
 import { groupTitle } from "./lib/order.ts";
-import type { LineMark } from "./lib/marks.ts";
+import { threadMarks, type LineMark, type Spot } from "./lib/marks.ts";
 import { CursorSpace, rowPosition, type Cursor, type CursorFile, type LineRange, type NavBlock, type Seen } from "./lib/cursor.ts";
 import { isMarkdown } from "./lib/markdown.ts";
 import { NOTHING, revealedPatch, type Reveal } from "./lib/reveal.ts";
@@ -156,6 +156,21 @@ effect(() => {
   landTab();
 });
 export const hoverThread = signal<number | null>(null);
+/** A thread the code was just brought back to: marked for a few seconds, with a flash at first. */
+export const spotlight = signal<Spot | null>(null);
+/** The thread marked unmistakably in the code: the one whose card is hovered, else the one just gone back to. */
+export const spotted = computed<Spot | null>(() => {
+  const hover = hoverThread.value;
+  const back = spotlight.value;
+  return hover === null || hover === back?.id ? back : { id: hover, flash: false };
+});
+let spotTimers: ReturnType<typeof setTimeout>[] = [];
+
+export function spotThread(id: number): void {
+  for (const t of spotTimers) clearTimeout(t);
+  spotlight.value = { id, flash: true };
+  spotTimers = [setTimeout(() => (spotlight.value = { id, flash: false }), 1000), setTimeout(() => (spotlight.value = null), 4000)];
+}
 export const groupsOpen = signal<{ tests: boolean; generated: boolean }>({ tests: false, generated: false });
 export const fileOpen = signal<Map<string, boolean>>(new Map());
 
@@ -505,10 +520,11 @@ export const marksByPath = computed(() => {
     if (list) list.push(mark);
     else m.set(path, [mark]);
   };
-  const focus = hoverThread.value ?? compareFocus.value;
   const linked = linkedLines.value;
   if (linked) push(linked.path, { side: linked.side, start: linked.start, end: linked.end, tag: "linked" });
-  for (const p of shownPlacements.value) push(p.path, { side: p.side, start: p.range.start, end: p.range.end, tag: p.threadId === focus ? "focus" : "thread" });
+  const byFile = new Map<string, ComparePlacement[]>();
+  for (const p of shownPlacements.value) byFile.set(p.path, [...(byFile.get(p.path) ?? []), p]);
+  for (const [path, placed] of byFile) for (const mark of threadMarks(placed, hoverThread.value ?? compareFocus.value, spotted.value)) push(path, mark);
   const grepCur = currentGrepHit.value;
   for (const h of grepHits.value) if (h.inDiff) push(h.path, { side: "additions", start: h.line, end: h.line, tag: "hit", ranges: h.ranges, current: h === grepCur });
   const cur = currentHit.value;

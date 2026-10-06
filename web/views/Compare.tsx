@@ -56,6 +56,7 @@ import {
   fileOpen,
   peek,
   sideTab,
+  spotThread,
 } from "../compare.ts";
 import { MARK_CSS, paintMarks } from "../lib/marks.ts";
 import { isMarkdown } from "../lib/markdown.ts";
@@ -1048,7 +1049,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
       } else if (compareFocus.value !== null) {
         v.scrolled = true;
         const id = compareFocus.value;
-        requestAnimationFrame(() => latest.current.scrollToThread(id));
+        requestAnimationFrame(() => latest.current.scrollToThread(id) && spotThread(id));
       }
     }
   }, [files, visible, byPath, pending, fileOpen.value, viewed.value, diffStyle.value, wrap.value, fileView.value, markdownView.value]);
@@ -1133,7 +1134,7 @@ export function stepCompareThread(dir: 1 | -1): boolean {
   const i = order.findIndex((p) => p.threadId === compareFocus.value);
   const next = order[i === -1 ? (dir === 1 ? 0 : order.length - 1) : (i + dir + order.length) % order.length]!;
   compareFocus.value = next.threadId;
-  scrollToThread(next.threadId);
+  if (scrollToThread(next.threadId)) spotThread(next.threadId);
   return true;
 }
 

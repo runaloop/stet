@@ -17,6 +17,8 @@
   --you-edge: #9b87cf;
   --draft-bg: #fdf6e9;
   --ok-bg: #eaf6ef;
+  --spot: #c8287a;
+  --spot-fill: rgb(200 40 122 / 0.12);
   --radius: 6px;
   --mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -43,6 +45,8 @@
     --you-edge: #7d6bb0;
     --draft-bg: #2a2416;
     --ok-bg: #16261d;
+    --spot: #ff6eb4;
+    --spot-fill: rgb(255 110 180 / 0.14);
   }
 }
 
@@ -210,6 +214,9 @@ body.resizing iframe, body.resizing diffs-container { pointer-events: none; }
 .body { white-space: pre-wrap; margin-top: 3px; overflow-wrap: anywhere; }
 .body code { background: var(--bg-soft); padding: 0 3px; border-radius: 3px; }
 .msgs-head { position: sticky; top: 0; z-index: 3; display: flex; gap: 6px; align-items: center; padding: 5px 0; font-size: 12px; color: var(--fg-soft); background: var(--bg); border-bottom: 1px solid var(--border); }
+.thread-place { display: flex; gap: 8px; align-items: center; min-height: 34px; margin-bottom: 6px; padding: 3px 8px; font: 12px var(--sans); background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--radius); }
+.thread-place .path { font-family: var(--mono); color: var(--fg-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thread-place.spot { border-color: var(--spot); box-shadow: inset 3px 0 0 var(--spot); }
 .msgs-head .link { font-weight: 600; color: var(--bad); }
 .msgs-head .hint { font-size: 11px; }
 .msg { border-radius: var(--radius); margin: -3px -6px; padding: 3px 6px; scroll-margin-top: 40px; }
@@ -297,6 +304,10 @@ body.resizing iframe, body.resizing diffs-container { pointer-events: none; }
 .thread-nav { flex-basis: 100%; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .thread-nav .hint { margin-left: 6px; }
 .thread-mini.focused { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: var(--bg-active); }
+.thread-mini.spot, .thread-marker.spot { box-shadow: inset 3px 0 0 var(--spot); background: var(--spot-fill); }
+.thread-mini.spot { border-color: var(--spot); }
+.thread-marker.spot { padding-left: 8px; }
+:is(.anno, .md-threads) .thread-mini.dim { opacity: 0.45; }
 .new-thread.inline { padding: 4px 0; font: 13px/1.45 var(--sans); }
 .new-thread.inline .note { padding: 2px 0 4px; }
 .new-thread.inline .composer { margin: 0; max-width: 900px; }
@@ -614,6 +625,14 @@ a.img-frame:hover, a.img-frame.hover, a.img-frame.focused { border-width: 3px; b
 .md .md-thread { --md-mark: light-dark(rgb(255 190 0 / 0.16), rgb(255 190 0 / 0.1)); }
 .md .md-thread:not(.md-changed) { --md-bar: light-dark(#e0a800, #b8900a); }
 .md .md-thread.md-thread-focus { --md-mark: light-dark(rgb(255 170 0 / 0.3), rgb(255 170 0 / 0.22)); }
+.md .md-thread.md-thread-dim { --md-mark: light-dark(rgb(140 140 140 / 0.08), rgb(160 160 160 / 0.07)); }
+.md .md-thread.md-thread-dim:not(.md-changed) { --md-bar: light-dark(rgb(140 140 140 / 0.5), rgb(160 160 160 / 0.4)); }
+.md .md-thread.md-thread-spot { --md-mark: var(--spot-fill); --md-bar: var(--spot); }
+.md .md-thread-flash { animation: md-flash 0.45s ease-in-out 2 alternate; }
+@keyframes md-flash { to { background-color: color-mix(in srgb, var(--spot) 40%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .md .md-thread-flash { animation: none; } }
+.md [data-spot] { position: relative; }
+.md [data-spot]::after { content: attr(data-spot); position: absolute; top: 0; right: 0; z-index: 1; padding: 0 6px; border-radius: 0 3px 0 4px; font: 700 11px/18px var(--sans); color: light-dark(#fff, #1a0d14); background: var(--spot); pointer-events: none; }
 .md :is(.md-changed, .md-thread):not(tr, thead, tbody) { position: relative; }
 .md :is(.md-changed, .md-thread):not(tr, thead, tbody)::before { content: ""; position: absolute; top: 0; bottom: 0; left: -11px; width: 3px; border-radius: 2px; background: var(--md-bar); }
 .md li:is(.md-changed, .md-thread) { box-shadow: calc(-2em - 8px) 0 0 var(--md-mark); }
