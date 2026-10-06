@@ -201,4 +201,21 @@ describe("the Guide tab", () => {
     expect(guide.guideOpen.value).toBe(false);
     expect(state.toast.value?.text).toContain("has no guide");
   });
+
+  test("a version whose guide the review asked for opens on the Guide tab the first time; one nobody asked for, on the diff", async () => {
+    guide.guideOpen.value = false;
+    state.status.value = { versionsList: [{ number: 1 }, { number: 2, guide: true }, { number: 3, guide: true, guideRequested: true }] } as never;
+    const to = (n: number) => {
+      compare.compareData.value = { ...DATA, from: { ref: String(n - 1), sha: "s1", label: `v${n - 1}` }, to: { ref: String(n), sha: "s2", label: `v${n}` } };
+      state.route.value = { name: "compare", from: String(n - 1), to: String(n) };
+    };
+    to(2);
+    expect(guide.guideOpen.value).toBe(false);
+    to(3);
+    expect(guide.guideOpen.value).toBe(true);
+    guide.guideOpen.value = false;
+    to(2);
+    to(3);
+    expect(guide.guideOpen.value).toBe(false);
+  });
 });

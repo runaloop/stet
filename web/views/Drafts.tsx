@@ -4,15 +4,18 @@ import { api } from "../api.ts";
 import { Body, Kbd } from "../components/Bits.tsx";
 import { ask } from "../components/Choice.tsx";
 import { RestoreBlock } from "../components/Restore.tsx";
-import { drafts, guard, lastCompare, link, loadDrafts, navigate, notify, reloadAll, reviewId, threads, versions } from "../state.ts";
+import { drafts, guard, lastCompare, link, loadDrafts, navigate, notify, reloadAll, reviewId, status, threads, versions } from "../state.ts";
 
 /** The summary for the whole review: kept while you move around, so S sends it too. */
 const summary = signal("");
+/** Ask the agent for a guide to the next version, with this review only. */
+const askGuide = signal(false);
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 async function afterSubmit(): Promise<void> {
   summary.value = "";
+  askGuide.value = false;
   await reloadAll();
   if (lastCompare.value) navigate({ name: "compare", ...lastCompare.value });
 }
@@ -24,9 +27,9 @@ export async function submitReview(body = summary.value): Promise<boolean> {
     notify("no drafts to submit", "error");
     return false;
   }
-  const r = await guard(api.submit(rid, body));
+  const r = await guard(api.submit(rid, body, askGuide.value ? { guide: true } : {}));
   if (!r) return false;
-  notify(`changes requested: ${plural(r.comments, "comment")} in ${plural(r.threads.length, "thread")} went to the agent`);
+  notify(`changes requested: ${plural(r.comments, "comment")} in ${plural(r.threads.length, "thread")} went to the agent${r.guide ? ", with a request for a guide to the next version" : ""}`);
   await afterSubmit();
   return true;
 }
@@ -135,6 +138,17 @@ export function DraftsView() {
           ✓ Approve{latest ? ` v${latest}` : ""} {list.length ? null : <Kbd>S</Kbd>}
         </button>
       </div>
+      <label
+        class={`ask-guide${list.length ? "" : " off"}`}
+        title={`with Request changes: the agent explains its next version in a few steps, each with its lines, shown in the Guide tab (experimental). ${
+          status.value?.guide === "off"
+            ? "agent.guide is off: without this the agent writes none"
+            : "Without this the agent writes one only when the round changes more than the threads ask (agent.guide on)"
+        }`}
+      >
+        <input type="checkbox" disabled={list.length === 0} checked={askGuide.value} onChange={(e) => (askGuide.value = (e.target as HTMLInputElement).checked)} /> ask the agent for
+        a guide to the next version
+      </label>
     </div>
   );
 }

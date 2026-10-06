@@ -329,7 +329,7 @@ describe("which range opens by default", () => {
 });
 
 describe("request changes or approve", () => {
-  const submits: { body: string; verdict?: string; open?: string }[] = [];
+  const submits: { body: string; verdict?: string; open?: string; guide?: boolean }[] = [];
   let serverDrafts: unknown[] = [];
   const review = {
     versions: 2,
@@ -437,6 +437,23 @@ describe("request changes or approve", () => {
     expect(key("S")).toBe(true);
     await tick(60);
     expect(dialog()).toBeNull();
+    expect(submits).toEqual([{ body: "" }]);
+  });
+
+  test("a request for changes can ask for a guide to the next version, for that review only", async () => {
+    await show([], []);
+    const box = () => host.querySelector<HTMLInputElement>(".ask-guide input")!;
+    expect(box().disabled).toBe(true);
+    await show([], [draft(6)]);
+    box().click();
+    await tick();
+    expect(key("S")).toBe(true);
+    await tick(60);
+    expect(submits).toEqual([{ body: "", guide: true }]);
+    await show([], [draft(7)]);
+    expect(box().checked).toBe(false);
+    expect(key("S")).toBe(true);
+    await tick(60);
     expect(submits).toEqual([{ body: "" }]);
   });
 });

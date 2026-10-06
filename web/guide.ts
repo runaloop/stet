@@ -1,8 +1,8 @@
-import { computed, signal } from "@preact/signals";
+import { computed, effect, signal } from "@preact/signals";
 import type { GuideDto } from "../src/core/types.ts";
 import { api } from "./api.ts";
 import { compareData, compareNav } from "./compare.ts";
-import { navigate, notify, route, routeHash, versions, type Route } from "./state.ts";
+import { navigate, notify, reviewId, route, routeHash, versions, type Route } from "./state.ts";
 
 /**
  * The Guide tab of the Changes page (experimental): the agent's guide to the version on the right, over the diff. The
@@ -22,6 +22,22 @@ export const guideVersion = computed(() => {
 });
 
 export const guideShown = computed(() => guideOpen.value && guideVersion.value !== null);
+
+// A version whose guide the reviewer asked for opens on the Guide tab the first time it is on the right; after that
+// the tab stays as the reader left it.
+effect(() => {
+  const n = guideVersion.value;
+  const rid = reviewId.peek();
+  if (n === null || rid === null || !versions.peek().find((v) => v.number === n)?.guideRequested) return;
+  const key = `stet.guideShown.${rid}.${n}`;
+  try {
+    if (localStorage.getItem(key)) return;
+    localStorage.setItem(key, "1");
+  } catch {
+    return;
+  }
+  guideOpen.value = true;
+});
 
 export function toggleGuide(): boolean {
   if (guideVersion.value === null) notify("the version on the right has no guide: the agent writes one with stet version create --guide");
