@@ -1,3 +1,4 @@
+import { hydratePartialDiff, type FileDiffMetadata } from "@pierre/diffs";
 import type { Span } from "./cursor.ts";
 
 /**
@@ -109,20 +110,65 @@ export function textLines(text: string): { lines: string[]; eol: boolean } {
 }
 
 /**
- * The old version to draw a patch of some of a file's changes with. Past the patch's last hunk a change it leaves out
- * makes the two versions differ in length, which the diff viewer refuses ("trailing context mismatch"); there the old
- * version takes the new one's lines, so the bar below counts lines of the new version, as `gapsOf` does. Unchanged when
- * the lengths agree.
+ * A diff of some of a file's changes (a guide step's lines, a thread's region) with both versions' lines, ready to
+ * draw. The diff viewer reads the unchanged lines before each hunk as equally long on both sides, highlights every
+ * line of a side in one pass and takes a drawn line by its place in that pass; past the last hunk it wants both sides
+ * equally long. A change the patch leaves out breaks all of that: it read the old version before its start or past
+ * its end, every old line after came out shifted (a word diff on another line), or it refused the diff ("trailing
+ * context mismatch"). Then both sides get lines of their own: before each hunk as many unchanged lines as both
+ * versions have there, the hunk's own lines, after the last one the new version's rest, and the hunks point at them.
+ * Their numbers stay those of each version: they are what is shown and what comments anchor by. The bars between
+ * hunks count those lines; the lines they open come through `onExpand`, which counts the new version's.
  */
-export function evenTail(oldText: string, newText: string, last: HunkShape | undefined): string {
-  if (!last) return oldText;
-  const a = textLines(oldText);
-  const b = textLines(newText);
-  const oldEnd = firstLine(last.deletionStart, last.deletionCount) + last.deletionCount - 1;
-  const newEnd = firstLine(last.additionStart, last.additionCount) + last.additionCount - 1;
-  if (a.lines.length - oldEnd === b.lines.length - newEnd) return oldText;
-  const lines = [...a.lines.slice(0, oldEnd), ...b.lines.slice(newEnd)];
-  return lines.length ? lines.join("\n") + (b.eol ? "\n" : "") : "";
+export function hydrateSubset(fd: FileDiffMetadata, oldFile: { name: string; contents: string }, newFile: { name: string; contents: string }): FileDiffMetadata {
+  let full: FileDiffMetadata;
+  try {
+    full = hydratePartialDiff("clone", fd, { oldFile, newFile } as never);
+  } catch {
+    return fd;
+  }
+  const starts = full.hunks.map((h) => ({ old: firstLine(h.deletionStart, h.deletionCount) - 1, now: firstLine(h.additionStart, h.additionCount) - 1 }));
+  const ends = full.hunks.map((h, i) => ({ old: starts[i]!.old + h.deletionCount, now: starts[i]!.now + h.additionCount }));
+  const gaps = starts.map((s, i) => ({ old: s.old - (ends[i - 1]?.old ?? 0), now: s.now - (ends[i - 1]?.now ?? 0) }));
+  const end = ends.at(-1) ?? { old: 0, now: 0 };
+  const tail = full.additionLines.length - end.now;
+  if (gaps.every((g) => g.old === g.now) && full.deletionLines.length - end.old === tail) return full;
+  const old: string[] = [];
+  const now: string[] = [];
+  let split = 0;
+  let unified = 0;
+  const hunks = full.hunks.map((h, i) => {
+    const s = starts[i]!;
+    const gap = Math.min(gaps[i]!.old, gaps[i]!.now);
+    old.push(...full.deletionLines.slice(s.old - gap, s.old));
+    now.push(...full.additionLines.slice(s.now - gap, s.now));
+    const at = { old: old.length, now: now.length };
+    old.push(...full.deletionLines.slice(s.old, s.old + h.deletionCount));
+    now.push(...full.additionLines.slice(s.now, s.now + h.additionCount));
+    const hunk = {
+      ...h,
+      collapsedBefore: gap,
+      deletionLineIndex: at.old,
+      additionLineIndex: at.now,
+      splitLineStart: split + gap,
+      unifiedLineStart: unified + gap,
+      hunkContent: h.hunkContent.map((c) => ({ ...c, deletionLineIndex: c.deletionLineIndex - h.deletionLineIndex + at.old, additionLineIndex: c.additionLineIndex - h.additionLineIndex + at.now })),
+    };
+    split += gap + h.splitLineCount;
+    unified += gap + h.unifiedLineCount;
+    return hunk;
+  });
+  // the rest of the new version after the last hunk on both sides, then lines nobody reads, so that each side is as
+  // long as its version says past the last hunk
+  const rest = full.additionLines.slice(end.now);
+  return {
+    ...full,
+    hunks,
+    deletionLines: [...old, ...rest, ...Array<string>(end.old - old.length).fill("\n")],
+    additionLines: [...now, ...rest, ...Array<string>(end.now - now.length).fill("\n")],
+    splitLineCount: split + tail,
+    unifiedLineCount: unified + tail,
+  };
 }
 
 const holds = (spans: readonly Span[], n: number | null) => n !== null && spans.some((s) => s.start <= n && n <= s.end);

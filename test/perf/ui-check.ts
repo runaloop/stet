@@ -1915,7 +1915,7 @@ try {
     const g10 = await guideCell(10);
     const g11 = await guideCell(11);
     await pointer([{ type: "pointerMove", x: g10.x, y: g10.y }, { type: "pointerDown", button: 0 }, { type: "pointerMove", x: g11.x, y: g11.y, duration: 100 }, { type: "pointerUp", button: 0 }]);
-    const guideBox = await waitFor(`(() => { const n = document.querySelector(".guide .guide-ref[data-key='1.0'] .new-thread .note")?.textContent; return n ? { note: n, framed: document.querySelector(".guide").classList.contains("code-focus"), typing: document.activeElement?.tagName } : null; })()`, 3000);
+    const guideBox = await waitFor(`(() => { const n = document.querySelector(".guide .guide-ref[data-key='1.0'] .new-thread .note")?.textContent; return n && document.activeElement?.tagName === "TEXTAREA" ? { note: n, framed: document.querySelector(".guide").classList.contains("code-focus"), typing: document.activeElement.tagName } : null; })()`, 3000);
     await keys(..."why ten and eleven?".split(""));
     await chord([CTRL], "s");
     const guideCard = await waitFor(`(() => { const m = document.querySelector(".guide .guide-ref[data-key='1.0'] .thread-mini:not([data-thread='${guideThread}'])"); return m && !document.querySelector(".guide .new-thread") ? +m.getAttribute("data-thread") : null; })()`, 5000);
@@ -1965,6 +1965,45 @@ try {
       "asked for at submit: stet status tells the agent (guide: requested); the version that answers opens on the Guide tab, a test of 120 lines folded, and once left for the diff it stays there",
       guideAsked === "requested" && answer.guideRequested === true && openedOnGuide?.title === "Eleven" && openedOnGuide.folded && openedOnGuide.bar === "▸ show 120 lines" && stayedOnDiff === true,
       { guideAsked, answer, openedOnGuide, stayedOnDiff },
+    );
+
+    // a step whose lines the diff viewer gets without the changes around them, which add lines above and below
+    const steps = (edit: (i: number) => string | null) => Array.from({ length: 60 }, (_, i) => edit(i + 1) ?? `val s${i + 1} = ${i + 1}`).join("\n") + "\n";
+    const line30 = "val s30 = listOf(\"thirty\", \"old\", \"value\", \"with\", \"many\", \"words\", \"on\", \"one\", \"line\")";
+    writeFileSync(join(repo, "src/Steps.kt"), steps((i) => (i === 30 ? line30 : null)));
+    run(repo, ["git", "add", "-A"]);
+    const stepsA = JSON.parse(run(repo, ["bun", CLI, "version", "create", "--label", "steps", "--json"])).version.number as number;
+    writeFileSync(join(repo, "src/Steps.kt"), steps((i) => (i === 5 ? "val a1 = 1\nval a2 = 2\nval a3 = 3\nval s5 = 5" : i === 30 ? line30.replace("old", "new") : i === 40 ? "val s40 = 40\nval b1 = 1\nval b2 = 2\nval b3 = 3\nval b4 = 4" : null)));
+    run(repo, ["git", "add", "-A"]);
+    writeFileSync(guideMd, "# Thirty\n\n1. Thirty is new.\n   src/Steps.kt:33\n");
+    const stepsB = JSON.parse(run(repo, ["bun", CLI, "version", "create", "--label", "steps guided", "--guide", guideMd, "--json"])).version.number as number;
+    await b.eval(`window.__drawErrors = []; window.addEventListener("error", (e) => __drawErrors.push(String(e.message))); window.addEventListener("unhandledrejection", (e) => __drawErrors.push(String(e.reason?.message ?? e.reason))); const ce = console.error; console.error = (...a) => { __drawErrors.push(a.map(String).join(" ")); ce(...a); }; true`);
+    await b.eval(`location.hash = "#/compare/${stepsA}..${stepsB}"; true`);
+    await waitFor(`document.querySelector(".guide-tabs") && document.querySelector(".range-title")?.textContent.includes("v${stepsB}")`, 10000);
+    if (!(await b.eval(`!!document.querySelector(".guide")`))) await keys(" ", "u", "g");
+    const stepRows = `(() => { const c = document.querySelector(".guide .guide-ref[data-key='1.0'] diffs-container"); const side = (s) => [...(c?.shadowRoot.querySelectorAll("code[data-" + s + "] [data-content] > [data-line]") ?? [])].map(r => r.getAttribute("data-line") + " " + r.textContent); return { old: side("deletions"), now: side("additions") }; })()`;
+    const stepShown = await waitFor(`(() => { const r = ${stepRows}; return r.old.length ? r : null; })()`, 8000);
+    await b.eval(`document.querySelector(".guide .guide-ref[data-key='1.0']").scrollIntoView({ block: "start" }); true`);
+    await sleep(300);
+    await b.eval(`document.querySelector(".guide .guide-ref[data-key='1.0'] diffs-container").shadowRoot.querySelector("[data-expand-up], [data-expand-both]")?.click(); true`);
+    const stepMore = await waitFor(`(() => { const r = ${stepRows}; return r.now.length > 7 ? r.now.length : null; })()`, 3000);
+    const oldCell = await b.eval(`(() => { const c = document.querySelector(".guide .guide-ref[data-key='1.0'] diffs-container"); const el = c.shadowRoot.querySelector("code[data-deletions] [data-column-number='30']"); const r = el.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`) as { x: number; y: number };
+    await pointer([{ type: "pointerMove", x: oldCell.x, y: oldCell.y }, { type: "pointerDown", button: 0 }, { type: "pointerUp", button: 0 }]);
+    const stepBox = await waitFor(`document.activeElement?.tagName === "TEXTAREA" ? (document.querySelector(".guide .guide-ref[data-key='1.0'] .new-thread .note")?.textContent ?? null) : null`, 3000);
+    await keys(..."why was it old?".split(""));
+    await chord([CTRL], "s");
+    await waitFor(`!document.querySelector(".guide .new-thread")`, 5000);
+    const oldDraft = (JSON.parse(run(repo, ["bun", CLI, "threads", "list", "--drafts", "--as", "reviewer", "--json"])) as { path: string; side: string; range: { start: number; end: number }; version: number | null; excerpt: string[]; title: string }[]).find((t) => t.title === "why was it old?");
+    const drawErrors = await b.eval(`window.__drawErrors.filter(e => /mismatch|decoration|iterateOverDiff/.test(e))`);
+    const textOf = (n: number) => `val s${n} = ${n}`;
+    check(
+      "a step whose file has changes left out above and below that add lines shows its lines, each on both sides, without an error; its bars open more lines, and a comment on its old side lands on that old line",
+      (drawErrors as string[]).length === 0 &&
+        JSON.stringify(stepShown?.old) === JSON.stringify([...[27, 28, 29].map((n) => `${n} ${textOf(n)}`), `30 ${line30}`, ...[31, 32, 33].map((n) => `${n} ${textOf(n)}`)]) &&
+        JSON.stringify(stepShown?.now) === JSON.stringify([...[30, 31, 32].map((n) => `${n} ${textOf(n - 3)}`), `33 ${line30.replace("old", "new")}`, ...[34, 35, 36].map((n) => `${n} ${textOf(n - 3)}`)]) &&
+        !!stepMore && /removed lines/.test(stepBox ?? "") && /lines 30/.test(stepBox ?? "") &&
+        oldDraft?.side === "old" && oldDraft.range.start === 30 && oldDraft.range.end === 30 && oldDraft.version === stepsA && oldDraft.excerpt.join("\n").includes("old"),
+      { drawErrors, stepShown, stepMore, stepBox, oldDraft },
     );
 
     await b.eval(`location.hash = "#/compare/${imgV - 1}..${imgV}"; true`);

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { parsePatchFiles } from "@pierre/diffs";
+import { getSharedHighlighter, hydratePartialDiff, parsePatchFiles, renderDiffWithHighlighter, type FileDiffMetadata } from "@pierre/diffs";
 import { filePatch } from "../../web/lib/region.ts";
-import { evenTail, expansionOf, fileLines, gapsOf, mergeSpans, NOTHING, revealedPatch, withSpan } from "../../web/lib/reveal.ts";
+import { expansionOf, fileLines, gapsOf, hydrateSubset, mergeSpans, NOTHING, revealedPatch, withSpan } from "../../web/lib/reveal.ts";
 
 const file = (n: number, edits: Record<number, string> = {}) => Array.from({ length: n }, (_, i) => edits[i + 1] ?? `line ${i + 1}`).join("\n") + "\n";
 const hunksOf = (patch: string) => parsePatchFiles(patch).flatMap((p) => p.files)[0]!.hunks;
@@ -52,18 +52,49 @@ describe("revealed lines", () => {
     expect(far.map((h) => [h.additionStart, h.additionCount, h.additionLines])).toEqual([[14, 13, 1], [170, 21, 1]]);
   });
 
-  test("a patch that leaves out a later change that adds lines is drawn with an old version as long as the new one past it", () => {
-    const a = file(40);
-    const b = file(40, { 10: "line 10 edited", 15: "added 1\nadded 2\nadded 3\nline 15" });
-    const all = hunksOf(filePatch({ path: "c.css", text: a }, { path: "c.css", text: b })!);
-    const patch = revealedPatch({ path: "c.css", text: a }, { path: "c.css", text: b }, all, { spans: [{ start: 8, end: 12 }], full: false }, { old: [], new: [{ start: 10, end: 10 }] })!;
-    const last = hunksOf(patch).at(-1)!;
-    expect([last.deletionStart, last.deletionCount, last.additionStart, last.additionCount]).toEqual([8, 5, 8, 5]);
-    const even = evenTail(a, b, last);
-    expect(even.split("\n").length - 12).toBe(b.split("\n").length - 12);
-    expect(even.split("\n").slice(0, 12)).toEqual(a.split("\n").slice(0, 12));
-    expect(even.split("\n").slice(12)).toEqual(b.split("\n").slice(12));
-    expect(evenTail(a, b, hunksOf(filePatch({ path: "c.css", text: a }, { path: "c.css", text: b })!).at(-1))).toBe(a);
+  test("a patch that leaves out changes adding lines above, between and below its hunks is drawn with each line where it is", async () => {
+    // a long line changed by one word, so the word diff marks a place in it on both sides
+    const long = (w: string) => `.guide-num { flex: none; display: inline-flex; align-items: center; font: 600 12px/1 var(--sans); color: ${w}; }`;
+    const a = file(80, { 20: long("red"), 50: long("blue") });
+    const b = file(80, { 3: "added 1\nadded 2\nadded 3\nline 3", 20: long("green"), 35: "added 4\nadded 5\nline 35", 50: long("teal"), 65: "added 6\nadded 7\nadded 8\nadded 9\nline 65" });
+    const all = hunksOf(filePatch({ path: "s.css", text: a }, { path: "s.css", text: b })!);
+    // lines 23 and 55 of the new version: lines 20 and 50 of the old
+    const patch = revealedPatch({ path: "s.css", text: a }, { path: "s.css", text: b }, all, { spans: [{ start: 20, end: 26 }, { start: 52, end: 58 }], full: false }, { old: [], new: [{ start: 23, end: 23 }, { start: 55, end: 55 }] })!;
+    const fd = parsePatchFiles(patch, "subset")[0]!.files[0]!;
+    expect(fd.hunks.map((h) => [h.deletionStart, h.deletionCount, h.additionStart, h.additionCount])).toEqual([[17, 7, 20, 7], [47, 7, 52, 7]]);
+
+    const highlighter = await getSharedHighlighter({ themes: ["pierre-dark"], langs: ["css"] });
+    const options = { theme: "pierre-dark", useTokenTransformer: false, tokenizeMaxLineLength: 1000, lineDiffType: "word", maxLineDiffLength: 1000 };
+    const draw = (d: FileDiffMetadata) => renderDiffWithHighlighter(d, highlighter as never, options as never);
+    const files = [{ name: "s.css", contents: a }, { name: "s.css", contents: b }] as const;
+    expect(() => draw(hydratePartialDiff("clone", fd, { oldFile: files[0], newFile: files[1] } as never))).toThrow("trailing context mismatch");
+
+    const d = hydrateSubset(fd, files[0], files[1]);
+    const { code } = draw(d);
+    // as the viewer draws a hunk's lines: each side's highlighted line at the index the hunk gives it
+    type Node = { type: string; value?: string; children?: Node[]; properties?: Record<string, unknown> };
+    const text = (n: Node): string => (n.type === "text" ? n.value! : (n.children ?? []).map(text).join(""));
+    const drawn = (lines: unknown[], source: string, index: number, number: number) => {
+      const node = lines[index] as Node;
+      return node.properties?.["data-line"] === number && text(node) === source.split("\n")[number - 1];
+    };
+    const rows: [number, number][] = [];
+    for (const h of d.hunks) {
+      let o = 0;
+      let n = 0;
+      for (const c of h.hunkContent) {
+        const dels = c.type === "context" ? c.lines : c.deletions;
+        const adds = c.type === "context" ? c.lines : c.additions;
+        for (let i = 0; i < dels; i++) expect(drawn(code.deletionLines, a, c.deletionLineIndex + i, h.deletionStart + o + i)).toBe(true);
+        for (let i = 0; i < adds; i++) expect(drawn(code.additionLines, b, c.additionLineIndex + i, h.additionStart + n + i)).toBe(true);
+        if (dels) rows.push([h.deletionStart + o, h.deletionStart + o + dels - 1]);
+        o += dels;
+        n += adds;
+      }
+    }
+    expect(rows.flat()).toContain(50);
+    // the numbers stay each version's; the bars count what both versions have between the hunks
+    expect(d.hunks.map((h) => [h.deletionStart, h.additionStart, h.collapsedBefore])).toEqual([[17, 20, 16], [47, 52, 23]]);
   });
 
   test("a file without a newline at its end keeps that in the revealed diff", () => {
