@@ -438,6 +438,9 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     return true;
   };
 
+  // A copy of the files on screen, faded out over them once the view under it is in place.
+  const coverView = (h: HTMLElement) => snapshot(visibleBox(h), [...h.querySelectorAll("diffs-container, .codeview-footer")]);
+
   // Lines of an SVG shown as a picture or of rendered Markdown: show its code first.
   const codeOf = (path: string): boolean => {
     if (!(isSvg(path) || isMarkdown(path)) || !drawnFiles.peek().has(path)) return false;
@@ -446,9 +449,13 @@ export function CompareView({ from, to }: { from: string; to: string }) {
   };
 
   const scrollToLine = (path: string, side: Side, line: number, align: "center" | "start" = "center") => {
+    const h = host.current;
+    const fade = h && (isSvg(path) || isMarkdown(path)) && drawnFiles.peek().has(path) ? coverView(h) : null;
     const switched = codeOf(path);
     const target: CodeViewScrollTarget = { type: "line", id: path, lineNumber: line, side, align, offset: align === "start" ? 60 : 0 };
     scrollOrQueue(target, reveal(path, true) || switched);
+    // the queued scroll runs in the frame after the draw
+    if (fade) afterDraw.current.push(() => requestAnimationFrame(() => requestAnimationFrame(fade.go)));
     return target;
   };
 
@@ -533,7 +540,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     const here = c?.path === path && c.row >= 0;
     if (!h || !v || !fd) return setFileView(path, to);
     // the change of height around the text read is covered by a copy of the old view, faded out once the new one is in place
-    const fade = snapshot(visibleBox(h), [...h.querySelectorAll("diffs-container, .codeview-footer")]);
+    const fade = coverView(h);
     const fadeLater = () => requestAnimationFrame(() => requestAnimationFrame(fade.go));
     const spanOf = (side: Side, row: number) => {
       const nav = cursorSpace.peek().block({ path, row });
@@ -626,21 +633,24 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     const v = view.current as CodeView<never> | null;
     const next = (r: Reveal) => ({ ...r, full: on });
     if (!h || !v) return void changeReveal(path, next);
+    const fade = coverView(h);
+    const fadeLater = () => requestAnimationFrame(() => requestAnimationFrame(fade.go));
     if (drawnFiles.peek().has(path)) {
       const top = renderedTop(h, path);
       const b = top ? stopElement(path, top.stop, top.side === "old" ? "deletions" : "additions")?.getAttribute("data-b") : null;
       void changeReveal(path, next).then(() => {
-        if (!top || b === null || b === undefined) return;
+        if (!top || b === null || b === undefined) return fadeLater();
         const find = () => document.querySelector(`.md-view[data-file="${CSS.escape(path)}"] .md-cell[data-side="${top.side}"] [data-b="${b}"]`);
-        placeAt(h, find, top.y, 1500);
+        placeAt(h, find, top.y, 1500, fade.go);
       });
       return;
     }
     const top = codeTop(h, v, path);
     void changeReveal(path, next).then(() => {
-      if (top) afterDraw.current.push(() => requestAnimationFrame(() => {
+      afterDraw.current.push(() => requestAnimationFrame(() => {
         const cv = view.current as CodeView<never> | null;
-        if (cv) lineAt(h, cv, path, top.side, top.line, top.y);
+        if (cv && top) lineAt(h, cv, path, top.side, top.line, top.y, 1500, fade.go);
+        else fade.go();
       }));
     });
   };

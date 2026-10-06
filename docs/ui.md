@@ -54,7 +54,8 @@ hunks touch) and folds the rest into bars: whole blocks, and in a long list or t
 table's header again below a bar. **show above** and **show below** on a bar open about 20 more lines of it, in whole
 blocks, from its top or its bottom, and **show all N** opens all of it. The bars of the code open lines the same way,
 and the two views share what is open: lines opened in one show in the other. **full file** on the file's header shows
-the whole file, rendered and as code, while the page is open.
+the whole file, rendered and as code, while the page is open; like the switch below, the old view fades out over the
+new one, and so it does when a jump (a search match only the source has, a thread's lines) shows the file as code.
 
 The button on its header (**‹/› code** / **¶ rendered**) switches that file to its code and back while the page is
 open, and keeps the first text you see where it is on the screen: the topmost block becomes its line at the point you
