@@ -144,6 +144,18 @@ describe("changed blocks", () => {
     ]);
   });
 
+  test("an item removed from the middle of a list marks none of the list on the other side; a line removed from an item's text marks the item", () => {
+    const marked = (before: string, after: string) => {
+      const ch = changesOf(diffOf(before, after));
+      return [...html(after, { changes: ch.new }).matchAll(/<(\w+) data-b="\d+" data-start="(\d+)"[^>]*class="md-changed"/g)].map((m) => `${m[1]}${m[2]}`);
+    };
+    expect(marked(lines("1. One", "2. Two", "3. Three"), lines("1. One", "2. Three"))).toEqual([]);
+    expect(marked(lines("- a", "", "- b", "", "- c"), lines("- a", "", "- c"))).toEqual([]);
+    expect(marked(lines("> a", ">", "> b", ">", "> c"), lines("> a", ">", "> c"))).toEqual([]);
+    expect(marked(lines("| k |", "|---|", "| a |", "| b |", "| c |"), lines("| k |", "|---|", "| a |", "| c |"))).toEqual([]);
+    expect(marked(lines("- Foo", "bar", "  - x"), lines("- Foo", "  - x"))).toEqual(["li1"]);
+  });
+
   test("a list only renumbered is an unchanged row", () => {
     const { rows } = laidOut(lines("1. a", "1. b", "1. c", "", "End."), lines("1. a", "2. b", "3. c", "", "End."));
     expect(rows.map((r) => r.kind)).toEqual(["same", "same"]);

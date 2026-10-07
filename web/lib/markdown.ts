@@ -122,11 +122,21 @@ export interface Block extends Span {
   tag: string;
 }
 
-/** Blocks whose lines changed, or that the other side has lines inside of. */
+const OF_BLOCKS = new Set(["ul", "ol", "blockquote", "table", "thead", "tbody"]);
+
+/**
+ * Blocks whose lines changed, or that the other side has lines inside of. Lines between the items of a list, the rows
+ * of a table or the blocks of a quote mark none of them, as lines between top-level blocks do: the other side shows them.
+ */
 export function hitBlocks(blocks: readonly Block[], changes: SideChanges): boolean[] {
-  return blocks.map((b) => {
+  const holds = (i: number, g: number): boolean => {
+    const b = blocks[i]!;
+    if (!(b.start <= g && g < b.end)) return false;
+    return !OF_BLOCKS.has(b.tag) || childrenOf(blocks, i).some((c) => holds(c, g));
+  };
+  return blocks.map((b, i) => {
     for (let n = b.start; n <= b.end; n++) if (changes.lines.has(n)) return true;
-    return changes.gaps.some((g) => b.start <= g && g < b.end);
+    return changes.gaps.some((g) => holds(i, g));
   });
 }
 
