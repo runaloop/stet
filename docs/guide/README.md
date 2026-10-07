@@ -78,32 +78,37 @@ Two marks help you go through a long change and come back to it later. They reme
 
 - **viewed** is per file. Tick it in the Files tab or on the file's header in the diff; no key does it. The file
   folds to its header (**▸** or `za` opens it and leaves the mark on), and the Files tab counts it: `2/3 viewed`,
-  out of every file of the diff, folded tests too. The mark is on the file's content, not on a version or a range:
-  the file stays viewed in every range whose new side has the same text, and once the agent changes the file it
-  is not viewed any more and opens again. Nothing else marks it, so a file that changed after you viewed it looks
-  like one you never ticked.
+  out of the files the diff shows (test files with only new code and lock files it folds away are counted apart,
+  as `hidden`). The mark is on the change you saw, the file's text before and after, not on a version: the file
+  stays viewed in every range that shows that change, or changes you ticked one after another (v1 → v2 and v2 → v3
+  make v1 → v3 viewed). When the agent changes the file again, deletes it or puts back a text you viewed, that is
+  a change you have not seen, and the file opens again. Nothing else marks it, so a file that changed after you
+  viewed it looks like one you never ticked.
 - **Your last pass** is one point per review: a version, or the code "now" was. **✓ Done up to v1** next to the
-  title sets it to the new side of the diff, whatever the old side is; ticking the last file of the diff does the
-  same when that side is newer than your pass (or you have none yet). The header then says **✓ you went through v1**, and the
-  strip marks the version with ✓. Unticking a file does not take the pass back; to move it back, open a range that
-  ends at an older version and press **✓ Done up to** there.
+  title sets it to the new side of the diff, whatever the old side is; ticking the last file the diff shows does
+  the same when that side is newer than your pass (or you have none yet). The header then says **✓ you went
+  through v1**, and the strip marks the version with ✓. Unticking a file does not take the pass back; to move it
+  back, open a range that ends at an older version and press **✓ Done up to** there.
 - **since I last looked** is not a mark but a range: from your last pass to the newest code (the latest version,
   or "now" when the agent changed code after it). `v` opens it from any page (on the Changes page `v` selects
   lines, so there it is `Space r v`), and so do the chip next to the strip, the banner that says the agent handed
-  over a version, and the link on the Round page. It shows every file that changed after your pass, ticked or not.
+  over a version (it goes once you open a range that shows that version), and the link on the Round page. It
+  shows every file that changed after your pass, ticked or not.
 
 Use **viewed** within one pass, to keep track of the files of a long diff you have read. Use **✓ Done up to** (or let
 the last tick set it) when the pass is over, so that next time you see only what the agent changed after it.
 
-![Tick files viewed: they fold, the Files tab counts them](viewed-1.png)
+![Tick files viewed: they fold, the Files tab counts the files the diff shows](viewed-1.png)
 
 ![The last tick remembers your pass](viewed-2.png)
 
-![The agent changed a viewed file in v2: it opens again, the others stay folded](viewed-3.png)
+![The agent hands over v2: a banner says so until you open a range that shows it](viewed-3.png)
 
-![Since you last looked: only what changed after your pass](viewed-4.png)
+![The agent changed a viewed file in v2: it opens again, the others stay folded](viewed-4.png)
 
-![The Round page links the same range](viewed-5.png)
+![Since you last looked: only what changed after your pass](viewed-5.png)
+
+![The Round page links the same range](viewed-6.png)
 
 ## Images
 

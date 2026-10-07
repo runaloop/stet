@@ -22,7 +22,8 @@ and how many files are staged, not staged and new; in a review of the index, how
 because they are not staged. A click (or `Space g s`) lists them, and each file in the Files tab and on its
 header is marked (`not staged`, `partly staged`, `new`, `↑` for commits not pushed). The page keeps itself
 current: replies and versions arrive as they happen, and the server looks at the worktree every few seconds.
-When the agent changed code without a new version, **↻ N files changed** appears next to "now"; nothing
+A new version from the agent shows a banner over the page until you open a range that shows it (a click on
+the banner, `Space r v`, or any other way). When the agent changed code without a new version, **↻ N files changed** appears next to "now"; nothing
 redraws under you until `R`. If the server stops, the header says **offline · retrying**, and a restarted
 server takes the same port, so the tab picks it up again ([guide](guide/README.md#git-state-and-fresh-data)).
 
@@ -249,7 +250,11 @@ The side panel has three tabs on the Changes page and on a thread:
 - **Threads**: the thread tree with filters.
 - **Files**: every file of the diff with `+`/`−` counts and thread counts. The file under the cursor (or,
   without a cursor, the one you are scrolled to) is highlighted. Tick "viewed" (here or in the file
-  header) to collapse a file until its content changes; the marks are kept in the review database
+  header) to collapse a file until it changes again. The tick is on the change you saw, the file's text
+  before and after: it holds in any range that shows that change or changes ticked one after another, and
+  a deletion or a revert to a text you viewed shows as new. The count above the list is of the files the
+  diff shows; test and lock files it folds away are counted as `hidden`, and ticking the last shown file
+  remembers your pass. The marks are kept in the review database
   ([guide](guide/README.md#viewed-files-and-your-last-pass)).
   On a thread page a click shows the file over the thread's code.
 - **Search**: "in the diff" searches every line of the diff (added, removed, context), also in files the
