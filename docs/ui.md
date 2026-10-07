@@ -138,6 +138,12 @@ lines, highlighted, with the cursor on the first. At the end, **Not in the guide
 changes that no step names. Switching to the Guide and back leaves the diff as it was: its scroll, cursor, selection
 and comment box; the Guide tab keeps its own.
 
+A step on a Markdown file shows it [rendered](#markdown) as the Changes page does (or as code, as `compare.markdown`
+says), with the same **‹/› code** / **¶ rendered** switch on its file: the blocks of the step's lines, marked, and
+the rest of the file folded under fold bars that open more of it. A block takes comments as on the Changes page: **+**
+beside it (on every block a text selection takes), `i` on the block under the cursor, and **‹/›** shows its lines in
+the step's code.
+
 A step's lines take comments as the diff does: a click on a line, **+** beside it or a drag over the line numbers
 opens the same box under the lines, for a draft (on the Drafts page, and a card under the lines once saved) or a
 thread sent at once. The keys work as in a thread's code: a click into the lines, `V` (select from the cursor, which
