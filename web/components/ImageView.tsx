@@ -5,7 +5,9 @@ import { api, rawUrl } from "../api.ts";
 import { compareData, hoverThread, imageMode, imagePending, shownPlacements, type ImageMode, type ImagePending } from "../compare.ts";
 import { cropRect, dragRegion, framePercent, imageCaption, pixelDiff, regionLabel, scaleRegion, shotScale, type PixelDiff } from "../lib/image.ts";
 import { compareFocus, guard, link, notify, reloadAll, reviewId, threads } from "../state.ts";
+import { imageAt } from "../lib/zoom.ts";
 import { Composer } from "./Composer.tsx";
+import { useZoom, ZoomBar, ZoomView, type Zoom } from "./ImageZoom.tsx";
 
 export interface Frame {
   /** null: the area being commented on, not a thread yet. */
@@ -49,61 +51,74 @@ function paneSize(path: string, nat: { w: number; h: number } | null) {
   return Math.max(nat.w, nat.h) < SMALL ? { width: `${displayWidth(nat.w, nat.h)}px` } : undefined;
 }
 
-/** One image with thread frames over it; with `onDraw`, a drag on it marks an area. */
-export function ImagePane(props: { sha: string; path: string; label?: string; size?: ImageInfo | null; frames: Frame[]; onDraw?: (r: Region) => void }) {
+/** One image with thread frames over it; with `onDraw`, a drag on it marks an area. Without `zoom`, it has its own and its buttons. */
+export function ImagePane(props: { sha: string; path: string; label?: string; size?: ImageInfo | null; frames: Frame[]; onDraw?: (r: Region) => void; zoom?: Zoom }) {
   const img = useRef<HTMLImageElement>(null);
   const known = props.size?.w && props.size?.h ? { w: props.size.w, h: props.size.h } : null;
   const [nat, setNat] = useState<{ w: number; h: number } | null>(known);
   const [drag, setDrag] = useState<{ a: { fx: number; fy: number }; b: { fx: number; fy: number } } | null>(null);
   const [failed, setFailed] = useState(false);
+  const own = useZoom();
+  const zoom = props.zoom ?? own;
+  const z = zoom.scale.value;
   const at = (e: PointerEvent) => {
-    const r = img.current!.getBoundingClientRect();
-    return { fx: (e.clientX - r.left) / r.width, fy: (e.clientY - r.top) / r.height };
+    const view = img.current!.closest(".imgview")!;
+    const r = view.getBoundingClientRect();
+    const p = imageAt({ x: e.clientX, y: e.clientY }, { left: r.left, top: r.top, scrollLeft: view.scrollLeft, scrollTop: view.scrollTop }, img.current!.getBoundingClientRect().width / nat!.w);
+    return { fx: p.x / nat!.w, fy: p.y / nat!.h };
   };
   const draw = props.onDraw && nat ? props.onDraw : null;
   const live = drag && nat ? dragRegion(drag.a, drag.b, nat.w, nat.h) : null;
   if (failed) return <div class="note">{props.path} could not be shown at this version.</div>;
+  const crisp = !isSvg(props.path) && (z !== null ? z >= 2 : !!nat && Math.max(nat.w, nat.h) < SMALL);
   return (
     <figure class="imgpane">
-      {props.label ? <figcaption>{props.label}</figcaption> : null}
-      <div
-        class={`imgbox${draw ? " drawable" : ""}`}
-        onPointerDown={(e) => {
-          if (!draw || e.button !== 0 || (e.target as Element).closest(".img-frame")) return;
-          e.preventDefault();
-          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-          const p = at(e);
-          setDrag({ a: p, b: p });
-        }}
-        onPointerMove={(e) => drag && setDrag({ ...drag, b: at(e) })}
-        onPointerUp={(e) => {
-          if (!drag || !draw || !nat) return;
-          setDrag(null);
-          const r = dragRegion(drag.a, at(e), nat.w, nat.h);
-          const shown = img.current!.getBoundingClientRect();
-          if (r && (r.w / nat.w) * shown.width >= 4 && (r.h / nat.h) * shown.height >= 4) draw({ ...r, iw: nat.w, ih: nat.h });
-        }}
-        onPointerCancel={() => setDrag(null)}
-      >
-        <img
-          ref={img}
-          src={rawUrl(props.sha, props.path)}
-          alt={props.path}
-          draggable={false}
-          width={nat?.w}
-          height={nat?.h}
-          class={nat && Math.max(nat.w, nat.h) < SMALL && !isSvg(props.path) ? "pixelated" : ""}
-          style={paneSize(props.path, nat)}
-          onLoad={(e) => {
-            const el = e.currentTarget as HTMLImageElement;
-            // an SVG with only a viewBox gets a made-up natural size (300 px): keep the one the server read
-            if (!isSvg(props.path) && (!nat || nat.w !== el.naturalWidth || nat.h !== el.naturalHeight)) setNat({ w: el.naturalWidth, h: el.naturalHeight });
+      {props.label || !props.zoom ? (
+        <figcaption>
+          <span>{props.label}</span>
+          {props.zoom ? null : <ZoomBar zoom={zoom} />}
+        </figcaption>
+      ) : null}
+      <ZoomView zoom={zoom} w={nat?.w ?? null} pan={!draw}>
+        <div
+          class={`imgbox${draw ? " drawable" : ""}`}
+          onPointerDown={(e) => {
+            if (!draw || e.button !== 0 || (e.target as Element).closest(".img-frame")) return;
+            e.preventDefault();
+            (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+            const p = at(e);
+            setDrag({ a: p, b: p });
           }}
-          onError={() => setFailed(true)}
-        />
-        {nat ? props.frames.map((f) => <FrameBox key={f.id ?? "new"} f={f} />) : null}
-        {live && nat ? <div class="img-frame tone-pending drawing" style={framePercent({ ...live, iw: nat.w, ih: nat.h })} /> : null}
-      </div>
+          onPointerMove={(e) => drag && setDrag({ ...drag, b: at(e) })}
+          onPointerUp={(e) => {
+            if (!drag || !draw || !nat) return;
+            setDrag(null);
+            const r = dragRegion(drag.a, at(e), nat.w, nat.h);
+            const shown = img.current!.getBoundingClientRect();
+            if (r && (r.w / nat.w) * shown.width >= 4 && (r.h / nat.h) * shown.height >= 4) draw({ ...r, iw: nat.w, ih: nat.h });
+          }}
+          onPointerCancel={() => setDrag(null)}
+        >
+          <img
+            ref={img}
+            src={rawUrl(props.sha, props.path)}
+            alt={props.path}
+            draggable={false}
+            width={nat?.w}
+            height={nat?.h}
+            class={crisp ? "pixelated" : ""}
+            style={z !== null && nat ? { width: `${nat.w * z}px`, height: `${nat.h * z}px` } : paneSize(props.path, nat)}
+            onLoad={(e) => {
+              const el = e.currentTarget as HTMLImageElement;
+              // an SVG with only a viewBox gets a made-up natural size (300 px): keep the one the server read
+              if (!isSvg(props.path) && (!nat || nat.w !== el.naturalWidth || nat.h !== el.naturalHeight)) setNat({ w: el.naturalWidth, h: el.naturalHeight });
+            }}
+            onError={() => setFailed(true)}
+          />
+          {nat ? props.frames.map((f) => <FrameBox key={f.id ?? "new"} f={f} />) : null}
+          {live && nat ? <div class="img-frame tone-pending drawing" style={framePercent({ ...live, iw: nat.w, ih: nat.h })} /> : null}
+        </div>
+      </ZoomView>
     </figure>
   );
 }
@@ -116,12 +131,14 @@ interface Side {
 }
 
 /** Old and new on top of each other: a divider (swipe) or the new one's opacity (onion) shows how they differ. */
-function ImageStack({ a, b, mode, frames }: { a: Side; b: Side; mode: "swipe" | "onion"; frames: Frame[] }) {
+function ImageStack({ a, b, mode, frames, zoom }: { a: Side; b: Side; mode: "swipe" | "onion"; frames: Frame[]; zoom: Zoom }) {
   const [pos, setPos] = useState(50);
   const [held, setHeld] = useState(false);
   const W = Math.max(a.info.w!, b.info.w!);
   const H = Math.max(a.info.h!, b.info.h!);
   const scale = displayWidth(W, H) / W;
+  const z = zoom.scale.value;
+  const crisp = z !== null ? z >= 2 : scale > 1;
   const move = (e: PointerEvent) => {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     setPos(Math.round(Math.min(100, Math.max(0, ((e.clientX - r.left) / r.width) * 100))));
@@ -133,25 +150,27 @@ function ImageStack({ a, b, mode, frames }: { a: Side; b: Side; mode: "swipe" | 
         <span>{mode === "swipe" ? `◀ ${a.label}` : `${a.label} under`}</span>
         <span>{mode === "swipe" ? `${b.label} ▶` : `${b.label} over it at ${pos}%`}</span>
       </div>
-      <div
-        class={`imgstack mode-${mode}`}
-        style={{ aspectRatio: `${W} / ${H}`, width: `min(${W * scale}px, calc(70vh * ${W / H}))` }}
-        onPointerDown={(e) => {
-          if (mode !== "swipe" || (e.target as Element).closest(".img-frame")) return;
-          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-          setHeld(true);
-          move(e);
-        }}
-        onPointerMove={(e) => held && move(e)}
-        onPointerUp={() => setHeld(false)}
-      >
-        <img class={scale > 1 && !isSvg(a.path) ? "pixelated" : ""} src={rawUrl(a.sha, a.path)} alt={a.path} draggable={false} style={{ width: `${(a.info.w! / W) * 100}%` }} />
-        <div class="imgstack-top" style={{ width: `${(b.info.w! / W) * 100}%`, clipPath: clip, opacity: mode === "onion" ? pos / 100 : 1 }}>
-          <img class={scale > 1 && !isSvg(b.path) ? "pixelated" : ""} src={rawUrl(b.sha, b.path)} alt={b.path} draggable={false} />
-          {frames.map((f) => <FrameBox key={f.id ?? "new"} f={f} />)}
+      <ZoomView zoom={zoom} w={W} pan={mode === "onion"}>
+        <div
+          class={`imgstack mode-${mode}`}
+          style={{ aspectRatio: `${W} / ${H}`, width: z !== null ? `${W * z}px` : `min(${W * scale}px, calc(70vh * ${W / H}))` }}
+          onPointerDown={(e) => {
+            if (mode !== "swipe" || e.button !== 0 || (e.target as Element).closest(".img-frame")) return;
+            (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+            setHeld(true);
+            move(e);
+          }}
+          onPointerMove={(e) => held && move(e)}
+          onPointerUp={() => setHeld(false)}
+        >
+          <img class={crisp && !isSvg(a.path) ? "pixelated" : ""} src={rawUrl(a.sha, a.path)} alt={a.path} draggable={false} style={{ width: `${(a.info.w! / W) * 100}%` }} />
+          <div class="imgstack-top" style={{ width: `${(b.info.w! / W) * 100}%`, clipPath: clip, opacity: mode === "onion" ? pos / 100 : 1 }}>
+            <img class={crisp && !isSvg(b.path) ? "pixelated" : ""} src={rawUrl(b.sha, b.path)} alt={b.path} draggable={false} />
+            {frames.map((f) => <FrameBox key={f.id ?? "new"} f={f} />)}
+          </div>
+          {mode === "swipe" ? <div class="imgstack-divider" style={{ left: `${pos}%` }} /> : null}
         </div>
-        {mode === "swipe" ? <div class="imgstack-divider" style={{ left: `${pos}%` }} /> : null}
-      </div>
+      </ZoomView>
       <input type="range" class="imgstack-range" min={0} max={100} value={pos} aria-label={mode === "swipe" ? "divider" : "opacity of the new image"} onInput={(e) => setPos(Number((e.target as HTMLInputElement).value))} />
     </div>
   );
@@ -183,7 +202,7 @@ const unscale = (r: { x: number; y: number; w: number; h: number }, k: number, i
 });
 
 /** Changed pixels in magenta over the new image, faded. */
-function ImageDifference({ a, b }: { a: Side; b: Side }) {
+function ImageDifference({ a, b, zoom }: { a: Side; b: Side; zoom: Zoom }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [result, setResult] = useState<PixelDiff | "big" | "error" | null>(null);
   const W = Math.max(a.info.w!, b.info.w!);
@@ -215,6 +234,8 @@ function ImageDifference({ a, b }: { a: Side; b: Side }) {
     };
   }, [a.sha, b.sha, a.path, b.path]);
   const scale = displayWidth(W, H) / W;
+  const z = zoom.scale.value;
+  const crisp = !vector && (z !== null ? z >= 2 : scale > 1);
   const sizes = a.info.w !== b.info.w || a.info.h !== b.info.h ? ` · the sizes differ: both are drawn from the top left` : "";
   return (
     <div class="imgdiff-canvas">
@@ -231,10 +252,12 @@ function ImageDifference({ a, b }: { a: Side; b: Side }) {
                   : `${result.changed.toLocaleString()} px differ (${((result.changed / result.total) * 100).toFixed(result.changed / result.total < 0.01 ? 2 : 1)}%) · all within ${regionLabel(unscale(result.box!, k, W, H))}${sizes}`}
         </span>
       </div>
-      <div class="imgstack" style={{ aspectRatio: `${W} / ${H}`, width: `min(${W * scale}px, calc(70vh * ${W / H}))` }}>
-        <canvas ref={canvas} width={RW} height={RH} class={!vector && scale > 1 ? "pixelated" : ""} />
-        {result && typeof result === "object" && result.box ? <div class="img-frame tone-change-box" style={framePercent({ ...result.box, iw: RW, ih: RH })} /> : null}
-      </div>
+      <ZoomView zoom={zoom} w={W} pan>
+        <div class="imgstack" style={{ aspectRatio: `${W} / ${H}`, width: z !== null ? `${W * z}px` : `min(${W * scale}px, calc(70vh * ${W / H}))` }}>
+          <canvas ref={canvas} width={RW} height={RH} class={crisp ? "pixelated" : ""} />
+          {result && typeof result === "object" && result.box ? <div class="img-frame tone-change-box" style={framePercent({ ...result.box, iw: RW, ih: RH })} /> : null}
+        </div>
+      </ZoomView>
     </div>
   );
 }
@@ -333,6 +356,7 @@ const MODES: [ImageMode, string, string][] = [
 export function ImageDiff({ file }: { file: string }) {
   const d = compareData.value;
   const f = d?.files.find((x) => x.path === file);
+  const zoom = useZoom();
   if (!d || !f) return null;
   const info = f.image ?? { old: null, new: null };
   const oldPath = f.oldPath ?? file;
@@ -363,23 +387,27 @@ export function ImageDiff({ file }: { file: string }) {
             ))}
           </span>
         ) : null}
-        <span class="hint">{mode === null || mode === "2-up" ? "drag on an image to comment on an area" : "frames show threads · comment in side by side"}</span>
+        <ZoomBar zoom={zoom} />
+        <span class="hint">
+          {mode === null || mode === "2-up" ? "drag on an image to comment on an area" : "frames show threads · comment in side by side"}
+          {zoom.scale.value === null ? "" : mode === "onion" || mode === "diff" ? " · drag or the wheel moves it" : " · the wheel or a middle-button drag moves it"}
+        </span>
       </div>
       {mode === null ? (
         b ? (
-          <ImagePane key={`${b.sha}:${b.path}`} sha={b.sha} path={b.path} label={`${b.label} · added`} size={b.info} frames={frames("additions")} onDraw={draw(b, "new")} />
+          <ImagePane key={`${b.sha}:${b.path}`} sha={b.sha} path={b.path} label={`${b.label} · added`} size={b.info} frames={frames("additions")} onDraw={draw(b, "new")} zoom={zoom} />
         ) : a ? (
-          <ImagePane key={`${a.sha}:${a.path}`} sha={a.sha} path={a.path} label={`${a.label} · deleted after this`} size={a.info} frames={frames("deletions")} onDraw={draw(a, "old")} />
+          <ImagePane key={`${a.sha}:${a.path}`} sha={a.sha} path={a.path} label={`${a.label} · deleted after this`} size={a.info} frames={frames("deletions")} onDraw={draw(a, "old")} zoom={zoom} />
         ) : null
       ) : mode === "2-up" ? (
         <div class="imgpair">
-          <ImagePane key={`${a!.sha}:${a!.path}`} sha={a!.sha} path={a!.path} label={a!.label} size={a!.info} frames={frames("deletions")} onDraw={draw(a!, "old")} />
-          <ImagePane key={`${b!.sha}:${b!.path}`} sha={b!.sha} path={b!.path} label={b!.label} size={b!.info} frames={frames("additions")} onDraw={draw(b!, "new")} />
+          <ImagePane key={`${a!.sha}:${a!.path}`} sha={a!.sha} path={a!.path} label={a!.label} size={a!.info} frames={frames("deletions")} onDraw={draw(a!, "old")} zoom={zoom} />
+          <ImagePane key={`${b!.sha}:${b!.path}`} sha={b!.sha} path={b!.path} label={b!.label} size={b!.info} frames={frames("additions")} onDraw={draw(b!, "new")} zoom={zoom} />
         </div>
       ) : mode === "diff" ? (
-        <ImageDifference a={a!} b={b!} />
+        <ImageDifference a={a!} b={b!} zoom={zoom} />
       ) : (
-        <ImageStack a={a!} b={b!} mode={mode} frames={frames("additions")} />
+        <ImageStack a={a!} b={b!} mode={mode} frames={frames("additions")} zoom={zoom} />
       )}
       {pending ? <NewImageThread p={pending} /> : null}
     </div>
@@ -402,13 +430,14 @@ export function RegionCrop({ sha, path, region, height, frame = true }: { sha: s
 export function ImageArea({ d, from, to }: { d: ThreadDetail; from: TimelineStepDto; to: TimelineStepDto }) {
   const region = d.thread.region!;
   const [whole, setWhole] = useState(false);
+  const zoom = useZoom();
   const single = from.index === to.index;
   const changed = d.timeline.slice(Math.min(from.index, to.index) + 1, Math.max(from.index, to.index) + 1).some((s) => s.method === "image");
   const pane = (s: TimelineStepDto) =>
     !s.path ? (
       <div class="note">At {s.label} the image is gone ({s.reason ?? "outdated"}).</div>
     ) : whole ? (
-      <ImagePane key={`${s.sha}:${s.path}`} sha={s.sha} path={s.path} label={s.label} size={isSvg(s.path) ? { w: region.iw, h: region.ih, bytes: 0 } : null} frames={[{ id: null, region, tone: "focus" }]} />
+      <ImagePane key={`${s.sha}:${s.path}`} sha={s.sha} path={s.path} label={s.label} size={isSvg(s.path) ? { w: region.iw, h: region.ih, bytes: 0 } : null} frames={[{ id: null, region, tone: "focus" }]} zoom={zoom} />
     ) : (
       <figure class="imgpane">
         <figcaption>{s.label}</figcaption>
@@ -430,6 +459,7 @@ export function ImageArea({ d, from, to }: { d: ThreadDetail; from: TimelineStep
         <span>{label}</span>
         <span class="spacer" />
         <span class="hint">{regionLabel(region)} px</span>
+        {whole ? <ZoomBar zoom={zoom} /> : null}
         <span class="seg small">
           <button class={whole ? "" : "on"} onClick={() => setWhole(false)}>the area</button>
           <button class={whole ? "on" : ""} onClick={() => setWhole(true)}>whole image</button>

@@ -548,6 +548,14 @@ a.commit-msg:hover .subject { text-decoration: underline; }
 }
 .imgbox img { display: block; max-width: 100%; max-height: 70vh; width: auto; height: auto; object-fit: contain; user-select: none; }
 .imgbox.drawable { cursor: crosshair; }
+.imgview { display: inline-block; max-width: 100%; vertical-align: top; line-height: 0; }
+.imgview.zoomed { overflow: auto; max-height: 70vh; outline: 1px solid var(--border); }
+.imgview.zoomed .imgbox, .imgview.zoomed .imgstack { max-width: none; outline: none; }
+.imgview.zoomed .imgbox img { max-width: none; max-height: none; }
+.imgview.zoomed.pan, .imgview.zoomed.pan .imgstack { cursor: grab; }
+.imgview.panning, .imgview.panning .imgbox, .imgview.panning .imgstack { cursor: grabbing; }
+.zoom-bar { display: inline-flex; align-items: center; gap: 6px; }
+.zoom-level { font: 12px var(--mono); color: var(--fg-soft); min-width: 4ch; }
 img.pixelated, canvas.pixelated { image-rendering: pixelated; }
 .imgstack { display: block; max-width: 100%; overflow: hidden; touch-action: none; }
 .imgstack.mode-swipe { cursor: ew-resize; }
