@@ -2180,6 +2180,86 @@ try {
       { drawErrors, stepShown, stepMore, stepBox, oldDraft },
     );
 
+    // A step on a Markdown file: rendered as on the Changes page, only the step's blocks shown, the switch to its code.
+    const guideMdText = (v: number) => ["# Guide md", "", ...Array.from({ length: 12 }, (_, i) => [`Paragraph ${i + 1}${v === 2 && (i === 1 || i === 8) ? ", now changed" : ""}.`, ""]).flat()].join("\n");
+    writeFileSync(join(repo, "docs/guide-md.md"), guideMdText(1));
+    run(repo, ["git", "add", "-A"]);
+    const guideMdA = JSON.parse(run(repo, ["bun", CLI, "version", "create", "--label", "guide md", "--json"])).version.number as number;
+    writeFileSync(join(repo, "docs/guide-md.md"), guideMdText(2));
+    run(repo, ["git", "add", "-A"]);
+    writeFileSync(guideMd, "# Nine\n\n1. Paragraph nine changes.\n   docs/guide-md.md:19\n");
+    const guideMdB = JSON.parse(run(repo, ["bun", CLI, "version", "create", "--label", "guide md steps", "--guide", guideMd, "--json"])).version.number as number;
+    const mdRef = ".guide .guide-ref[data-key='1.0']";
+    const mdRefState = `(() => { const r = document.querySelector("${mdRef}"); const v = r?.querySelector(".md-view"); return r ? { toggle: r.querySelector(".guide-ref-head .md-toggle")?.textContent ?? null, blocks: v ? [...v.querySelectorAll(".md-cell > [data-start]")].map(e => e.closest(".md-cell").dataset.side + ":" + e.dataset.start) : null, folds: v ? [...v.querySelectorAll(".md-fold .md-fold-text")].map(e => e.textContent) : null, lines: [...(r.querySelector("diffs-container")?.shadowRoot.querySelectorAll("code[data-additions] [data-column-number]") ?? [])].map(e => +e.getAttribute("data-column-number")).join() } : null; })()`;
+    await b.eval(`location.hash = "#/compare/${guideMdA}..${guideMdB}"; true`);
+    await waitFor(`document.querySelector(".guide-tabs") && document.querySelector(".range-title")?.textContent.includes("v${guideMdB}")`, 10000);
+    if (!(await b.eval(`!!document.querySelector(".guide")`))) await keys(" ", "u", "g");
+    const mdStep = await waitFor(`(() => { const s = ${mdRefState}; return s?.blocks?.length ? s : null; })()`, 10000);
+    await b.eval(`document.querySelector("${mdRef}").scrollIntoView({ block: "start" }); true`);
+    await sleep(300);
+    await b.screenshot(join(OUT, "shots", "ui-check-guide-markdown.png"));
+    await b.eval(`window.__faded = false; window.__fadeSeen = new MutationObserver(() => { if (document.querySelector(".view-fade")) window.__faded = true; }); window.__fadeSeen.observe(document.body, { childList: true }); true`);
+    await click(`${mdRef} .md-toggle`);
+    const mdAsCode = await waitFor(`(() => { const s = ${mdRefState}; return s?.lines ? s : null; })()`, 5000);
+    const mdFaded = await b.eval(`(() => { window.__fadeSeen.disconnect(); return window.__faded; })()`);
+    await click(`${mdRef} .md-toggle`);
+    const mdBack = await waitFor(`(() => { const s = ${mdRefState}; return s?.blocks?.length ? s : null; })()`, 5000);
+    check(
+      "a guide step on a Markdown file shows it rendered, as compare.markdown says: the step's blocks, the rest folded with the change outside the step; its switch shows the step's lines as code with three around them, fading the rendered view out, and back",
+      mdStep?.toggle === "‹/› code" && JSON.stringify(mdStep.blocks) === JSON.stringify(["old:19", "new:19"]) && JSON.stringify(mdStep.folds) === JSON.stringify(["⋯ 18 lines folded", "⋯ 6 lines folded"]) &&
+        mdAsCode?.toggle === "¶ rendered" && mdAsCode.lines === "16,17,18,19,20,21,22" && !mdAsCode.blocks && mdFaded === true &&
+        mdBack?.toggle === "‹/› code" && JSON.stringify(mdBack.blocks) === JSON.stringify(["old:19", "new:19"]),
+      { mdStep, mdAsCode, mdFaded, mdBack },
+    );
+
+    const mdBlock = `${mdRef} .md-cell[data-side="new"] p[data-start="19"]`;
+    await b.eval(`document.querySelector(${JSON.stringify(mdBlock)}).scrollIntoView({ block: "center" }); true`);
+    await sleep(300);
+    // a click into the step first takes the keys to it: the guide's head gets its shorter hint and the text moves up
+    await click(mdBlock);
+    await sleep(300);
+    const mdBlockAt = await rect(mdBlock);
+    await pointer([{ type: "pointerMove", x: mdBlockAt!.x, y: mdBlockAt!.y }]);
+    await waitFor(`document.querySelector("${mdRef} .md-gutter .md-plus")`, 3000);
+    await click(`${mdRef} .md-gutter .md-plus`);
+    const mdGuideBox = await waitFor(`(() => { const n = document.querySelector("${mdRef} .md-view .new-thread .note")?.textContent; return n && document.activeElement?.tagName === "TEXTAREA" ? { note: n, framed: document.querySelector(".guide").classList.contains("code-focus"), cursor: [...document.querySelectorAll("${mdRef} .md-cursor")].map(e => e.dataset.start) } : null; })()`, 3000);
+    await b.screenshot(join(OUT, "shots", "ui-check-guide-markdown-comment.png"));
+    await keys(..."why nine?".split(""));
+    await chord([CTRL], "s");
+    const mdGuideCard = await waitFor(`(() => { const m = document.querySelector("${mdRef} .md-view .md-threads .thread-mini"); return m && !document.querySelector(".guide .new-thread") ? +m.getAttribute("data-thread") : null; })()`, 5000);
+    const mdGuideDraft = (JSON.parse(run(repo, ["bun", CLI, "threads", "list", "--drafts", "--as", "reviewer", "--json"])) as { id: number; path: string; side: string; range: { start: number; end: number } }[]).find((t) => t.id === mdGuideCard);
+    check(
+      "+ on a rendered block of a guide step opens the comment box on the block's lines, the cursor on it; Ctrl+S saves a draft there, shown on the block",
+      /New thread on docs\/guide-md\.md \(v\d+\) · lines 19/.test(mdGuideBox?.note ?? "") && mdGuideBox?.framed === true && JSON.stringify(mdGuideBox.cursor) === JSON.stringify(["19"]) &&
+        mdGuideDraft?.path === "docs/guide-md.md" && mdGuideDraft.side === "new" && mdGuideDraft.range.start === 19 && mdGuideDraft.range.end === 19,
+      { mdGuideBox, mdGuideCard, mdGuideDraft },
+    );
+    const mdJumpAt = await rect(mdBlock);
+    await pointer([{ type: "pointerMove", x: mdJumpAt!.x, y: mdJumpAt!.y }]);
+    await waitFor(`document.querySelector("${mdRef} .md-gutter .md-jump")`, 3000);
+    await click(`${mdRef} .md-gutter .md-jump`);
+    const mdJumped = await waitFor(`(() => { const r = document.querySelector("${mdRef}"); const rows = [...(r.querySelector("diffs-container")?.shadowRoot.querySelectorAll('code[data-additions] [data-content] > [data-stet-mark~="cursor"]') ?? [])]; return rows.length ? { cursor: rows.map(x => x.getAttribute("data-line")).join(), toggle: r.querySelector(".md-toggle")?.textContent } : null; })()`, 5000);
+    await click(`${mdRef} .md-toggle`);
+    const mdJumpBack = await waitFor(`(() => { const c = [...document.querySelectorAll("${mdRef} .md-cursor")].map(e => e.closest(".md-cell").dataset.side + ":" + e.dataset.start); return c.length ? c : null; })()`, 5000);
+    check(
+      "‹/› beside a rendered block of a guide step shows the step as code with the cursor on the block's line; back to rendered the cursor is on the block again",
+      mdJumped?.cursor === "19" && mdJumped.toggle === "¶ rendered" && JSON.stringify(mdJumpBack) === JSON.stringify(["new:19"]),
+      { mdJumped, mdJumpBack },
+    );
+
+    run(repo, ["bun", CLI, "config", "set", "compare.markdown", "code"]);
+    await b.navigate("about:blank");
+    await b.navigate(url);
+    await b.eval(`location.hash = "#/compare/${guideMdA}..${guideMdB}"; true`);
+    await waitFor(`document.querySelector(".guide-tabs") && document.querySelector(".range-title")?.textContent.includes("v${guideMdB}")`, 10000);
+    if (!(await b.eval(`!!document.querySelector(".guide")`))) await keys(" ", "u", "g");
+    const mdStepAsCode = await waitFor(`(() => { const s = ${mdRefState}; return s?.lines ? s : null; })()`, 10000);
+    run(repo, ["bun", CLI, "config", "set", "compare.markdown", "--unset"]);
+    await b.navigate("about:blank");
+    await b.navigate(url);
+    await b.eval(csp);
+    check("with compare.markdown code a guide step on a Markdown file opens as code", mdStepAsCode?.toggle === "¶ rendered" && !mdStepAsCode.blocks && mdStepAsCode.lines === "16,17,18,19,20,21,22", mdStepAsCode);
+
     // The cursor follows the mouse: a comment started with the mouse puts it on its lines, and once the wheel took the
     // cursor off screen the keys go on from the code on screen. + takes every line, or rendered block, of a text selection.
     mkdirSync(join(repo, "docs"), { recursive: true });
