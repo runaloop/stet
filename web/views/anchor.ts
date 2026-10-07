@@ -1,5 +1,6 @@
 import type { CodeView } from "@pierre/diffs";
 import type { CursorSpace, Seen } from "../lib/cursor.ts";
+import { holdFade } from "../lib/fade.ts";
 import { drawnLines } from "../lib/marks.ts";
 import type { Side } from "../lib/search.ts";
 
@@ -17,6 +18,15 @@ const once = (fn?: () => void) => {
   };
 };
 
+/** `placed`, after letting go of a copy of the old view that waits for this placement. */
+const heldUntil = (placed?: () => void) => {
+  const free = holdFade();
+  return () => {
+    free();
+    placed?.();
+  };
+};
+
 /**
  * Puts a rendered block where `want` says (px from the top of the scroller, given the block, as its height may count):
  * once as soon as it is drawn, and once more when the pictures above it have loaded (they push it down), within `ms`
@@ -24,9 +34,9 @@ const once = (fn?: () => void) => {
  * every frame would fight its own and shake the page.
  */
 export function placeAt(scroller: HTMLElement, find: () => Element | null, want: number | ((el: Element) => number), ms = 1500, placed?: () => void): void {
+  const tell = once(heldUntil(placed));
   release?.();
   let done = false;
-  const tell = once(placed);
   const events = ["wheel", "pointerdown", "keydown"] as const;
   const stop = () => {
     tell();
@@ -75,11 +85,11 @@ export function placeAt(scroller: HTMLElement, find: () => Element | null, want:
  * and once the line has stood still for a few frames one last nudge takes up what pierre's sum leaves over.
  */
 export function lineAt(scroller: HTMLElement, view: CodeView<never>, path: string, side: Side, line: number, y: number, ms = 1500, placed?: () => void): void {
+  const tell = once(heldUntil(placed));
   release?.();
   const sticky = (view as unknown as { getStickyHeaderOffset?: () => number }).getStickyHeaderOffset?.() ?? 0;
   view.scrollTo({ type: "line", id: path, lineNumber: line, side, align: "start", offset: y - sticky });
   let done = false;
-  const tell = once(placed);
   const events = ["wheel", "pointerdown", "keydown"] as const;
   const stop = () => {
     tell();

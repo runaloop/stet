@@ -67,7 +67,7 @@ import { compareOrder } from "../lib/nav.ts";
 import { PeekView } from "./Peek.tsx";
 import { plusLines } from "../plus.ts";
 import { blocksInSight, codeTop, lineAt, linesInSight, onScreen, placeAt, renderedTop, rowElement, stopElement } from "./anchor.ts";
-import { snapshot, visibleBox } from "../lib/fade.ts";
+import { holdFade, snapshot, visibleBox } from "../lib/fade.ts";
 import { Presets, rangeTitle, ReviewedButton, VersionStrip } from "../components/VersionStrip.tsx";
 import { takeSpot } from "../jumps.ts";
 import { compileQuery, diffRows } from "../lib/search.ts";
@@ -508,9 +508,11 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     if (!later && !drawn()) view.current?.scrollTo({ type: "item", id: path, align: "start" });
     if (later) setTimeout(() => drawn() || view.current?.scrollTo({ type: "item", id: path, align: "start" }), 150);
     const end = performance.now() + 5000;
+    const free = holdFade();
     const poll = () => {
       if (ready()) fn();
-      else if (performance.now() < end) requestAnimationFrame(poll);
+      else if (performance.now() < end) return void requestAnimationFrame(poll);
+      free();
     };
     requestAnimationFrame(poll);
   };
