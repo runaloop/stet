@@ -81,7 +81,9 @@ inside a changed list or table the items and rows face each other too (nested it
 facing an item or a row that was added or removed. The words that changed are marked in the text, struck through on
 the old side and green on the new one; a picture or a link whose address changed is framed or underlined, with the
 old address on hover. A block of which more than 60% of the words changed is marked as a whole instead. Blocks that
-one change rewrote together are paired by how alike they are; when nothing is alike they stay one group.
+one change rewrote together are paired by how alike they are; when nothing is alike they stay one group. In both
+views an item of an ordered list whose number alone changed, as the items after a removed one, is not marked: the list
+numbers its items by their place anyway.
 
 In unified view it is one column. A block with a few words changed shows once, with the changes in its text (removed
 text keeps its bold, code and links), and so does a list or a table, nested items too: an item or a row that was
