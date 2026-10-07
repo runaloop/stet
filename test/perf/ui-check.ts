@@ -2412,6 +2412,34 @@ try {
       { hlMdButton, hlMdScroller, hlMdAway, hlMdBack, hlMdInView, hlMdHover },
     );
 
+    // A step removed from a numbered list renumbers the steps after it in the source; rendered, they read as before.
+    const stepsMd = (v: number) =>
+      ["# Steps", "", ...(v === 1 ? ["Install the tool.", "Write the config.", "Run the check.", "Read the report.", "Fix what failed."] : ["Install the tool.", "Run the check.", "Read the report.", "Fix what failed."]).map((s, i) => `${i + 1}. ${s}`), ""].join("\n");
+    writeFileSync(join(repo, "docs/steps.md"), stepsMd(1));
+    run(repo, ["git", "add", "-A"]);
+    const renumA = JSON.parse(run(repo, ["bun", CLI, "version", "create", "--label", "steps", "--json"])).version.number as number;
+    writeFileSync(join(repo, "docs/steps.md"), stepsMd(2));
+    run(repo, ["git", "add", "-A"]);
+    const renumB = JSON.parse(run(repo, ["bun", CLI, "version", "create", "--label", "a step less", "--json"])).version.number as number;
+    const smd = `document.querySelector('.md-view[data-file="docs/steps.md"]')`;
+    // the list and each item: its first line, its first word, whether it is marked and has the bar
+    const itemsIn = (cell: string) =>
+      `[...${smd}.querySelectorAll('${cell} :is(ol, li:not(.md-gap))')].map(e => (e.dataset.start ?? "-") + " " + (e.tagName === "OL" ? "list" : e.textContent.trim().split(/\\s+/)[0]) + (e.matches(".md-changed, .md-removed") ? " marked" : "") + (getComputedStyle(e, "::before").content !== "none" ? " bar" : ""))`;
+    await b.eval(`location.hash = "#/compare/${renumA}..${renumB}?file=docs/steps.md"; true`);
+    await waitFor(`${smd}?.querySelector("[data-stop]")`, 10000);
+    await b.eval(`[...document.querySelectorAll(".compare-head .btn")].find(x => x.textContent === "split")?.click(); true`);
+    const renumSplit = await waitFor(`${smd}?.classList.contains("md-split") ? { old: ${itemsIn('.md-cell[data-side="old"]')}, new: ${itemsIn('.md-cell[data-side="new"]')} } : null`, 8000);
+    await b.screenshot(join(OUT, "shots", "ui-check-markdown-renumbered.png"));
+    await b.eval(`[...document.querySelectorAll(".compare-head .btn")].find(x => x.textContent === "unified").click(); true`);
+    const renumOnce = await waitFor(`${smd}?.classList.contains("md-one") && ${smd}.querySelector("[data-stop]") ? { cells: [...${smd}.querySelectorAll(".md-cell")].map(c => c.dataset.side), items: ${itemsIn(".md-cell")} } : null`, 8000);
+    await b.eval(`[...document.querySelectorAll(".compare-head .btn")].find(x => x.textContent === "split").click(); true`);
+    check(
+      "a step removed from a numbered list is marked, neither the steps renumbered after it nor the list around them are: in split and in unified view",
+      JSON.stringify(renumSplit) === JSON.stringify({ old: ["3 list", "3 Install", "4 Write marked bar", "5 Run", "6 Read", "7 Fix"], new: ["3 list", "3 Install", "4 Run", "5 Read", "6 Fix"] }) &&
+        JSON.stringify(renumOnce) === JSON.stringify({ cells: ["new", "new"], items: ["3 list", "3 Install", "- Write marked bar", "4 Run", "5 Read", "6 Fix"] }),
+      { renumSplit, renumOnce },
+    );
+
     await b.eval(`location.hash = "#/compare/${imgV - 1}..${imgV}"; true`);
     await waitFor(`[...document.querySelectorAll(".imgdiff img")].length >= 5`, 10000);
     await sleep(800);
