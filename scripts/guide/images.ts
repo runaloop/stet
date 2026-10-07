@@ -52,13 +52,15 @@ export async function imagesGuide() {
       await p.keys(..."In the design the badge is inside the card, under the columns.");
       await p.sleep(400);
       const modes = await p.need(".imgdiff .seg");
+      const zoom = await p.need(".imgdiff .zoom-bar");
       const caption = await p.need(".imgdiff-caption");
       const frame = await p.need(".imgdiff .img-frame.tone-pending");
       const note = await p.need(".imgdiff .new-thread .note");
       await p.shot("images-1.png", [
         { html: "Size and bytes, old → new", at: { x: 300, y: caption.y + 40 }, to: { x: caption.x - 4, y: caption.y + caption.h / 2 }, w: 250 },
-        { html: "Old and new side by side, a swipe divider, one over the other, or the pixels that differ", at: { x: modes.x + modes.w + 380, y: modes.y - 20 }, to: { x: modes.x + modes.w + 4, y: modes.y + modes.h / 2 }, ring: modes, w: 360 },
+        { html: "Old and new side by side, a swipe divider, one over the other, or the pixels that differ", at: { x: modes.x + modes.w / 2 + 60, y: modes.y - 84 }, to: { x: modes.x + modes.w / 2, y: modes.y - 4 }, ring: modes, w: 360 },
         { html: "Drag on either image to frame an area: a thread on it, like one on lines", at: { x: frame.x - 400, y: frame.y - 20 }, to: { x: frame.x - 4, y: frame.y + frame.h / 2 }, w: 300 },
+        { html: "Zoom in to frame a small detail: also Ctrl + the wheel, or + − 0 over a picture", at: { x: zoom.x + zoom.w + 260, y: zoom.y + 36 }, to: { x: zoom.x + zoom.w / 2, y: zoom.y + zoom.h + 4 }, ring: zoom, w: 360 },
         { html: "The agent gets the image with this area framed, and the area at full size", at: { x: note.x + 900, y: note.y + 60 }, to: { x: note.x + 820, y: note.y + note.h + 20 }, w: 360 },
       ]);
       await p.eval(`[...document.querySelectorAll(".imgdiff .new-thread button")].find(b => b.textContent.includes("Send now")).click(); true`);
@@ -71,7 +73,7 @@ export async function imagesGuide() {
       const changed = await p.need(".imgdiff-canvas .tone-change-box");
       await p.shot("images-2.png", [
         { html: "Pixels that differ in magenta, the rest faded; the dashed box holds every change", at: { x: changed.x + changed.w + 60, y: changed.y + 40 }, to: { x: changed.x + changed.w + 4, y: changed.y + changed.h / 2 }, w: 340 },
-        { html: "How many pixels and where. A layout that moves things down marks all below: swipe or onion skin show that better", at: { x: sum.x + sum.w + 120, y: sum.y - 20 }, to: { x: sum.x + sum.w + 4, y: sum.y + sum.h / 2 }, w: 380 },
+        { html: "How many pixels and where. A layout that moves things down marks all below: swipe or onion skin show that better", at: { x: sum.x + sum.w + 220, y: sum.y + 50 }, to: { x: sum.x + sum.w + 4, y: sum.y + sum.h / 2 }, w: 380 },
       ]);
       await p.eval(`[...document.querySelectorAll(".imgdiff .seg button")].find(b => b.textContent === "side by side").click(); true`);
 

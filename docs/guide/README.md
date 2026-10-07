@@ -87,6 +87,11 @@ A drag on either image frames an area and opens the comment box under the pictur
 area as other threads are on lines, a draft until you submit, with replies and resolve. Frames of the
 threads on an image are drawn over it; a click opens the thread.
 
+To frame a small detail, zoom in: **+** / **−**, **100%** and **fit** on the header, `Ctrl` + the wheel, or the
+keys `+`, `-` and `0` over the picture. A zoomed picture scrolls in its frame (the wheel, or a drag with the
+middle button), and you draw on it as before: the area is kept in the picture's own pixels. Old and new side
+by side zoom and scroll together.
+
 ![An image in the diff, and an area framed for a thread](images-1.png)
 
 ![The pixels that differ](images-2.png)
