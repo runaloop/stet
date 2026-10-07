@@ -89,7 +89,3 @@ export function foldOf(fd: FileDiffMetadata, cfg: FoldConfig): FoldDecision {
   if (marker) return { group: null, keptBecause: `adds ${cfg.skipMarkers.find((m) => marker.text.includes(m))}` };
   return { group: "tests", keptBecause: null };
 }
-
-export function viewedKey(fd: FileDiffMetadata): string {
-  return `${fd.name}@${fd.type === "deleted" ? fd.prevObjectId : fd.newObjectId}`;
-}

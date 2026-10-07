@@ -743,3 +743,107 @@ describe("comments from a thread's code", () => {
     expect(box()).toBeNull();
   });
 });
+
+describe("viewed files and the last pass", () => {
+  let compare: typeof import("../../web/compare.ts");
+  let side: typeof import("../../web/views/CompareSide.tsx");
+  let parse: (patch: string) => import("@pierre/diffs").FileDiffMetadata[];
+  const posts: { url: string; body: { keys?: string[]; on?: boolean; ref?: string } }[] = [];
+  const host = document.createElement("div");
+  const file = (path: string, ids: string, lines: string) => `diff --git a/${path} b/${path}\nindex ${ids} 100644\n--- a/${path}\n+++ b/${path}\n${lines}`;
+  const changed = file("src/a.kt", "aaaaaaa..bbbbbbb", "@@ -1 +1 @@\n-a\n+b\n");
+  const added = (path: string) => `diff --git a/${path} b/${path}\nnew file mode 100644\nindex 0000000..ccccccc\n--- /dev/null\n+++ b/${path}\n@@ -0,0 +1 @@\n+x\n`;
+  const head = () => host.querySelector(".file-list .side-head")?.textContent ?? "";
+  const versions = (n: number) => Array.from({ length: n }, (_, i) => ({ number: i + 1, snapshot: `s${i + 1}`, createdAt: "2026-10-07T10:00:00Z", author: "claude", role: "agent" }));
+  let shown = 0;
+  const show = async (patch: string) => {
+    compare.baseFiles.value = parse(patch);
+    await tick();
+  };
+
+  beforeAll(async () => {
+    const { parsePatchFiles } = await import("@pierre/diffs");
+    parse = (patch) => parsePatchFiles(patch, `viewed-${shown++}`).flatMap((p) => p.files);
+    compare = await import("../../web/compare.ts");
+    side = await import("../../web/views/CompareSide.tsx");
+    respond = (url, init) => {
+      if (init?.method !== "POST" || !(url.startsWith("/api/viewed") || url.startsWith("/api/reviewed"))) return null;
+      posts.push({ url: url.split("?")[0]!, body: JSON.parse(String(init.body)) });
+      return url.startsWith("/api/reviewed") ? Response.json({ sha: "s2", label: "v2", version: 2, at: "2026-10-07T10:00:00Z" }) : Response.json({ ok: true });
+    };
+    state.status.value = { review: { source: "worktree", baseRef: "main" }, versions: 2, versionsList: versions(2), now: { sha: "s2", changedSinceLatest: false } } as never;
+    state.reviewedCursor.value = null;
+    state.viewedKeys.value = new Set();
+    state.route.value = { name: "compare", from: "1", to: "2" };
+    compare.compareData.value = { from: { ref: "1", sha: "s1", label: "v1" }, to: { ref: "2", sha: "s2", label: "v2" }, files: [], placements: [], outside: [] };
+    compare.sideTab.value = "files";
+    document.body.appendChild(host);
+    render(<side.SidePanel />, host);
+  });
+
+  afterAll(() => {
+    render(null, host);
+    respond = null;
+    compare.baseFiles.value = null;
+    compare.compareData.value = null;
+    state.viewedKeys.value = new Set();
+    state.reviewedCursor.value = null;
+    state.banner.value = null;
+  });
+
+  test("hidden files (tests with only new code, lock files) do not count, and the last shown file ticked remembers the pass", async () => {
+    await show(changed + added("app/src/test/kotlin/ATest.kt") + file("bun.lock", "ddddddd..eeeeeee", "@@ -1 +1 @@\n-1\n+2\n"));
+    expect(head()).toBe("3 files · 0/1 viewed · 2 hidden");
+    posts.length = 0;
+    compare.setViewed(compare.visibleFiles.value[0]!, true);
+    await tick(60);
+    expect(head()).toBe("3 files · 1/1 viewed · 2 hidden");
+    expect(posts).toEqual([
+      { url: "/api/viewed", body: { keys: ["src/a.kt@aaaaaaa..bbbbbbb"], on: true } },
+      { url: "/api/reviewed", body: { ref: "2" } },
+    ]);
+    expect(state.reviewedCursor.value?.version).toBe(2);
+    compare.groupsOpen.value = { tests: true, generated: false };
+    await tick();
+    expect(head()).toBe("3 files · 1/2 viewed · 1 hidden");
+    compare.groupsOpen.value = { tests: false, generated: false };
+  });
+
+  test("one file: “1 file”", async () => {
+    state.viewedKeys.value = new Set();
+    await show(changed);
+    expect(head()).toBe("1 file · 0/1 viewed");
+  });
+
+  test("a file deleted after you viewed it, or reverted to what you viewed, is not viewed", async () => {
+    state.viewedKeys.value = new Set(["src/a.kt@aaaaaaa..bbbbbbb"]);
+    await show(changed);
+    expect(head()).toBe("1 file · 1/1 viewed");
+    await show("diff --git a/src/a.kt b/src/a.kt\ndeleted file mode 100644\nindex bbbbbbb..0000000\n--- a/src/a.kt\n+++ /dev/null\n@@ -1 +0,0 @@\n-b\n");
+    expect(head()).toBe("1 file · 0/1 viewed");
+    await show(file("src/a.kt", "fffffff..bbbbbbb", "@@ -1 +1 @@\n-f\n+b\n"));
+    expect(head()).toBe("1 file · 0/1 viewed");
+  });
+
+  test("unticking a file viewed by an old-form tick takes that tick off", async () => {
+    state.viewedKeys.value = new Set(["src/a.kt@bbbbbbb"]);
+    await show(changed);
+    expect(head()).toBe("1 file · 1/1 viewed");
+    posts.length = 0;
+    compare.setViewed(compare.visibleFiles.value[0]!, false);
+    await tick(60);
+    expect(head()).toBe("1 file · 0/1 viewed");
+    expect(posts).toEqual([{ url: "/api/viewed", body: { keys: ["src/a.kt@bbbbbbb"], on: false } }]);
+  });
+
+  test("the banner about a new version goes once a range that shows it opens, not before", () => {
+    state.status.value = { review: { source: "worktree", baseRef: "main" }, versions: 3, versionsList: versions(3), now: { sha: "s3", changedSinceLatest: false } } as never;
+    state.banner.value = { text: "The agent handed over v3.", version: 3 };
+    state.route.value = { name: "compare", from: "1", to: "2" };
+    expect(state.banner.value).not.toBeNull();
+    state.route.value = { name: "overview" };
+    expect(state.banner.value).not.toBeNull();
+    state.route.value = { name: "compare", from: "2", to: "3" };
+    expect(state.banner.value).toBeNull();
+  });
+});

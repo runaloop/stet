@@ -1,9 +1,10 @@
 import { hydratePartialDiff, parsePatchFiles, type FileDiffMetadata, type SelectedLineRange } from "@pierre/diffs";
 import { batch, computed, effect, signal } from "@preact/signals";
 import type { CompareDto, ComparePlacement, GrepResultDto, Region } from "../src/core/types.ts";
-import { DEFAULT_COLLAPSE_GLOBS, DEFAULT_SKIP_MARKERS, foldOf, isTestPath, parseList, viewedKey, type FoldDecision, type FoldGroup } from "./lib/fold.ts";
+import { DEFAULT_COLLAPSE_GLOBS, DEFAULT_SKIP_MARKERS, foldOf, isTestPath, parseList, type FoldDecision, type FoldGroup } from "./lib/fold.ts";
 import { landingTab } from "./lib/filters.ts";
 import { groupTitle } from "./lib/order.ts";
+import { isViewedIn, unviewKeys, viewedIndex, viewedKey } from "./lib/viewed.ts";
 import { threadMarks, type LineMark, type Spot } from "./lib/marks.ts";
 import { CursorSpace, rowPosition, type Cursor, type CursorFile, type LineRange, type NavBlock, type Seen } from "./lib/cursor.ts";
 import { isMarkdown } from "./lib/markdown.ts";
@@ -368,17 +369,22 @@ export const folds = computed(() => {
 
 export const viewed = viewedKeys;
 
+const viewedIdx = computed(() => viewedIndex(viewed.value));
+
 export function isViewed(fd: FileDiffMetadata): boolean {
-  return viewed.value.has(viewedKey(fd));
+  return isViewedIn(viewedIdx.value, fd);
 }
 
 export function setViewed(fd: FileDiffMetadata, on: boolean): void {
+  const keys = on ? [viewedKey(fd)] : unviewKeys(viewedIdx.peek(), fd);
   const next = new Set(viewed.value);
-  if (on) next.add(viewedKey(fd));
-  else next.delete(viewedKey(fd));
+  for (const k of keys) {
+    if (on) next.add(k);
+    else next.delete(k);
+  }
   viewed.value = next;
   const rid = reviewId.peek();
-  if (rid !== null) void guard(api.setViewed(rid, [viewedKey(fd)], on));
+  if (rid !== null && keys.length) void guard(api.setViewed(rid, keys, on));
   if (on) rememberIfAllViewed();
   const open = new Map(fileOpen.value);
   open.delete(fd.name);
@@ -386,9 +392,9 @@ export function setViewed(fd: FileDiffMetadata, on: boolean): void {
 }
 
 function rememberIfAllViewed(): void {
-  const rows = fileRows.peek();
+  const c = viewedCount.peek();
   const r = route.peek();
-  if (r.name !== "compare" || rows.length === 0 || !rows.every((x) => isViewed(x.fd))) return;
+  if (r.name !== "compare" || c.shown === 0 || c.seen < c.shown) return;
   const rv = reviewedCursor.peek();
   if (!rv || r.to === "now" || (/^\d+$/.test(r.to) && (rv.version === null || Number(r.to) > rv.version))) void markReviewed(r.to);
 }
@@ -518,6 +524,12 @@ export const fileRows = computed<FileRow[]>(() => {
 });
 
 export const visibleFiles = computed(() => fileRows.value.filter((r) => !r.hidden).map((r) => r.fd));
+
+/** The files the diff shows, and how many of them are viewed; files folded into a hidden group do not count. */
+export const viewedCount = computed(() => {
+  const shown = visibleFiles.value;
+  return { shown: shown.length, seen: shown.filter((fd) => isViewed(fd)).length, hidden: fileRows.value.length - shown.length };
+});
 
 export const marksByPath = computed(() => {
   const m = new Map<string, LineMark[]>();

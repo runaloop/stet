@@ -1,4 +1,4 @@
-import { batch, computed, effect, signal } from "@preact/signals";
+import { batch, computed, effect, signal, untracked } from "@preact/signals";
 import type { CommentDto, GitStateDto, NowStateDto, ReviewDto, ReviewedDto, ThreadDetail, ThreadSummary } from "../src/core/types.ts";
 import { api, ApiError, getToken, setToken, subscribe, type ReviewStatus } from "./api.ts";
 import { applyFilters, DEFAULT_FILTERS, type Filters } from "./lib/filters.ts";
@@ -420,6 +420,18 @@ export function shiftRef(ref: string, dir: 1 | -1): string {
   const j = Math.max(0, Math.min(opts.length - 1, (i === -1 ? opts.length - 1 : i) + dir));
   return opts[j]!;
 }
+
+// The banner says a version arrived: it goes once a range that shows that version opens, whichever way.
+// Only a change of route counts, so the banner does not go by itself while the page still shows older code.
+effect(() => {
+  const r = route.value;
+  untracked(() => {
+    const b = banner.value;
+    if (!b || r.name !== "compare") return;
+    const shows = /^\d+$/.test(r.to) ? Number(r.to) >= b.version : r.to === "now" && versions.value.length >= b.version && nowMoved.value === null;
+    if (shows) banner.value = null;
+  });
+});
 
 effect(() => {
   if (route.value.name !== "home" || !status.value || loading.value) return;

@@ -1043,6 +1043,54 @@ try {
       /\*/.test(timeline) && roundsShown.length >= 1 && roundsShown[0].startsWith("open"),
       { timeline, roundsShown },
     );
+
+    // viewed is on a change: a revert to content ticked before, or deleting it, is a change not seen yet
+    const manyRow = `[...document.querySelectorAll(".file-row")].find(r => r.querySelector(".file-name").textContent === "Many.kt")`;
+    const filesOf = async (range: string, names: number) => {
+      await b.eval(`location.hash = "#/compare/${range}"; true`);
+      await sideTab("Files");
+      return waitFor(`document.querySelectorAll(".file-row").length === ${names} && ${manyRow} ? { head: document.querySelector(".file-list .side-head").textContent, many: ${manyRow}.querySelector("input").checked } : null`, 8000);
+    };
+    await filesOf(`${latest - 1}..${latest}`, 1);
+    await b.eval(`${manyRow}.querySelector("input").click(); document.activeElement?.blur(); true`);
+    await sleep(400);
+    const version = (label: string) => {
+      run(repo, ["git", "add", "-A"]);
+      run(repo, ["bun", CLI, "version", "create", "--label", label, "--json"]);
+    };
+    writeFileSync(join(repo, "src/Many.kt"), "val many = 99\n");
+    writeFileSync(join(repo, "src/test/ManyTest.kt"), "class ManyTest\n");
+    version("many and its test");
+    writeFileSync(join(repo, "src/Many.kt"), "val many = 11\n");
+    version("many back");
+    rmSync(join(repo, "src/Many.kt"));
+    version("many gone");
+    await waitFor(`[...document.querySelectorAll("header.top a.ver")].some(a => a.textContent === "v${latest + 3}")`, 10000);
+    const reverted = await filesOf(`${latest + 1}..${latest + 2}`, 1);
+    const deleted = await filesOf(`${latest + 2}..${latest + 3}`, 1);
+    check("a file put back to content ticked viewed, or deleted after, is not viewed: the change is new; one file is “1 file”", reverted?.many === false && deleted?.many === false && deleted?.head === "1 file · 0/1 viewed", { reverted, deleted });
+
+    await b.eval(`location.hash = "#/compare/${latest}..${latest + 1}"; true`);
+    await waitFor(`document.querySelector(".fold-summary .fold-tests")`, 8000);
+    await b.eval(`(() => { const t = document.querySelector(".fold-summary .fold-tests"); if (t.textContent.includes("hide")) t.click(); return true; })()`);
+    const hidden = await filesOf(`${latest}..${latest + 1}`, 2);
+    await b.eval(`${manyRow}.querySelector("input").click(); document.activeElement?.blur(); true`);
+    const pass = await waitFor(`document.querySelector(".reviewed-mark")?.textContent ?? null`, 5000);
+    const counted = await b.eval(`document.querySelector(".file-list .side-head").textContent`);
+    check(
+      "a test file with only new code is hidden and not counted: ticking the one file shown remembers the pass",
+      hidden?.head === "2 files · 0/1 viewed · 1 hidden" && counted === "2 files · 1/1 viewed · 1 hidden" && pass === `✓ you went through v${latest + 1}`,
+      { hidden, counted, pass },
+    );
+
+    writeFileSync(join(repo, "src/Zzz.kt"), "val z = 2\n");
+    version("z");
+    const bannered = await waitFor(`document.querySelector(".banner")?.textContent.includes("v${latest + 4}") ?? null`, 10000);
+    await sleep(400);
+    await keys(" ", "r", "v");
+    const sinceShown = await waitFor(`location.hash === "#/compare/${latest + 1}..${latest + 4}" && !document.querySelector(".banner")`, 5000);
+    check("the banner about a new version goes when Space r v opens what changed since the last pass", !!bannered && !!sinceShown, { bannered, hash: await b.eval("location.hash") });
+
     mkdirSync(join(repo, "res"), { recursive: true });
     writeFileSync(join(repo, "res/card.png"), pngCard(240, 160, { bar: { y: 0, h: 30, color: [40, 90, 200, 255] } }));
     writeFileSync(join(repo, "res/logo.svg"), `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="12" fill="#2f6fdd"/></svg>\n`);

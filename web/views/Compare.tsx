@@ -52,6 +52,7 @@ import {
   shownPlacements,
   toggleFile,
   viewed,
+  viewedCount,
   visibleFiles,
   visualAnchor,
   fileOpen,
@@ -1063,8 +1064,8 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     if ((isSha(from) || isSha(to)) && !commits.peek()) void loadCommits();
   }, [from, to]);
   const pickRange = (f: string, t: string) => navigate({ name: "compare", from: f, to: t });
-  const rows = fileRows.value;
-  const allViewed = rows.length > 0 && rows.every((x) => isViewed(x.fd));
+  const count = viewedCount.value;
+  const allViewed = count.shown > 0 && count.seen === count.shown;
 
   return (
     <div class="compare">

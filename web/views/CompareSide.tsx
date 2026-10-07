@@ -29,6 +29,7 @@ import {
   searchRegex,
   searchResult,
   setViewed,
+  viewedCount,
   sideTab,
   stepHit,
   type FileRow,
@@ -127,7 +128,7 @@ function FileList() {
   const d = compareData.value;
   if (onThreadPage.value && !d) return <div class="empty">Files of the diff you were looking at. Open the changes (<Kbd>v</Kbd>) first.</div>;
   if (rows.length === 0) return <div class="empty">No files in this diff.</div>;
-  const seen = rows.filter((r) => isViewed(r.fd)).length;
+  const count = viewedCount.value;
   const sections: [string, FileRow[]][] = [];
   for (const r of rows) {
     if (r.section !== null || sections.length === 0) sections.push([r.section ?? "", [r]]);
@@ -137,7 +138,8 @@ function FileList() {
     <div class="file-list">
       <div class="side-head subtle">
         {onThreadPage.value && d ? <>{d.from.label} → {d.to.label}: a click shows the file over the thread's code · </> : null}
-        {rows.length} files · {seen}/{rows.length} viewed
+        {rows.length} file{rows.length === 1 ? "" : "s"} · {count.seen}/{count.shown} viewed
+        {count.hidden ? <span title="files the diff hides (tests with only new code, lock and generated files) do not count; show them (the buttons next to the title, Space u t for tests) and they do"> · {count.hidden} hidden</span> : null}
       </div>
       {sections.map(([title, list]) =>
         list.length ? (
