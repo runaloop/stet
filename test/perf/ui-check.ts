@@ -2098,6 +2098,103 @@ try {
     const backToDiff = await waitFor(`!document.querySelector(".guide")`, 2000);
     check("Esc leaves the step's lines and the next Esc the guide; i in the guide opens a box on the cursor line", !!leftCode && /New thread on src\/Guide\.kt/.test(guideKeyBox ?? "") && !!backToDiff, { leftCode, guideKeyBox, backToDiff });
 
+    // Every change of the view in one jump fades the old view out over the new one, as the rendered / code switch does:
+    // each frame for 1.5 s, the copy's opacity (-1 when there is none) and the time.
+    await b.eval(`window.__trace = (ms) => { const rec = window.__rec = { frames: [], done: false }; const t0 = performance.now(); const f = () => { const o = document.querySelector(".view-fade"); rec.frames.push([o ? Math.round(+getComputedStyle(o).opacity * 100) / 100 : -1, Math.round(performance.now() - t0)]); if (performance.now() - t0 < ms) requestAnimationFrame(f); else rec.done = true; }; requestAnimationFrame(f); return true; }; true`);
+    // a copy came, faded out in about 200 ms and was gone within a second of coming
+    const fadeIn = (rec: [number, number][]) => {
+      const on = rec.find((r) => r[0] !== -1)?.[1] ?? null;
+      const start = rec.find((r) => r[0] > 0 && r[0] < 1)?.[1] ?? null;
+      const gone = rec.find((r, i) => i > 0 && r[0] === -1 && rec[i - 1]![0] !== -1)?.[1] ?? null;
+      return { ok: on !== null && start !== null && gone !== null && gone - start >= 150 && gone - start <= 300 && gone - on <= 1100, on, start, gone };
+    };
+    const across = async (act: () => Promise<unknown>, there: string) => {
+      await waitFor(`!document.querySelector(".view-fade")`, 3000);
+      await b.eval(`__trace(1500)`);
+      await act();
+      const reached = !!(await waitFor(there, 4000));
+      await waitFor(`__rec.done`, 3000);
+      return { ...fadeIn(await b.eval(`__rec.frames`)), reached };
+    };
+    type Across = Awaited<ReturnType<typeof across>>;
+    const allFaded = (r: Record<string, Across>) => Object.values(r).every((x) => x.ok && x.reached);
+    const q = (sel: string) => `document.querySelector(${JSON.stringify(sel)})`;
+    const cursorIn = (file: string) => `(() => { const c = [...document.querySelectorAll(".codeview-host diffs-container")].find(x => x.shadowRoot.querySelector("[data-title]")?.textContent === ${JSON.stringify(file)}); return [...(c?.shadowRoot.querySelectorAll('[data-content] > [data-stet-mark~="cursor"]') ?? [])].map(r => +r.getAttribute("data-line")); })()`;
+    const guideTo = (sel: string) => `!${q(".guide")} && ${sel}`;
+    const guideTrips: Record<string, Across> = {};
+    guideTrips.spaceUG = await across(() => keys(" ", "u", "g"), q(".guide .guide-step"));
+    guideTrips.esc = await across(() => keys("\uE00C"), `!${q(".guide")}`);
+    await keys("]", "b");
+    await waitFor(`${cursorIn("src/Guide.kt")}.length === 0 && !document.querySelector(".view-fade")`, 3000);
+    await keys(" ", "u", "g");
+    await waitFor(q(".guide .guide-step"), 3000);
+    await keys("{", "{", "{");
+    guideTrips.enter = await across(() => keys("\uE007"), guideTo(`${cursorIn("src/Guide.kt")}.join() === "10" && location.hash.endsWith("line=10-12")`));
+    await keys(" ", "u", "g");
+    await waitFor(q(".guide .guide-step"), 3000);
+    guideTrips.openInDiff = await across(() => b.eval(`document.querySelector(".guide .guide-step[data-step='2'] a.guide-open").click(); true`), guideTo(`location.hash.endsWith("file=src%2FGuideUtil.kt")`));
+    check("the Guide tab and the Diff fade into each other: Space u g, Esc, Enter on a step and open in Diff, each landing where it goes", allFaded(guideTrips), guideTrips);
+
+    const pages: Record<string, Across> = {};
+    await b.eval(`location.hash = "#/compare/${blameB}..${guideV}?file=src%2FGuide.kt&line=11"; true`);
+    await waitFor(`${cursorIn("src/Guide.kt")}.join() === "11" && !document.querySelector(".view-fade")`, 4000);
+    pages.open = await across(() => keys("\uE007"), `location.hash.startsWith("#/thread/") && ${q(".detail .code-area diffs-container")}`);
+    pages.back = await across(() => keys("\uE00C"), `location.hash.startsWith("#/compare/${blameB}..${guideV}") && ${q(".codeview-host diffs-container")}`);
+    await b.eval(`document.querySelector(".codeview-host").scrollTop = 1e6; true`);
+    pages.gt = await across(() => keys("g", "t"), `["10", "11"].includes(${cursorIn("src/Guide.kt")}.join())`);
+    check("a thread page and the Changes page fade into each other: opening a thread, Esc back to the changes, gt back to the thread", allFaded(pages), pages);
+
+    const jumpsHere: Record<string, Across> = {};
+    jumpsHere.nextFile = await across(() => keys("]", "b"), `${cursorIn("src/Guide.kt")}.length === 0`);
+    await b.eval(`[...document.querySelectorAll(".side-tabs button")].find(x => x.textContent.startsWith("Files")).click(); true`);
+    jumpsHere.filesClick = await across(() => b.eval(`[...document.querySelectorAll(".file-row")].find(r => r.querySelector(".file-name")?.textContent === "GuideOther.kt").querySelector(".file-link").click(); true`), `[...document.querySelectorAll(".file-row.active .file-name")].map(x => x.textContent).join() === "GuideOther.kt"`);
+    jumpsHere.lineLink = await across(() => b.eval(`location.hash = "#/compare/${blameB}..${guideV}?file=src%2FGuide.kt&line=10-11"; true`), `${cursorIn("src/Guide.kt")}.join() === "10"`);
+    await chord([CTRL], "f");
+    await waitFor(`document.activeElement?.id === "diff-search"`, 2000);
+    await b.eval(`(() => { const i = document.getElementById("diff-search"); i.value = "util2"; i.dispatchEvent(new Event("input", { bubbles: true })); return true; })()`);
+    await waitFor(`document.querySelectorAll(".search .hit").length === 1`, 4000);
+    jumpsHere.searchHit = await across(() => keys("\uE007"), `[...document.querySelectorAll(".codeview-host diffs-container")].some(c => c.shadowRoot.querySelector("[data-title]")?.textContent === "src/GuideUtil.kt" && c.shadowRoot.querySelector('[data-stet-mark~="hit-current"]'))`);
+    await b.eval(`document.activeElement?.blur(); true`);
+    check("jumps on the Changes page fade over to where they go: ]b, a click in Files, a link to lines, a search match", allFaded(jumpsHere), jumpsHere);
+
+    const ranges: Record<string, Across> = {};
+    const titled = (from: number | string, to: number) => `location.hash === "#/compare/${from}..${to}" && ${q(".range-title")}?.textContent.includes("v${to}")`;
+    ranges.strip = await across(
+      () => b.eval(`[...document.querySelectorAll(".vstrip .vstep")].find(s => s.querySelector(".vlabel")?.firstChild?.textContent === "v${blameA}").querySelector(".vbody").click(); true`),
+      titled(blameA - 1, blameA),
+    );
+    ranges.toLater = await across(() => keys("]", "v"), titled(blameA - 1, blameB));
+    ranges.toEarlier = await across(() => keys("[", "v"), titled(blameA - 1, blameA));
+    check("a change of the version range fades over to the new range: a click on the version strip, ]v and [v", allFaded(ranges), ranges);
+
+    // a key while the copy is there takes it away and acts on the new view at once
+    await b.eval(`location.hash = "#/compare/${blameB}..${guideV}?file=src%2FGuide.kt&line=12"; true`);
+    await waitFor(`${cursorIn("src/Guide.kt")}.join() === "12" && !document.querySelector(".view-fade")`, 4000);
+    await keys(" ", "u", "g");
+    await waitFor(`${q(".guide .guide-step")} && !document.querySelector(".view-fade")`, 3000);
+    await keys("\uE00C");
+    const escCopy = await waitFor(`!!document.querySelector(".view-fade")`, 1000);
+    await keys("j");
+    const afterEscJ = await b.eval(`({ copy: !!document.querySelector(".view-fade"), guide: !!${q(".guide")}, cursor: ${cursorIn("src/Guide.kt")} })`);
+    await keys("]", "b");
+    const bCopy = await waitFor(`!!document.querySelector(".view-fade")`, 1000);
+    await keys("j");
+    const afterBJ = await b.eval(`({ copy: !!document.querySelector(".view-fade"), inGuideKt: ${cursorIn("src/Guide.kt")}.length })`);
+    check(
+      "a key during the fade takes the copy away at once and acts on the new view: j after Esc from the Guide moves the Diff's cursor, j after ]b moves it in the next file",
+      !!escCopy && !afterEscJ.copy && !afterEscJ.guide && afterEscJ.cursor.join() === "13" && !!bCopy && !afterBJ.copy && afterBJ.inGuideKt === 0,
+      { escCopy, afterEscJ, bCopy, afterBJ },
+    );
+
+    await b.eval(`window.__matchMedia = window.matchMedia; window.matchMedia = (q) => /reduced-motion/.test(q) ? { matches: true, media: q, addEventListener() {}, removeEventListener() {} } : window.__matchMedia(q); true`);
+    const still: Record<string, Across> = {};
+    still.guide = await across(() => keys(" ", "u", "g"), q(".guide .guide-step"));
+    still.diff = await across(() => keys("\uE00C"), `!${q(".guide")}`);
+    still.nextFile = await across(() => keys("]", "b"), "true");
+    still.range = await across(() => keys("{"), `location.hash === "#/compare/${blameA}..${guideV}"`);
+    await b.eval(`window.matchMedia = window.__matchMedia; true`);
+    check("with prefers-reduced-motion the view changes at once: no copy over the guide, the diff, a jump or another range", Object.values(still).every((x) => x.on === null && x.reached), still);
+
     await b.eval(`location.hash = "#/drafts"; true`);
     await waitFor(`document.querySelector(".ask-guide input:not([disabled])")`, 5000);
     await click(".ask-guide input");

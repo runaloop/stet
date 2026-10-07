@@ -173,6 +173,12 @@ searches the keys like LazyVim's keymaps picker and runs the one you pick; `Spac
 what can follow it. Counts work (`5j`), and so do non-Latin keyboard layouts (keys are matched by their
 physical position). A tour with screenshots: [guide](guide/README.md#navigation).
 
+When the view changes in one jump (another page or thread and back, the Guide tab and the Diff, **open in Diff** and
+`Enter` on a step, another range of versions, `]b`, `]t`, `gt`, `}` / `{` in the Guide tab, a link to lines, a click in
+Files, a search match, `Ctrl+O`), the old view fades out over the new one once that one is in place, as the rendered /
+code switch of a Markdown file does: in a fifth of a second, at once with reduced motion, and keys, clicks and the wheel
+act on the new view right away.
+
 On the Changes page a cursor moves over the diff. A click on a line puts it there, and so does a comment started
 with the mouse (a drag over the line numbers, **+**): on the last line picked, so the keys go on from the comment.
 After the wheel or the scrollbar took the cursor off screen, a move starts from what is on screen, as Vim drags the
