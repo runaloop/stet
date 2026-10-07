@@ -296,6 +296,7 @@ export interface SettledDto {
   /** What to do. */
   message: string;
   by: string;
+  /** When the review that sent it resolved the thread. */
   at: string;
 }
 

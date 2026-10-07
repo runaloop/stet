@@ -1460,7 +1460,7 @@ export async function status(ctx: Ctx, review: ReviewRow, opts: { pinnedNow?: st
     .filter((t) => messages.has(t.id))
     .map((t) => {
       const m = messages.get(t.id)!;
-      return { id: t.id, path: t.anchor.path ?? t.path, range: t.anchor.range, title: t.title, message: m.body, by: m.author, at: m.created_at };
+      return { id: t.id, path: t.anchor.path ?? t.path, range: t.anchor.range, title: t.title, message: m.body, by: m.author, at: t.resolvedAt ?? m.created_at };
     });
   return {
     review: reviewDto(review),
