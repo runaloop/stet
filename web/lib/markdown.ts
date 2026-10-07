@@ -1,4 +1,4 @@
-import type { FileDiffMetadata } from "@pierre/diffs";
+import type { ChangeContent, FileDiffMetadata, Hunk } from "@pierre/diffs";
 import MarkdownIt, { type Env, type Token } from "markdown-it";
 import { imageType } from "../../src/core/image.ts";
 import type { NavBlock, Span } from "./cursor.ts";
@@ -40,7 +40,55 @@ export interface SideChanges {
 // a hunk with no lines on a side names the line before them
 const firstLine = (start: number, count: number) => (count ? start : start + 1);
 
-export function changesOf(fd: Pick<FileDiffMetadata, "hunks">): { old: SideChanges; new: SideChanges } {
+/** A diff's hunks, and the lines they removed and added when it has them. */
+export type MdDiff = Pick<FileDiffMetadata, "hunks"> & Partial<Pick<FileDiffMetadata, "deletionLines" | "additionLines">>;
+
+type Content = { type: "context"; lines: number } | { type: "change"; deletions: number; additions: number };
+
+/** An ordered list item's line with its number left out, or null for another line. */
+export function unnumbered(line: string | undefined): string | null {
+  const m = /^(\s*(?:>\s*)*)\d{1,9}([.)](?:[ \t].*)?)$/.exec(line?.replace(/\r?\n$/, "") ?? "");
+  return m ? `${m[1]}#${m[2]}` : null;
+}
+
+/**
+ * A change with the lines it only renumbered taken out of it as unchanged: an ordered list item whose number alone
+ * changed renders as before, since the list numbers its items by their place.
+ */
+function renumbered(fd: MdDiff, g: ChangeContent): Content[] {
+  const keys = (lines: string[] | undefined, at: number, count: number) => Array.from({ length: count }, (_, i) => unnumbered(lines?.[at + i]));
+  const a = keys(fd.deletionLines, g.deletionLineIndex, g.deletions);
+  const b = keys(fd.additionLines, g.additionLineIndex, g.additions);
+  if (!a.some((k) => k !== null) || !b.some((k) => k !== null) || a.length * b.length > 1e6) return [g];
+  const same = (i: number, j: number) => a[i] !== null && a[i] === b[j];
+  const best = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
+  for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--) best[i]![j] = same(i, j) ? best[i + 1]![j + 1]! + 1 : Math.max(best[i + 1]![j]!, best[i]![j + 1]!);
+  const out: Content[] = [];
+  let run = { type: "change" as const, deletions: 0, additions: 0 };
+  let i = 0;
+  let j = 0;
+  while (i < a.length || j < b.length) {
+    if (i < a.length && j < b.length && same(i, j)) {
+      if (run.deletions || run.additions) out.push(run);
+      run = { type: "change", deletions: 0, additions: 0 };
+      out.push({ type: "context", lines: 1 });
+      i++;
+      j++;
+    } else if (j < b.length && (i === a.length || best[i]![j + 1]! >= best[i + 1]![j]!)) {
+      run.additions++;
+      j++;
+    } else {
+      run.deletions++;
+      i++;
+    }
+  }
+  if (run.deletions || run.additions) out.push(run);
+  return out;
+}
+
+const contentOf = (fd: MdDiff, h: Hunk): Content[] => h.hunkContent.flatMap((g) => (g.type === "change" ? renumbered(fd, g) : [g]));
+
+export function changesOf(fd: MdDiff): { old: SideChanges; new: SideChanges } {
   const removed = new Set<number>();
   const added = new Set<number>();
   const oldGaps: number[] = [];
@@ -48,7 +96,7 @@ export function changesOf(fd: Pick<FileDiffMetadata, "hunks">): { old: SideChang
   for (const h of fd.hunks) {
     let o = firstLine(h.deletionStart, h.deletionCount);
     let n = firstLine(h.additionStart, h.additionCount);
-    for (const g of h.hunkContent) {
+    for (const g of contentOf(fd, h)) {
       if (g.type === "context") {
         o += g.lines;
         n += g.lines;
@@ -229,7 +277,7 @@ export interface Slots {
   new: number[];
 }
 
-export function slotsOf(fd: Pick<FileDiffMetadata, "hunks">, oldLines: number, newLines: number): Slots {
+export function slotsOf(fd: MdDiff, oldLines: number, newLines: number): Slots {
   const old: number[] = [];
   const nw: number[] = [];
   let slot = 0;
@@ -242,7 +290,7 @@ export function slotsOf(fd: Pick<FileDiffMetadata, "hunks">, oldLines: number, n
   for (const h of fd.hunks) {
     const first = firstLine(h.deletionStart, h.deletionCount);
     while (o < first) same();
-    for (const g of h.hunkContent) {
+    for (const g of contentOf(fd, h)) {
       if (g.type === "context") {
         for (let i = 0; i < g.lines; i++) same();
         continue;

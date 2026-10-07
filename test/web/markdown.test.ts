@@ -2,7 +2,7 @@ import { parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
 import { describe, expect, test } from "bun:test";
 import { createTwoFilesPatch } from "diff";
 import { CursorSpace } from "../../web/lib/cursor.ts";
-import { changedBlocks, changesOf, hitBlocks, isMarkdown, layoutOf, likeness, renderMarkdown, resolveRef, slotsOf, stopsOn, type Block } from "../../web/lib/markdown.ts";
+import { changedBlocks, changesOf, hitBlocks, isMarkdown, layoutOf, likeness, renderMarkdown, resolveRef, slotsOf, stopsOn, unnumbered, type Block, type SideChanges } from "../../web/lib/markdown.ts";
 
 const imageUrl = (path: string) => `/raw/${path}`;
 const render = (text: string, more: Partial<Parameters<typeof renderMarkdown>[1]> = {}) => renderMarkdown(text, { path: "docs/guide.md", imageUrl, changes: null, ...more });
@@ -115,6 +115,38 @@ describe("changed blocks", () => {
     const lit = html(text, { highlight: (code, lang) => (lang === "ts" ? `<pre class="shiki">${code.trim()}</pre>` : null) });
     expect(lit).toContain(`<div data-b="3" data-start="4" data-end="6" class="md-code"><pre class="shiki">const x = 1;</pre></div>`);
     expect(lit).toContain(`<div data-b="4" data-start="8" data-end="10" class="md-code"><pre><code>plain\n</code></pre></div>`);
+  });
+
+  test("an ordered list item whose number alone changed is unchanged: a removed step marks itself, not the steps renumbered after it", () => {
+    expect([unnumbered("4. Four\n"), unnumbered("  12) x"), unnumbered("> 3."), unnumbered("- 3. a"), unnumbered("3.5 apples"), unnumbered("Text.")]).toEqual(["#. Four", "  #) x", "> #.", null, null, null]);
+    const before = lines("Steps:", "", "1. One", "2. Two", "3. Three", "4. Four", "5. Five", "", "End.");
+    const after = lines("Steps:", "", "1. One", "2. Two", "3. Four", "4. Five, now longer", "", "End.");
+    const ch = changesOf(diffOf(before, after));
+    expect([[...ch.old.lines], ch.old.gaps, [...ch.new.lines], ch.new.gaps]).toEqual([[5, 7], [], [6], [4]]);
+    const marked = (text: string, side: SideChanges) => [...html(text, { changes: side }).matchAll(/<(\w+)[^>]*class="md-changed"[^>]*>([^<]*)/g)].map((m) => `${m[1]}:${m[2]}`);
+    expect(marked(before, ch.old)).toEqual(["li:Three", "li:Five"]);
+    expect(marked(after, ch.new)).toEqual(["li:Five, now longer"]);
+    const { pairs, stops, old, nw } = laidOut(before, after);
+    expect(pairs[1]![0]!.children!.map((p) => [p.old.map((i) => old!.blocks[i]!.start), p.new.map((i) => nw!.blocks[i]!.start)])).toEqual([
+      [[3], [3]],
+      [[4], [4]],
+      [[5], []],
+      [[6], [5]],
+      [[7], [6]],
+    ]);
+    expect(stops.filter((s) => s.row === 1).map((s) => [s.nav.old?.start ?? null, s.nav.new?.start ?? null, s.nav.changed])).toEqual([
+      [3, 3, false],
+      [4, 4, false],
+      [5, null, true],
+      [6, 5, false],
+      [7, null, true],
+      [null, 6, true],
+    ]);
+  });
+
+  test("a list only renumbered is an unchanged row", () => {
+    const { rows } = laidOut(lines("1. a", "1. b", "1. c", "", "End."), lines("1. a", "2. b", "3. c", "", "End."));
+    expect(rows.map((r) => r.kind)).toEqual(["same", "same"]);
   });
 });
 

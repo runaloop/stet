@@ -27,7 +27,7 @@ import {
   visualAnchor,
 } from "../compare.ts";
 import { paintTextHits } from "../lib/marks.ts";
-import { changesOf, pairsOf, renderMarkdown, rowsOf, slotsOf, stopsOf, stopsOn, subtree, type MdSide, type Row, type RowKind, type SideBlocks, type SideChanges, type Stop } from "../lib/markdown.ts";
+import { changesOf, pairsOf, renderMarkdown, rowsOf, slotsOf, stopsOf, stopsOn, subtree, type MdDiff, type MdSide, type Row, type RowKind, type SideBlocks, type SideChanges, type Stop } from "../lib/markdown.ts";
 import { isSimple, markInline, markPairs, markRemoved, markWords, splitRewritten, textOf as blockText, unitsOf } from "../lib/richdiff.ts";
 import { breakAfter, unitKey, unitOf } from "../lib/breaks.ts";
 import { closeGaps, foldInside, meets, opening, withBlanks } from "../lib/mdfold.ts";
@@ -333,7 +333,7 @@ export interface MdShown {
 interface RenderedProps {
   file: string;
   /** The diff from `old` to `now`, for its hunks. */
-  fd: Pick<FileDiffMetadata, "hunks"> | null;
+  fd: MdDiff | null;
   old: MdSource | null;
   now: MdSource | null;
   split: boolean;
