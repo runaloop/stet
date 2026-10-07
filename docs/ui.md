@@ -47,6 +47,15 @@ that shows the area at every version (`changed` when the image changed, `outdate
 gets the image with the area framed and the area at full size as PNG files (`stet thread show`)
 ([guide](guide/README.md#images)).
 
+A picture first fits its place (at most 70% of the window's height). **fit**, **100%**, **−** and **+** on its
+header zoom it (from 10% to 3200%), and so do `Ctrl` + the wheel (around the mouse) and the keys `+` (or `=`), `-`
+and `0` (fit again), which act on the picture under the mouse, or on the one that takes the most of the screen.
+A zoomed picture scrolls inside its frame: the wheel, or a drag with the middle button (a plain drag where it
+does not draw a frame: onion skin, difference, the thread page). A frame is drawn and kept in the picture's own
+pixels, so zoom and scroll do not move it. Old and new side by side zoom and scroll together; in swipe, onion
+skin and difference the zoom stays when you switch. On a thread's page, the whole image zooms the same way, and
+so does a picture opened from a search.
+
 ## Markdown
 
 A Markdown file shows rendered. Like its code, it shows what changed with the text around it (the blocks the code's
@@ -188,6 +197,7 @@ picture (an image, an SVG shown as a picture) is one stop:
 | `Space ul` · `Space uL` | side panel left / right of the diff · the page's column order and widths back to the defaults |
 | `Space ug` | the agent's guide to the version on the right, or back to the diff ([experimental](#the-agents-guide-to-a-version-experimental)) |
 | `Space rd` · `Space rs` · `Space rv` · `Space rr` | drafts · submit or approve · changes since you last looked · re-read "now" |
+| `+` / `=`, `-`, `0` | zoom the picture under the mouse (or the one in sight) in, out, back to fit ([images](#images)) |
 | `Esc` | close the preview, the selection, then the comment box |
 
 **+** beside a line comments on that line, or, with text selected in the file, on every line the selection touches.
@@ -197,7 +207,7 @@ and a notice says so. The same goes for a thread's code, the Guide tab's lines a
 In a thread: `j` / `k` next / previous thread, `n` / `N` unread, `[` / `]` timeline step, `t` diff / then /
 at step, `p` diff base, `gt` back to the thread's lines in the code, marked, `r` reply, `x` / `X` resolve / reopen, `e` editor, `Space g b` blame the thread's lines in the code
 shown, `/` search all
-files at the step shown, `*` find the selected word, `Space u l` the conversation left / right of the code, `Esc` close
+files at the step shown, `+` / `-` / `0` zoom the whole image, `*` find the selected word, `Space u l` the conversation left / right of the code, `Esc` close
 the preview, then back to the changes.
 The thread's code has the Changes page's cursor, but `j`, `k` and the rest act on it only while the code has the
 focus, so they keep stepping through threads and messages otherwise. A click on a line or a rendered block (or a
