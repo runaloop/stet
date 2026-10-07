@@ -9,8 +9,8 @@ yet", "What changed in v3", "Since you last looked"). A strip of versions `base 
 range: **from** and **to** under a step set that end of the diff exactly (the code of the "from" step is the
 old side, of the "to" step the new side), a click on a step shows only what changed in it, and a drag
 across steps picks both ends. Presets sit next to it. "✓ Done up to vN" (or marking the last file viewed)
-remembers your pass per review, and next time `v` opens "since I last looked". The header says what "now"
-is: `now = v3`, or `now: 30 files after v3` when the agent changed code without a new version. A long
+remembers your pass per review, and next time `v` opens "since I last looked"
+([guide](guide/README.md#viewed-files-and-your-last-pass)). The header says what "now" is: `now = v3`, or `now: 30 files after v3` when the agent changed code without a new version. A long
 branch stays usable: the strip folds the versions far from the range (`v1…v38`), the header shows the last
 six, and `Space f v` lists every version newest first, grouped by the review it answers, with search by
 number or label ([guide](guide/README.md#many-versions)).
@@ -235,7 +235,7 @@ scope buttons do not count) or `r` into the reply box leaves it too. The cursor 
 In its messages: `}` / `{` next / previous message, `gg` / `G` first / last, `Ctrl+d` / `Ctrl+u` half a
 page, `za` fold or unfold the message under the cursor (`zR` / `zM` all of them), and `r` replies to the
 message under the cursor once you moved it there (with these keys or a click), otherwise to the thread.
-Everywhere: `v` changes since you last looked, `s` drafts, `S` drafts then submit (or approve), `w` wrap, `R` re-read
+Everywhere: `v` changes since you last looked (on the Changes page `v` selects lines like `V`, so `Space r v` there), `s` drafts, `S` drafts then submit (or approve), `w` wrap, `R` re-read
 "now", `Space g s` git state (pushed, staged, not staged, new), `Ctrl+O` / `Ctrl+I` jump back / forward (pages, search hits, file jumps). Only text fields take
 keys: after a click on a checkbox, a select or a button the keys keep working.
 
@@ -249,7 +249,8 @@ The side panel has three tabs on the Changes page and on a thread:
 - **Threads**: the thread tree with filters.
 - **Files**: every file of the diff with `+`/`−` counts and thread counts. The file under the cursor (or,
   without a cursor, the one you are scrolled to) is highlighted. Tick "viewed" (here or in the file
-  header) to collapse a file until its content changes; the marks are kept in the review database.
+  header) to collapse a file until its content changes; the marks are kept in the review database
+  ([guide](guide/README.md#viewed-files-and-your-last-pass)).
   On a thread page a click shows the file over the thread's code.
 - **Search**: "in the diff" searches every line of the diff (added, removed, context), also in files the
   page has not drawn yet; "in all files" runs `git grep` on the version, changed files or not, and opens
