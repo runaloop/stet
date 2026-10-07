@@ -44,7 +44,7 @@ import { contextPatch, filePatch, regionPatch } from "../lib/region.ts";
 import { snapshot, visibleBox, type Fade } from "../lib/fade.ts";
 import { drawnLines, threadMarks, type ThreadLines } from "../lib/marks.ts";
 import { CHUNK, expansionOf, hydrateSubset, NOTHING, revealedPatch, textLines, withSpan, type Reveal } from "../lib/reveal.ts";
-import type { Cursor, CursorFile, LineRange, NavBlock, Seen, Span } from "../lib/cursor.ts";
+import { carry, type Cursor, type CursorFile, type LineRange, type NavBlock, type Seen, type Span } from "../lib/cursor.ts";
 import type { Side } from "../lib/search.ts";
 import { blocksInSight, linesInSight, stopElement } from "./anchor.ts";
 import { clampStep, diffPair } from "../lib/timeline.ts";
@@ -233,16 +233,10 @@ function CodeBlock({ d, from, to }: { d: Detail; from: TimelineStepDto; to: Time
     const was = cursorSpace.peek();
     const c = cursor.peek();
     const a = visualAnchor.peek();
-    const at = { c: c && was.position(c), a: a && was.position(a), cb: c && was.block(c), ab: a && was.block(a) };
     threadCode.value = { file, old: sideOf(from), now: sideOf(to), thread: d.thread.id, newest: newest.sha, start: to.range.start };
     const space = cursorSpace.peek();
-    const follow = (x: Cursor | null, block: NavBlock | null, pos: { side: Side; line: number } | null) => {
-      const same = block && file.blocks ? file.blocks.findIndex((b) => JSON.stringify([b.old, b.new]) === JSON.stringify([block.old, block.new])) : -1;
-      if (same !== -1) return { path: file.fd.name, row: same };
-      return pos ? (space.locate(file.fd.name, pos.side, pos.line) ?? x) : x;
-    };
-    if (c) cursor.value = follow(c, at.cb, at.c);
-    if (a) visualAnchor.value = follow(a, at.ab, at.a);
+    if (c) cursor.value = carry(c, was, space, file.fd.name);
+    if (a) visualAnchor.value = carry(a, was, space, file.fd.name);
     if (toCode.current && !rendered) {
       toCode.current = false;
       const frame = requestAnimationFrame(() => cursor.peek() && revealCursor(cursor.peek()!, "center"));

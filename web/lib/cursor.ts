@@ -218,6 +218,19 @@ export class CursorSpace {
   }
 }
 
+/**
+ * Where a place of the cursor goes when its file is drawn anew (other lines, rendered or as code), now as `path`: to
+ * the same rendered block, else to the block or line that holds its line; where it was when neither is drawn.
+ */
+export function carry(c: Cursor, was: CursorSpace, now: CursorSpace, path = c.path): Cursor {
+  const block = was.block(c);
+  const blocks = now.files[now.fileIndex(path)]?.blocks;
+  const same = block && blocks ? blocks.findIndex((b) => JSON.stringify([b.old, b.new]) === JSON.stringify([block.old, block.new])) : -1;
+  if (same !== -1) return { path, row: same };
+  const at = was.position(c);
+  return (at && now.locate(path, at.side, at.line)) ?? c;
+}
+
 /** A place of the cursor drawn on screen, and how much of it shows: 0 to 1 of it, or of the view when it is taller. */
 export interface Seen {
   at: Cursor;

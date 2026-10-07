@@ -1,6 +1,6 @@
 import { parsePatchFiles } from "@pierre/diffs";
 import { describe, expect, test } from "bun:test";
-import { CursorSpace, moveStart, selectionLines } from "../../web/lib/cursor.ts";
+import { carry, CursorSpace, moveStart, selectionLines } from "../../web/lib/cursor.ts";
 
 const patch = (path: string, body: string) => `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n${body}`;
 const fs = parsePatchFiles(
@@ -81,6 +81,21 @@ describe("cursor over the diff", () => {
     ]);
     expect(md.position({ path: "a.kt", row: 1 })).toEqual({ side: "deletions", line: 6 });
     expect(s.locate("a.kt", "additions", md.position({ path: "a.kt", row: 0 })!.line)).toEqual({ path: "a.kt", row: 0 });
+  });
+
+  test("carry takes the cursor to its block or line when its file is drawn anew: rendered, as code, with other blocks, under another name", () => {
+    const code = space();
+    const head = { old: { start: 1, end: 4 }, new: { start: 1, end: 4 }, changed: false, group: 0 };
+    const added = { old: null, new: { start: 20, end: 22 }, changed: true, group: 1 };
+    const md = (blocks: (typeof head | typeof added)[], id?: string) => new CursorSpace([{ fd: fs[0]!, collapsed: false, blocks, ...(id ? { id } : {}) }]);
+    const a = (row: number) => ({ path: "a.kt", row });
+    expect(carry(a(7), code, md([head, added]))).toEqual(a(1));
+    expect(carry(a(1), md([head, added]), code)).toEqual(a(5));
+    const above = { old: null, new: { start: 0, end: 0 }, changed: true, group: 2 };
+    expect(carry(a(1), md([head, added]), md([above, head, added]))).toEqual(a(2));
+    expect(carry(a(1), md([head, added]), md([head, added], "1.0"), "1.0")).toEqual({ path: "1.0", row: 1 });
+    expect(carry(a(-1), code, md([head, added]))).toEqual(a(-1));
+    expect(carry(a(1), md([]), code)).toEqual(a(1));
   });
 });
 
