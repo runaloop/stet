@@ -73,6 +73,8 @@ one and prints how to serve it.
    `stet wait --for review` and wakes up when you submit.
 5. The agent replies in every thread, fixes the code and creates the next version.
 6. You press `n` to step through new replies, `[` / `]` to walk a thread's timeline, and `x` to resolve.
+   When the agent only has to go ahead ("yes, do it as you wrote"), **Resolve with message** closes the thread with
+   that last word: it goes with your review, and the agent does as it says without asking again.
    The **Round** page lists what is left: threads waiting for you, new code, unsent drafts.
 7. When all is fine, approve: **Approve** on the drafts page, or `S` there when you have no drafts. Drafts
    sent with an approval are nits the agent fixes without a new round. The header says `approved at vN`,
@@ -91,18 +93,19 @@ All commands print JSON when piped or with `--json`, except `stet export`, which
 | Command | What it does |
 |---|---|
 | `stet init [--base <ref>\|empty]` | start a review for the current branch (done automatically on first use); `--base empty` shows every file as new, e.g. to review a repository's first commit |
-| `stet status` | versions, thread counts, UI URL |
+| `stet status` | versions, thread counts, UI URL; `settled`: threads resolved with a message since the agent's latest version |
 | `stet serve [--open] [--stop]` | the web UI; `--open` runs it in the background and opens the browser |
 | `stet version create [--label] [--at <commit>] [--guide <file>]` | snapshot the working tree (or the index) as the next version, or make a commit one; `--guide` (experimental) stores the agent's guide to it: numbered steps in Markdown, each ending in its lines (`path:a-b`, or a path for the file's whole change), shown in the Changes page's Guide tab. A path or range the version does not have refuses the version |
 | `stet guide [N]` | print a version's guide (the latest version's by default) |
 | `stet versions diff <a> <b>` | files and thread placements between two refs (`base`, `N`, `latest`, `now`, `empty`, sha) |
 | `stet blame <path>:<a>-<b> [--at N\|now]` | where each line came from: the version that brought it (or `base`, or `now`), the round of review it answered and the threads that version answered, e.g. `40-44  v3 (round 2) · fixed #12 "cache invalidation on logout"`: a `fixed` thread anchored on the line, else a `fixed` or `answered` reply that names the file (`(named)`, with its `file:line` when it gives one), else a fix in the same file (`(same file)`); at the latest version by default |
-| `stet threads list [--needs-reply] [--unread] [--state changed,outdated] [--new-since N] [--file glob]` | threads |
+| `stet threads list [--needs-reply] [--unread] [--state changed,outdated] [--new-since N] [--file glob] [--settled]` | threads; `--settled`: the ones resolved with a message for the agent to act on |
 | `stet thread show <id>` | conversation, timeline, code then / now, interdiff; for an image, the paths of the PNGs with the area framed; a comment with `restore` asks to put back old lines exactly as they were in a version |
 | `stet comment add --file <p> --range a-b --body <t> [--at <ref>] [--draft]` | new thread; `--region x,y,w,h` in place of `--range` for an area of an image |
 | `stet reply <id> --body <t\|-> [--intent fixed\|answered\|disagree\|question]` | reply |
 | `stet review submit [--approve] [--guide]` | publish your drafts as one review (request changes); `--guide` asks the agent for a guide to the next version, whatever `agent.guide` says; `--approve` approves the latest version, drafts going as nits (with other threads open, add `--force` to leave them open or `--resolve-all` to resolve them) |
 | `stet resolve <id> [--reason fixed\|wontfix\|answered]` / `stet reopen <id>` | reviewer only |
+| `stet resolve <id> --body <t\|->` | reviewer only: resolve with a message, a draft that resolves the thread (reason `go`) when you submit the review, with Request changes or an approval. The agent does as it says without asking again; its `question` or `disagree` reply reopens the thread |
 | `stet wait --for review\|reply\|version\|any [--timeout 30m]` | block until there is something to do (exit 5 on timeout) |
 | `stet open <id>` | open the editor at the thread |
 | `stet prune` | drop snapshot refs nothing points at |

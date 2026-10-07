@@ -220,9 +220,10 @@ A selection over removed and added lines, or into another file, has no one range
 and a notice says so. The same goes for a thread's code, the Guide tab's lines and rendered Markdown (by blocks).
 
 In a thread: `j` / `k` next / previous thread, `n` / `N` unread, `[` / `]` timeline step, `t` diff / then /
-at step, `p` diff base, `gt` back to the thread's lines in the code, marked, `r` reply, `x` / `X` resolve / reopen, `e` editor, `Space g b` blame the thread's lines in the code
-shown, `/` search all
-files at the step shown, `+` / `-` / `0` zoom the whole image, `*` find the selected word, `Space u l` the conversation left / right of the code, `Esc` close
+at step, `p` diff base, `gt` back to the thread's lines in the code, marked, `r` reply, `x` / `X` resolve / reopen,
+`Space r x` [resolve with a message](#thread-page), `e` editor, `Space g b` blame the thread's lines in the code
+shown, `/` search all files at the step shown, `+` / `-` / `0` zoom the whole image, `*` find the selected word,
+`Space u l` the conversation left / right of the code, `Esc` close
 the preview, then back to the changes.
 The thread's code has the Changes page's cursor, but `j`, `k` and the rest act on it only while the code has the
 focus, so they keep stepping through threads and messages otherwise. A click on a line or a rendered block (or a
@@ -297,6 +298,14 @@ you a question", "the agent says it fixed this", with a warning when the comment
 or that the thread is resolved, by whom and when; `#12` or "thread 12" in a message links to that thread
 with a preview on hover. The agent's and your messages have their own colours.
 
+**Resolve with message** next to **Resolve** (or `Space r x`) closes a thread with your last word to the agent, for
+when it only has to go ahead ("yes, do it as you wrote in docs/x.md"). The box under the conversation saves the message
+as a draft: the thread stays open, the strip and the Drafts page say the message resolves it, and it goes out when you
+submit the review, with Request changes or with an approval. Then the thread is resolved (`go`), the message marked
+**✓ resolved with this**, and it does not wait for you again: the agent gets it as an instruction to act on, without
+asking. If it hits a problem anyway, its `question` (or `disagree`) reopens the thread for you. A second message
+replaces the first; discarding the draft leaves the thread open.
+
 On a wide screen the thread page is three columns: threads | code | messages, each scrolling on its own.
 Drag the border next to the side panel or the messages (double-click resets it); widths are kept per page.
 The ⇄ button at the top of the border between code and messages (or `Space u l`) puts the conversation left of the
@@ -341,8 +350,9 @@ The **Drafts** page lists your unsent comments, a box for a summary of the whole
 thread and hands over the next version. **Approve** says the latest version is done, and needs no drafts.
 With drafts it asks whether they go along as nits (the agent fixes them without a new round) or as a
 request for changes; with other threads still open, whether to leave them open or resolve them all first
-(`j` / `k` and `Enter` pick, `Esc` cancels). `S` on the page does what its key mark shows: it requests changes
-when there are drafts and approves when there are none. Under the buttons, **ask the agent for a guide to the next
+(`j` / `k` and `Enter` pick, `Esc` cancels). A message that resolves its thread ([Resolve with
+message](#thread-page)) is marked **✓ resolves the thread** and goes with either. `S` on the page does what its key
+mark shows: it requests changes when there are drafts and approves when there are none. Under the buttons, **ask the agent for a guide to the next
 version** goes with Request changes, and **Guides in this repository: on | off** turns the agent's guides on or off
 for the repository; the box still asks for one when they are off ([the agent's guide](#the-agents-guide-to-a-version-experimental)).
 
