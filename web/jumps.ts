@@ -2,6 +2,7 @@ import { signal } from "@preact/signals";
 import { compareNav, cursor, peek, type Peek } from "./compare.ts";
 import type { Cursor } from "./lib/cursor.ts";
 import { expectNavigation, jumpHooks, notify, selectedStep } from "./state.ts";
+import { transition } from "./transition.ts";
 
 export interface Spot {
   hash: string;
@@ -72,6 +73,7 @@ export function takeSpot(hash: string): Spot | null {
 }
 
 function go(s: Spot): void {
+  transition();
   if (location.hash === s.hash) {
     apply(s);
     return;

@@ -12,6 +12,7 @@ import { leftPage } from "./jumps.ts";
 import { layoutPage, swapped, toggleSwap } from "./layout.ts";
 import { takeToken } from "./lib/route.ts";
 import { installKeys, picker } from "./keys.ts";
+import "./transition.ts";
 import {
   banner,
   boot,

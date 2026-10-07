@@ -67,6 +67,7 @@ import { compareHandle, openFocusedCompareThread, stepCompareThread } from "./vi
 import { jumpBack, jumpForward } from "./jumps.ts";
 import { resetLayout, swapped, toggleSwap, type SwapPage } from "./layout.ts";
 import { findUsages } from "./usages.ts";
+import { transition } from "./transition.ts";
 import { question } from "./components/Choice.tsx";
 import { approveReview, submitReview } from "./views/Drafts.tsx";
 import { openExternal, reopenCurrent, resolveCurrent, showThreadCode } from "./views/ThreadDetail.tsx";
@@ -129,6 +130,14 @@ function intoCode(then: () => boolean): () => boolean {
     codeFocus.value = true;
     if (!cursor.value) setCursor(startCursor());
     return then();
+  };
+}
+
+/** A jump to a far place in the code: the view fades over to it. */
+function far(run: (count: number) => boolean): (count: number) => boolean {
+  return (n) => {
+    transition();
+    return run(n);
   };
 }
 
@@ -390,13 +399,13 @@ export const BINDINGS: Binding[] = [
   { keys: "[c", desc: "previous change", where: "compare", visual: true, run: (n) => repeat(n, -1, (c) => cursorSpace.value.nextChange(c, -1)) },
   { keys: "]h", desc: "next hunk", where: "compare", visual: true, run: (n) => repeat(n, 1, (c) => cursorSpace.value.nextHunk(c, 1)) },
   { keys: "[h", desc: "previous hunk", where: "compare", visual: true, run: (n) => repeat(n, -1, (c) => cursorSpace.value.nextHunk(c, -1)) },
-  { keys: "]b", desc: "next file", where: "compare", run: (n) => repeat(n, 1, (c) => cursorSpace.value.nextFile(c, 1)) },
-  { keys: "[b", desc: "previous file", where: "compare", run: (n) => repeat(n, -1, (c) => cursorSpace.value.nextFile(c, -1)) },
-  { keys: "L", desc: "next file", where: "compare", run: (n) => repeat(n, 1, (c) => cursorSpace.value.nextFile(c, 1)) },
-  { keys: "H", desc: "previous file", where: "compare", run: (n) => repeat(n, -1, (c) => cursorSpace.value.nextFile(c, -1)) },
-  { keys: "]t", desc: "next thread on this diff", where: "compare", run: () => toThread(1) },
-  { keys: "[t", desc: "previous thread on this diff", where: "compare", run: () => toThread(-1) },
-  { keys: "gt", desc: "back to the thread last opened or stepped to, marked in the code", where: "compare", run: backToThread },
+  { keys: "]b", desc: "next file", where: "compare", run: far((n) => repeat(n, 1, (c) => cursorSpace.value.nextFile(c, 1))) },
+  { keys: "[b", desc: "previous file", where: "compare", run: far((n) => repeat(n, -1, (c) => cursorSpace.value.nextFile(c, -1))) },
+  { keys: "L", desc: "next file", where: "compare", run: far((n) => repeat(n, 1, (c) => cursorSpace.value.nextFile(c, 1))) },
+  { keys: "H", desc: "previous file", where: "compare", run: far((n) => repeat(n, -1, (c) => cursorSpace.value.nextFile(c, -1))) },
+  { keys: "]t", desc: "next thread on this diff", where: "compare", run: far(() => toThread(1)) },
+  { keys: "[t", desc: "previous thread on this diff", where: "compare", run: far(() => toThread(-1)) },
+  { keys: "gt", desc: "back to the thread last opened or stepped to, marked in the code", where: "compare", run: far(backToThread) },
   { keys: "]u", desc: "next unread thread", where: "compare", run: () => unread(1) },
   { keys: "[u", desc: "previous unread thread", where: "compare", run: () => unread(-1) },
   { keys: "n", desc: "next search match (no search: next unread thread)", where: "compare", run: () => (searching() ? stepHit(1) || true : unread(1)) },
@@ -452,8 +461,8 @@ export const BINDINGS: Binding[] = [
 
   { keys: "<Space>ug", desc: "back to the diff", where: "guide", run: toggleGuide },
   { keys: "<Esc>", desc: "back to the diff", where: "guide", run: toggleGuide },
-  { keys: "}", desc: "next step (3}: three steps)", where: "guide", run: (n) => stepGuide(1, n) },
-  { keys: "{", desc: "previous step", where: "guide", run: (n) => stepGuide(-1, n) },
+  { keys: "}", desc: "next step (3}: three steps)", where: "guide", run: far((n) => stepGuide(1, n)) },
+  { keys: "{", desc: "previous step", where: "guide", run: far((n) => stepGuide(-1, n)) },
   { keys: "<CR>", desc: "open the step in the diff, at its first lines", where: "guide", run: openGuideStep },
   { keys: "j", desc: "scroll down", where: "guide", run: (n) => scrollGuide(n, 1) },
   { keys: "k", desc: "scroll up", where: "guide", run: (n) => scrollGuide(n, -1) },

@@ -5,7 +5,7 @@ import { applyFilters, DEFAULT_FILTERS, landingTab, matchesFile } from "../../we
 import { compareOrder, stepFile, stepThread, stepUnread } from "../../web/lib/nav.ts";
 import { threadMarks } from "../../web/lib/marks.ts";
 import { filePatch, regionDiff, regionPatch } from "../../web/lib/region.ts";
-import { parseHash, routeHash, takeToken } from "../../web/lib/route.ts";
+import { parseHash, routeHash, sameView, takeToken, type Route } from "../../web/lib/route.ts";
 import { diffPair } from "../../web/lib/timeline.ts";
 import { flatten, groupByFile } from "../../web/lib/tree.ts";
 
@@ -217,6 +217,18 @@ describe("routes", () => {
     expect(at("4e1")).toEqual(["a.md", undefined, undefined]);
     expect(at("a-b")).toEqual(["a.md", undefined, undefined]);
     expect(at("40-55-60")).toEqual(["a.md", undefined, undefined]);
+  });
+
+  test("another page, thread, range, review or lines is another view; the same address in other words is not", () => {
+    const at = (r: Partial<Extract<Route, { name: "compare" }>>): Route => ({ name: "compare", from: "1", to: "2", ...r });
+    expect(sameView(at({ file: "a.md", line: 40, end: 40 }), at({ file: "a.md", line: 40 }))).toBe(true);
+    expect(sameView({ name: "thread", id: 3 }, { name: "thread", id: 3 })).toBe(true);
+    expect(sameView({ name: "thread", id: 3 }, { name: "thread", id: 4 })).toBe(false);
+    expect(sameView({ name: "thread", id: 3 }, { name: "thread", id: 3, review: 2 })).toBe(false);
+    expect(sameView(at({}), at({ to: "3" }))).toBe(false);
+    expect(sameView(at({}), at({ file: "a.md" }))).toBe(false);
+    expect(sameView(at({ file: "a.md", line: 40 }), at({ file: "a.md", line: 40, end: 55 }))).toBe(false);
+    expect(sameView(at({}), { name: "drafts" })).toBe(false);
   });
 
   test("the token leaves the URL, the review and the page stay", () => {

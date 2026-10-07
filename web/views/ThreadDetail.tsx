@@ -37,6 +37,7 @@ import { ThreadMini } from "../components/ThreadMini.tsx";
 import { usePlacements } from "../components/usePlacements.ts";
 import { apply, takeSpot } from "../jumps.ts";
 import { swapped, toggleSwap } from "../layout.ts";
+import { transition } from "../transition.ts";
 import { latchNew, openAtNews } from "../msgs.ts";
 import { stepThread, stepUnread } from "../lib/nav.ts";
 import { isMarkdown } from "../lib/markdown.ts";
@@ -124,6 +125,7 @@ const rangeAway = signal(false);
 const backToCode: { current: (() => boolean) | null } = { current: null };
 
 export function showThreadCode(): boolean {
+  transition();
   if (!backToCode.current?.()) notify("the code shown here has no lines of this thread");
   return true;
 }

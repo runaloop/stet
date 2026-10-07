@@ -44,6 +44,7 @@ import type { Route } from "../lib/route.ts";
 import { canQuote, quoteLines } from "../quote.ts";
 import { clampStep } from "../lib/timeline.ts";
 import { detail, link, route, selectedStep } from "../state.ts";
+import { transition } from "../transition.ts";
 import { ThreadTree } from "./ThreadTree.tsx";
 
 const split = (path: string) => {
@@ -71,6 +72,7 @@ function firstChange(row: FileRow): number {
 }
 
 function openFile(row: FileRow): void {
+  transition();
   if (!onThreadPage.value && guideShown.value) return showFileInGuide(row.fd.name);
   if (!onThreadPage.value) {
     compareNav.current?.scrollToFile(row.fd.name);

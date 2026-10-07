@@ -66,6 +66,11 @@ export function routeHash(r: Route, review?: number | null): string {
   return `#${path}${qs ? `?${qs}` : ""}`;
 }
 
+/** Whether two routes show the same view: the same page, and on the Changes page the same range and lines. */
+export function sameView(a: Route, b: Route): boolean {
+  return routeHash(a) === routeHash(b);
+}
+
 export function plainClick(e: MouseEvent): boolean {
   return e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey;
 }
