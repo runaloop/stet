@@ -2065,7 +2065,16 @@ try {
     await sleep(300);
     const g10 = await guideCell(10);
     const g11 = await guideCell(11);
-    await pointer([{ type: "pointerMove", x: g10.x, y: g10.y }, { type: "pointerDown", button: 0 }, { type: "pointerMove", x: g11.x, y: g11.y, duration: 100 }, { type: "pointerUp", button: 0 }]);
+    const guideLayout = () => b.eval(`({ head: Math.round(document.querySelector(".guide-head").getBoundingClientRect().height), framed: document.querySelector(".guide").classList.contains("code-focus") })`) as Promise<{ head: number; framed: boolean }>;
+    const guideBefore = { ...(await guideLayout()), y: g10.y };
+    await pointer([{ type: "pointerMove", x: g10.x, y: g10.y }, { type: "pointerDown", button: 0 }]);
+    const guideDown = { ...(await guideLayout()), y: (await guideCell(10)).y };
+    await pointer([{ type: "pointerMove", x: g11.x, y: g11.y, duration: 100 }, { type: "pointerUp", button: 0 }]);
+    check(
+      "in the guide the first mousedown in a step's lines puts the keys there without moving them: the head above keeps its height",
+      !guideBefore.framed && guideDown.framed && guideDown.head === guideBefore.head && guideDown.y === guideBefore.y,
+      { guideBefore, guideDown },
+    );
     const guideBox = await waitFor(`(() => { const n = document.querySelector(".guide .guide-ref[data-key='1.0'] .new-thread .note")?.textContent; return n && document.activeElement?.tagName === "TEXTAREA" ? { note: n, framed: document.querySelector(".guide").classList.contains("code-focus"), typing: document.activeElement.tagName } : null; })()`, 3000);
     await keys(..."why ten and eleven?".split(""));
     await chord([CTRL], "s");
@@ -2380,13 +2389,19 @@ try {
     const threadKt = `document.querySelector(".code-area diffs-container")`;
     await waitFor(`${threadKt}?.shadowRoot?.querySelector('[data-content] > [data-line="151"]')`, 8000);
     await sleep(500);
-    // a first click puts the keys on the code, and the hint above it gets shorter
-    for (let i = 0; i < 2; i++) {
-      const p147 = await linePoint(threadKt, 147, "text");
-      await pointer([{ type: "pointerMove", x: p147.x, y: p147.y }, { type: "pointerDown", button: 0 }, { type: "pointerUp", button: 0 }]);
-      await sleep(300);
-    }
+    const codeTop = () => b.eval(`Math.round(${threadKt}.getBoundingClientRect().top)`) as Promise<number>;
+    const topBefore = await codeTop();
+    const p147 = await linePoint(threadKt, 147, "text");
+    await pointer([{ type: "pointerMove", x: p147.x, y: p147.y }, { type: "pointerDown", button: 0 }, { type: "pointerUp", button: 0 }]);
+    await sleep(300);
+    const topAfter = await codeTop();
     const clickedOn = await b.eval(`[...${threadKt}.shadowRoot.querySelectorAll("[data-content] > [data-stet-mark~=cursor]")].map(e => +e.getAttribute("data-line"))`);
+    const keysOn = await b.eval(`!!document.querySelector(".code-area.code-focus")`);
+    check(
+      "on a thread page the first click into the code puts the keys there and selects the line clicked; the code does not move",
+      JSON.stringify(clickedOn) === "[147]" && keysOn === true && topBefore === topAfter,
+      { clickedOn, keysOn, topBefore, topAfter },
+    );
     const threadSelected = await dragText(await linePoint(threadKt, 149, "text", 20), await linePoint(threadKt, 151, "text", 60));
     await plusAt(threadKt, 152);
     const threadBox = await boxNote(".code-area");
@@ -2564,6 +2579,51 @@ try {
     server = serve();
     const reconnected = await waitFor(`!document.querySelector("header .offline") && document.querySelector(".gitchip")`, 20000);
     check("when the server goes away the header says so, and the page picks it up again when it comes back on its port", /offline/.test(offline ?? "") && !!reconnected, { offline, reconnected });
+
+    // A second review, on a branch in its own worktree, whose only thread is resolved.
+    const sideDir = realpathSync(mkdtempSync(join(tmpdir(), "stet-ui-side-")));
+    try {
+      run(repo, ["git", "worktree", "add", "-q", "-b", "side", sideDir, "HEAD"]);
+      writeFileSync(join(sideDir, "side.txt"), "one\ntwo\n");
+      const sideReview = JSON.parse(run(sideDir, ["bun", CLI, "init", "--base", "main", "--json"])).review.id as number;
+      run(sideDir, ["bun", CLI, "version", "create", "--json"]);
+      const sideThread = JSON.parse(run(sideDir, ["bun", CLI, "comment", "add", "--file", "side.txt", "--range", "1-1", "--at", "1", "--body", "one?", "--as", "reviewer", "--json"])).id as number;
+      run(sideDir, ["bun", CLI, "resolve", String(sideThread), "--as", "reviewer", "--json"]);
+      const mainReview = Number(await b.eval(`sessionStorage.getItem("stet.review")`));
+      const mainOpen = (JSON.parse(run(repo, ["bun", CLI, "threads", "list", "--status", "open", "--json"])) as unknown[]).length;
+      const tabOn = () => b.eval(`document.querySelector(".side-tabs button.on")?.textContent ?? null`) as Promise<string | null>;
+      const landed = (tab: string) => waitFor(`document.querySelector(".side-tabs button.on")?.textContent.startsWith(${JSON.stringify(tab)}) && !!document.querySelector(".codeview-host diffs-container")`, 10000);
+      const pick = async (id: number) => {
+        await b.eval(`(() => { const s = document.querySelector("header.top select"); s.value = "${id}"; s.dispatchEvent(new Event("change")); return true; })()`);
+        await waitFor(`sessionStorage.getItem("stet.review") === "${id}"`, 5000);
+      };
+      await b.eval(`[...document.querySelectorAll(".side-tabs button")].find(x => x.textContent.startsWith("Threads")).click(); true`);
+      await b.navigate("about:blank");
+      await b.navigate(`${url.split("#")[0]}#/?review=${mainReview}`);
+      await waitFor(`document.querySelector("header.top select")`, 15000);
+      await landed("Threads");
+      const onMain = await tabOn();
+      await pick(sideReview);
+      await landed("Files");
+      const onSide = await tabOn();
+      await pick(mainReview);
+      await landed("Threads");
+      const backOnMain = await tabOn();
+      await b.navigate("about:blank");
+      await b.navigate(`${url.split("#")[0]}#/?review=${sideReview}`);
+      await waitFor(`document.querySelector("header.top select")`, 15000);
+      await landed("Files");
+      const sideLoaded = { tab: await tabOn(), review: await b.eval(`sessionStorage.getItem("stet.review")`), kept: await b.eval(`localStorage.getItem("stet.sideTab")`) };
+      await b.screenshot(join(OUT, "shots", "ui-check-files-landing.png"));
+      check(
+        "the side panel lands on Files for a review whose threads are all resolved: on load and on a switch in the header; a review with open threads opens on Threads again",
+        mainOpen > 0 && /^Threads/.test(onMain ?? "") && /^Files/.test(onSide ?? "") && /^Threads/.test(backOnMain ?? "") &&
+          /^Files/.test(sideLoaded.tab ?? "") && sideLoaded.review === String(sideReview) && sideLoaded.kept === "threads",
+        { mainReview, sideReview, mainOpen, onMain, onSide, backOnMain, sideLoaded },
+      );
+    } finally {
+      rmSync(sideDir, { recursive: true, force: true });
+    }
 
   } catch (e) {
     check("script ran to the end", false, (e as Error).message);
