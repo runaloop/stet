@@ -508,7 +508,7 @@ describe("request changes or approve", () => {
   });
 
   test("a message that resolves its thread is marked so, and goes with an approval like any draft", async () => {
-    await show([], [{ ...draft(8), body: "yes, let's do it", resolves: true }, draft(9)]);
+    await show([], [{ ...draft(8), body: "yes, let's do it", resolves: true } as ReturnType<typeof draft>, draft(9)]);
     const marks = [...host.querySelectorAll(".draft")].map((d) => d.querySelector(".resolves")?.textContent ?? null);
     expect(marks).toEqual(["✓ resolves the thread", null]);
     host.querySelector<HTMLButtonElement>(".submit-actions .approve")!.click();
