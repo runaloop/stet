@@ -104,6 +104,7 @@ export const api = {
   editDraft: (review: number, id: number, body: string) => call("PATCH", `/api/comments/${id}`, { query: { review }, body: { body } }),
   discardDraft: (review: number, id: number) => call<{ thread: number; threadDeleted: boolean }>("DELETE", `/api/comments/${id}`, { query: { review } }),
   resolve: (review: number, id: number, reason: ResolveReason | null) => call("POST", `/api/threads/${id}/resolve`, { query: { review }, body: { reason } }),
+  resolveWithMessage: (review: number, id: number, body: string) => call<CommentDto>("POST", `/api/threads/${id}/resolve`, { query: { review }, body: { body } }),
   reopen: (review: number, id: number) => call("POST", `/api/threads/${id}/reopen`, { query: { review }, body: {} }),
   drafts: (review: number) => call<CommentDto[]>("GET", "/api/drafts", { query: { review } }),
   submit: (review: number, body: string, how: { verdict?: Verdict; open?: "keep" | "resolve"; guide?: boolean } = {}) =>

@@ -31,6 +31,7 @@ import { Composer } from "../components/Composer.tsx";
 import { Conversation, unchangedSince } from "../components/Conversation.tsx";
 import { hi, lo, PendingBox } from "../components/NewThread.tsx";
 import { askRestore, RESTORE_TITLE, restorable } from "../components/Restore.tsx";
+import { openResolveWithMessage, RESOLVE_WITH_MESSAGE_TITLE, ResolveWithMessageBox } from "../components/ResolveWithMessage.tsx";
 import { Splitter, widthOf } from "../components/Splitter.tsx";
 import { Timeline } from "../components/Timeline.tsx";
 import { ThreadMini } from "../components/ThreadMini.tsx";
@@ -688,11 +689,14 @@ function StateStrip({ d }: { d: Detail }) {
   const t = d.thread;
   const myDraft = d.comments.some((c) => c.draft && c.role === "reviewer");
   if (t.draft) return <div class="state-strip draft">Draft thread: the agent sees it after you submit the review (<Kbd>S</Kbd>).</div>;
+  if (t.status === "open" && d.comments.some((c) => c.draft && c.resolves)) {
+    return <div class="state-strip draft">Your message resolves this thread when you submit the review (<Kbd>S</Kbd>); the agent then does as it says, without asking again.</div>;
+  }
   if (t.status === "resolved") {
     return (
       <div class="state-strip resolved">
         <b>✓ Resolved</b>
-        {t.resolveReason ? <> · {t.resolveReason === "wontfix" ? "won't fix" : t.resolveReason}</> : null}
+        {t.resolveReason ? <> · {t.resolveReason === "wontfix" ? "won't fix" : t.resolveReason === "go" ? "with your message: the agent does as it says" : t.resolveReason}</> : null}
         {t.resolvedBy ? <> · by {t.resolvedBy === "reviewer" ? "you" : t.resolvedBy}</> : null}
         {t.resolvedAt ? <span title={t.resolvedAt}> · {ago(t.resolvedAt)}</span> : null}
         <span class="spacer" />
@@ -804,7 +808,10 @@ export function ThreadDetailView({ id }: { id: number }) {
         </div>
         <div class="head-actions">
           {t.status === "open" ? (
-            <button class="btn small" disabled={t.draft} onClick={() => void resolveCurrent(null)} title="x">Resolve</button>
+            <>
+              <button class="btn small" disabled={t.draft} onClick={() => void resolveCurrent(null)} title="x">Resolve</button>
+              <button class="btn small resolve-msg" disabled={t.draft} onClick={() => openResolveWithMessage(d)} title={RESOLVE_WITH_MESSAGE_TITLE}>Resolve with message</button>
+            </>
           ) : (
             <>
               <select
@@ -819,6 +826,7 @@ export function ThreadDetailView({ id }: { id: number }) {
                 <option value="fixed">fixed</option>
                 <option value="wontfix">won't fix</option>
                 <option value="answered">answered</option>
+                {t.resolveReason === "go" ? <option value="go" disabled>go: your message</option> : null}
               </select>
               <button class="btn small" onClick={() => void reopenCurrent()} title="X">Reopen</button>
             </>
@@ -853,6 +861,7 @@ export function ThreadDetailView({ id }: { id: number }) {
       <div class="thread-msgs" ref={msgs}>
         {t.region ? null : <ThreadPlace d={d} />}
         <Conversation detail={d} />
+        <ResolveWithMessageBox d={d} />
         <Composer
           key={`reply-${t.id}`}
           storageKey={`reply:${rid}:${t.id}`}

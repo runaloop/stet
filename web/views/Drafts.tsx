@@ -12,6 +12,7 @@ const summary = signal("");
 const askGuide = signal(false);
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+const settledText = (ids: number[]) => (ids.length ? `; ${ids.map((id) => `#${id}`).join(" ")} resolved with your message` : "");
 
 async function afterSubmit(): Promise<void> {
   summary.value = "";
@@ -29,7 +30,7 @@ export async function submitReview(body = summary.value): Promise<boolean> {
   }
   const r = await guard(api.submit(rid, body, askGuide.value ? { guide: true } : {}));
   if (!r) return false;
-  notify(`changes requested: ${plural(r.comments, "comment")} in ${plural(r.threads.length, "thread")} went to the agent${r.guide ? ", with a request for a guide to the next version" : ""}`);
+  notify(`changes requested: ${plural(r.comments, "comment")} in ${plural(r.threads.length, "thread")} went to the agent${settledText(r.settled)}${r.guide ? ", with a request for a guide to the next version" : ""}`);
   await afterSubmit();
   return true;
 }
@@ -79,7 +80,7 @@ export async function approveReview(body = summary.value): Promise<boolean> {
   const r = await guard(api.submit(rid, body, { verdict: "approved", open: keep }));
   if (!r) return false;
   const nits = r.comments ? `; ${plural(r.comments, "comment")} went to the agent as nits` : "";
-  notify(`approved v${r.version}${nits}${r.resolved.length ? `; resolved ${plural(r.resolved.length, "thread")}` : ""}`);
+  notify(`approved v${r.version}${nits}${r.resolved.length ? `; resolved ${plural(r.resolved.length, "thread")}` : ""}${settledText(r.settled)}`);
   await afterSubmit();
   return true;
 }
@@ -119,6 +120,11 @@ export function DraftsView() {
                 #{c.threadId} {t ? (t.region ? `${t.path} · area ${t.region.w}×${t.region.h}` : `${t.path}:${t.range.start}`) : ""}
               </a>
               <span>{c.parentId === null ? "new thread" : "reply"}</span>
+              {c.resolves ? (
+                <span class="resolves" title="the thread is resolved when you submit, and the agent does as this message says without asking again">
+                  ✓ resolves the thread
+                </span>
+              ) : null}
               <span class="spacer" />
               <button
                 class="link danger"

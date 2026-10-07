@@ -71,6 +71,7 @@ import { transition } from "./transition.ts";
 import { question } from "./components/Choice.tsx";
 import { approveReview, submitReview } from "./views/Drafts.tsx";
 import { openExternal, reopenCurrent, resolveCurrent, showThreadCode } from "./views/ThreadDetail.tsx";
+import { openResolveWithMessage } from "./components/ResolveWithMessage.tsx";
 
 /** `code`: a thread's code or the Guide tab's lines while they have the focus; there these come before the page's own keys. */
 export type Where = "compare" | "guide" | "thread" | "code" | "drafts" | "everywhere";
@@ -603,6 +604,7 @@ export const BINDINGS: Binding[] = [
   { keys: "<Space>rs", desc: "submit the review from the drafts page (approve when there are no drafts)", where: "everywhere", run: reviewAction },
   { keys: "<Space>rv", desc: "changes since you last looked", where: "everywhere", run: toggle(() => navigate({ name: "compare", ...defaultCompare() })) },
   { keys: "<Space>rr", desc: "re-read “now”", where: "everywhere", run: toggle(() => ((banner.value = null), void refreshNow())) },
+  { keys: "<Space>rx", desc: "resolve with a message: the agent does as it says (a draft, sent with the review)", where: "thread", run: () => openResolveWithMessage(detail.value) },
   { keys: "<Space>?", desc: "all keys", where: "everywhere", run: toggle(() => (helpOpen.value = true)) },
 ];
 

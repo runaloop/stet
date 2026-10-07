@@ -382,7 +382,7 @@ describe("request changes or approve", () => {
         const b = JSON.parse(String(init?.body));
         submits.push(b);
         serverDrafts = [];
-        return Response.json({ submission: submits.length, verdict: b.verdict ?? "changes", version: 2, threads: [], comments: 0, resolved: b.open === "resolve" ? [4] : [] });
+        return Response.json({ submission: submits.length, verdict: b.verdict ?? "changes", version: 2, threads: [], comments: 0, resolved: b.open === "resolve" ? [4] : [], settled: [] });
       }
       if (url.startsWith("/api/review?")) return Response.json(review);
       if (url.startsWith("/api/threads?")) return Response.json(state.threads.value);
@@ -505,6 +505,16 @@ describe("request changes or approve", () => {
     expect(key("S")).toBe(true);
     await tick(60);
     expect(submits).toEqual([{ body: "" }]);
+  });
+
+  test("a message that resolves its thread is marked so, and goes with an approval like any draft", async () => {
+    await show([], [{ ...draft(8), body: "yes, let's do it", resolves: true }, draft(9)]);
+    const marks = [...host.querySelectorAll(".draft")].map((d) => d.querySelector(".resolves")?.textContent ?? null);
+    expect(marks).toEqual(["✓ resolves the thread", null]);
+    host.querySelector<HTMLButtonElement>(".submit-actions .approve")!.click();
+    await tick();
+    await pick("Approve; drafts go as nits (the agent fixes them without a new round)");
+    expect(submits).toEqual([{ body: "", verdict: "approved" }]);
   });
 });
 

@@ -66,6 +66,11 @@ function CommentNode({ c, childrenOf, detail, depth, newId }: { c: CommentDto; c
             <span class={`role-tag ${c.role}`}>{c.role === "agent" ? "agent" : "you · reviewer"}</span>
             <IntentBadge intent={c.intent} />
             {c.draft ? <Badge tone="warn">draft · not sent</Badge> : null}
+            {c.resolves ? (
+              <Badge tone="ok" title="the agent does as this message says, without asking again">
+                {c.draft ? "✓ resolves the thread when sent" : "✓ resolved with this"}
+              </Badge>
+            ) : null}
             {since ? <Badge tone="warn" title="the thread's lines are identical before and after this reply">⚠ lines unchanged since {since}</Badge> : null}
             {step ? (
               <button class="step-chip" title="show the code at this step" onClick={() => (selectedStep.value = c.step)}>

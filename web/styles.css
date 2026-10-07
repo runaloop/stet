@@ -254,6 +254,7 @@ body.resizing iframe, body.resizing diffs-container { pointer-events: none; }
 .drafts h2, .home h2 { margin: 0 0 4px; font-size: 16px; }
 .draft { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; margin: 8px 0; }
 .draft-head { display: flex; gap: 8px; font-size: 12px; color: var(--fg-soft); }
+.draft-head .resolves { color: var(--ok); }
 .drafts .summary { margin: 10px 0 8px; min-height: 60px; }
 .drafts .submit-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .drafts .guide-prefs { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; margin-top: 8px; }
@@ -741,6 +742,10 @@ header.top .offline { flex: none; font-size: 12px; padding: 1px 8px; border: 1px
 .restore-label { padding: 3px 8px; font-size: 12px; color: var(--fg-soft); border-bottom: 1px solid var(--border); }
 .restore-code { margin: 0; padding: 4px 8px; font: 12px/1.45 var(--mono); white-space: pre; overflow: auto; max-height: 24em; }
 .restore-line::before { content: attr(data-n); display: inline-block; min-width: 3ch; margin-right: 10px; text-align: right; color: var(--fg-soft); user-select: none; }
+.resolve-box { margin: 10px 0; border: 1px solid color-mix(in srgb, var(--ok) 50%, transparent); border-radius: var(--radius); background: var(--ok-bg); padding: 6px 8px 0; }
+.resolve-box-head { font-size: 12px; color: var(--fg-soft); }
+.resolve-box-head b { color: var(--ok); }
+.resolve-box .composer { margin: 6px 0 8px; }
 .btn.restore-lines { border-color: color-mix(in srgb, var(--warn) 55%, var(--border)); }
 .guide-tabs { display: inline-flex; gap: 2px; }
 .guide { position: absolute; inset: 0; z-index: 4; overflow: auto; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 0 16px 24px; }
