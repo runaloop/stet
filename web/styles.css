@@ -505,6 +505,10 @@ a.btn.primary { color: #fff; }
 a.file-link { color: var(--fg); }
 .seg button { white-space: nowrap; }
 .code-tabs .hint { flex: 1 1 200px; min-width: 0; }
+/* both texts take the same cell, so the hint keeps its size whichever is shown and nothing below it moves */
+.keep-height { display: grid; }
+.keep-height > * { grid-area: 1 / 1; }
+.keep-height > .off { visibility: hidden; }
 .banner a { font-weight: 600; }
 .toast a { color: inherit; text-decoration: underline; margin-left: 8px; font-weight: 600; }
 

@@ -498,6 +498,7 @@ export function GuideView({ from, to }: { from: string; to: string }) {
     e.preventDefault();
     navigate({ name: "thread", id: Number(a.getAttribute("data-thread")) });
   };
+  const steps = g ? `${g.steps.length} step${g.steps.length === 1 ? "" : "s"} by the agent · ` : "";
   return (
     <div
       class={`guide${codeFocus.value ? " code-focus" : ""}`}
@@ -511,18 +512,14 @@ export function GuideView({ from, to }: { from: string; to: string }) {
     >
       <div class="guide-head">
         <b>Guide to v{n}</b> <Badge tone="info" title="an experiment: it may change or go">experimental</Badge>
-        <span class="subtle">
-          {g ? `${g.steps.length} step${g.steps.length === 1 ? "" : "s"} by the agent · ` : ""}
-          {codeFocus.value ? (
-            <>
-              in the code: <Kbd>j</Kbd> <Kbd>k</Kbd> · <Kbd>V</Kbd> select · <Kbd>i</Kbd> comment · <Kbd>Esc</Kbd> leaves
-            </>
-          ) : (
-            <>
-              click a line or + to comment, or <Kbd>V</Kbd> <Kbd>i</Kbd> · <Kbd>{"}"}</Kbd> <Kbd>{"{"}</Kbd> steps · <Kbd>za</Kbd> fold · <Kbd>Enter</Kbd> open the step in the Diff · <Kbd>Esc</Kbd>{" "}
-              back to the Diff
-            </>
-          )}
+        <span class="subtle keep-height">
+          <span class={codeFocus.value ? "" : "off"}>
+            {steps}in the code: <Kbd>j</Kbd> <Kbd>k</Kbd> · <Kbd>V</Kbd> select · <Kbd>i</Kbd> comment · <Kbd>Esc</Kbd> leaves
+          </span>
+          <span class={codeFocus.value ? "off" : ""}>
+            {steps}click a line or + to comment, or <Kbd>V</Kbd> <Kbd>i</Kbd> · <Kbd>{"}"}</Kbd> <Kbd>{"{"}</Kbd> steps · <Kbd>za</Kbd> fold · <Kbd>Enter</Kbd> open the step in the Diff ·{" "}
+            <Kbd>Esc</Kbd> back to the Diff
+          </span>
         </span>
       </div>
       {error ? <div class="note error">{error}</div> : !ready ? <div class="note">loading…</div> : (

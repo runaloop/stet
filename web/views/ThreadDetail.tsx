@@ -614,16 +614,13 @@ function CodeArea({ d }: { d: Detail }) {
           <span class="hint">a thread on an area of an image: the frame marks it · new areas are drawn on the Changes page</span>
         ) : (
           <>
-            <span class="hint">
-              {focused ? (
-                <>
-                  in the code: <Kbd>j</Kbd> <Kbd>k</Kbd> · <Kbd>V</Kbd> select · <Kbd>i</Kbd> comment · <Kbd>Esc</Kbd> leaves
-                </>
-              ) : (
-                <>
-                  click a line or + to comment, or <Kbd>V</Kbd> <Kbd>i</Kbd> · double-click a name: find usages
-                </>
-              )}
+            <span class="hint keep-height">
+              <span class={focused ? "" : "off"}>
+                in the code: <Kbd>j</Kbd> <Kbd>k</Kbd> · <Kbd>V</Kbd> select · <Kbd>i</Kbd> comment · <Kbd>Esc</Kbd> leaves
+              </span>
+              <span class={focused ? "off" : ""}>
+                click a line or + to comment, or <Kbd>V</Kbd> <Kbd>i</Kbd> · double-click a name: find usages
+              </span>
             </span>
             <span class="spacer" />
             <button class={`btn ghost small${wrap.value ? " on" : ""}`} title="w" onClick={() => (wrap.value = !wrap.value)}>wrap</button>
