@@ -256,6 +256,9 @@ The side panel has three tabs on the Changes page and on a thread:
   Double-clicking a name in code finds its uses, on the Changes page, in a preview, in a thread's code and
   in `code` in a reply; the whole name, even when a wrapped line breaks it in two.
 
+The Changes page opens on the tab you last picked, except that a review with no open thread and no drafts
+opens on Files instead of an empty Threads tab, on load and when you switch reviews in the header.
+
 ## Thread page
 
 The compare highlights every line of each thread, the thread in focus stronger. Pointing at a thread's card puts that

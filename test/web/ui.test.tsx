@@ -239,6 +239,30 @@ describe("landing and unsent text", () => {
     sideTab.value = "threads";
   });
 
+  test("each review shown lands on its own tab; a thread change afterwards leaves the tab alone", async () => {
+    const { sideTab } = await import("../../web/compare.ts");
+    state.route.value = { name: "compare", from: "base", to: "1" };
+    sideTab.value = "threads";
+    state.threads.value = [thread({ id: 1, path: "src/a.kt", status: "resolved" })];
+    state.loadedReview.value = 1;
+    expect(sideTab.value as string).toBe("files");
+    state.threads.value = [thread({ id: 2, path: "src/a.kt" })];
+    expect(sideTab.value as string).toBe("files");
+    state.loadedReview.value = 2;
+    expect(sideTab.value).toBe("threads");
+    state.threads.value = [];
+    state.drafts.value = [{ id: 7 } as CommentDto];
+    state.loadedReview.value = 3;
+    expect(sideTab.value).toBe("threads");
+    state.drafts.value = [];
+    sideTab.value = "search";
+    state.loadedReview.value = 4;
+    expect(sideTab.value as string).toBe("search");
+    expect(localStorage.getItem("stet.sideTab")).toBe("search");
+    sideTab.value = "threads";
+    state.loadedReview.value = null;
+  });
+
   test("text typed into a comment box survives a reload until it is sent", async () => {
     const { Composer } = await import("../../web/components/Composer.tsx");
     const host = document.createElement("div");

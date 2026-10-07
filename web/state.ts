@@ -36,6 +36,8 @@ export const helpOpen = signal(false);
 export const composerFocus = signal(0);
 export const replyQuote = signal<{ seq: number; text: string } | null>(null);
 export const loading = signal(true);
+/** The review whose threads and drafts have arrived; set once each time a review is shown. */
+export const loadedReview = signal<number | null>(null);
 export const fatal = signal<string | null>(null);
 /** False while the server does not answer. */
 export const online = signal(true);
@@ -301,6 +303,7 @@ export async function switchReview(id: number): Promise<void> {
     gitInfo.value = null;
   });
   await reloadAll();
+  if (reviewId.value === id) loadedReview.value = id;
   startLive();
 }
 
@@ -341,7 +344,10 @@ export async function boot(): Promise<void> {
   }
   await selectReview(pick);
   await reloadAll();
-  loading.value = false;
+  batch(() => {
+    loadedReview.value = pick;
+    loading.value = false;
+  });
   startLive();
 }
 

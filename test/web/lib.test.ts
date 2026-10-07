@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ThreadDetail } from "../../src/core/types.ts";
 import { thread } from "../helpers/threads.ts";
-import { applyFilters, DEFAULT_FILTERS, matchesFile } from "../../web/lib/filters.ts";
+import { applyFilters, DEFAULT_FILTERS, landingTab, matchesFile } from "../../web/lib/filters.ts";
 import { compareOrder, stepFile, stepThread, stepUnread } from "../../web/lib/nav.ts";
 import { threadMarks } from "../../web/lib/marks.ts";
 import { filePatch, regionDiff, regionPatch } from "../../web/lib/region.ts";
@@ -37,6 +37,16 @@ describe("filters", () => {
     expect(applyFilters(list, { ...DEFAULT_FILTERS, newOnly: true }).map((t) => t.id)).toEqual([1, 4, 5]);
     expect(applyFilters(list, { ...DEFAULT_FILTERS, status: "all", version: 2 }).map((t) => t.id)).toEqual([5]);
     expect(applyFilters(list, { ...DEFAULT_FILTERS, status: "all", file: "src/*.kt" }).map((t) => t.id)).toEqual([3, 1, 2, 5]);
+  });
+
+  test("the side panel lands on Files only for Threads with nothing open and no drafts", () => {
+    const resolved = thread({ id: 1, path: "a.kt", status: "resolved" });
+    expect(landingTab("threads", [], 0)).toBe("files");
+    expect(landingTab("threads", [resolved], 0)).toBe("files");
+    expect(landingTab("threads", [resolved, thread({ id: 2, path: "a.kt" })], 0)).toBe("threads");
+    expect(landingTab("threads", [thread({ id: 3, path: "a.kt", draft: true })], 0)).toBe("threads");
+    expect(landingTab("threads", [resolved], 1)).toBe("threads");
+    expect(landingTab("search", [resolved], 0)).toBe("search");
   });
 
   test("globs and substrings", () => {

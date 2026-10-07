@@ -1,7 +1,8 @@
 import { hydratePartialDiff, parsePatchFiles, type FileDiffMetadata, type SelectedLineRange } from "@pierre/diffs";
-import { computed, effect, signal } from "@preact/signals";
+import { batch, computed, effect, signal } from "@preact/signals";
 import type { CompareDto, ComparePlacement, GrepResultDto, Region } from "../src/core/types.ts";
 import { DEFAULT_COLLAPSE_GLOBS, DEFAULT_SKIP_MARKERS, foldOf, isTestPath, parseList, viewedKey, type FoldDecision, type FoldGroup } from "./lib/fold.ts";
+import { landingTab } from "./lib/filters.ts";
 import { groupTitle } from "./lib/order.ts";
 import { threadMarks, type LineMark, type Spot } from "./lib/marks.ts";
 import { CursorSpace, rowPosition, type Cursor, type CursorFile, type LineRange, type NavBlock, type Seen } from "./lib/cursor.ts";
@@ -11,7 +12,7 @@ import { api } from "./api.ts";
 import { compileQuery, diffRows, flatHits, matchRanges, searchDiff, type Hit, type Side } from "./lib/search.ts";
 import { clampStep } from "./lib/timeline.ts";
 import { routeHash } from "./lib/route.ts";
-import { compareFocus, detail, fileOrder, guard, loading, markReviewed, noteJump, notify, reviewedCursor, reviewId, route, selectedStep, showResolved, status, testGlobs, threads, versions, viewedKeys } from "./state.ts";
+import { compareFocus, detail, drafts, fileOrder, guard, loadedReview, markReviewed, noteJump, notify, reviewedCursor, reviewId, route, selectedStep, showResolved, status, testGlobs, threads, versions, viewedKeys } from "./state.ts";
 
 export type SideTab = "threads" | "files" | "search";
 
@@ -138,22 +139,25 @@ export const sideTab = {
 };
 
 let autoTab = false;
+/** Counts the landings, so the Changes page can tell a review's first range from a range the reader picked. */
+export const landings = signal(0);
 
 /**
- * A review with no threads (no drafts either) would open on an empty Threads tab: show its files instead.
- * Not remembered, so a review with threads opens on the reader's tab again.
+ * Once each time a review is shown: later thread changes leave the tab alone, so it never moves under the reader.
+ * A landing on Files is not remembered, so the next review opens on the reader's own tab again.
  */
 export function landTab(): void {
-  if (threads.peek().length > 0 || sideTabs.peek().compare !== "threads") return;
-  autoTab = true;
-  sideTabs.value = { ...sideTabs.peek(), compare: "files" };
+  const chosen = load("sideTab", "threads") as SideTab;
+  const tab = landingTab(chosen, threads.peek(), drafts.peek().length);
+  autoTab = tab !== chosen;
+  batch(() => {
+    sideTabs.value = { ...sideTabs.peek(), compare: tab };
+    landings.value = landings.peek() + 1;
+  });
 }
 
-let landed = false;
 effect(() => {
-  if (loading.value || landed) return;
-  landed = true;
-  landTab();
+  if (loadedReview.value !== null) landTab();
 });
 export const hoverThread = signal<number | null>(null);
 /** A thread the code was just brought back to: marked for a few seconds, with a flash at first. */

@@ -48,3 +48,8 @@ export function applyFilters(threads: ThreadSummary[], f: Filters): ThreadSummar
     return true;
   });
 }
+
+/** The side panel tab a review opens on: the reader's own, except that Threads with nothing open (no drafts either) gives way to Files. */
+export function landingTab<T extends string>(chosen: T, threads: ThreadSummary[], drafts: number): T | "files" {
+  return chosen === "threads" && drafts === 0 && !threads.some((t) => t.status === "open") ? "files" : chosen;
+}
