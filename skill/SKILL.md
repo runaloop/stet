@@ -70,20 +70,27 @@ stet wait --for review --json
 ```
 
 Without `--timeout` it blocks until the reviewer submits; it returns at once when threads already wait for
-you (`reason: "pending"`) or the reviewer approved the latest version (`reason: "approved"`). If the wait
-ends without a review (a timeout, or your harness stopped the command), do not report it and do not start
-it again: the human will call you back.
+you (`reason: "pending"`; `settled`: see step 3) or the reviewer approved the latest version
+(`reason: "approved"`). If the wait ends without a review (a timeout, or your harness stopped the command), do
+not report it and do not start it again: the human will call you back.
 
 ## 3. Read the review
 
 First check the verdict: `stet status --json`. `.lastSubmission.verdict` is `changes` (answer the threads)
 or `approved`: the reviewer accepted version `.lastSubmission.version` (`.lastSubmission.body` is their
-summary, if any). `.guide` says whether your next version gets a guide (step 1). On an approval:
+summary, if any). `.guide` says whether your next version gets a guide (step 1).
 
-- no thread waits for you (`.counts.needsAgent` is 0): the work is done. Write the human a short summary
-  of it and stop. Commit or push only if they asked.
-- threads wait for you: they are nits. Fix them, reply `fixed` to each (step 4), create a version
-  (step 5), write the summary and stop. There is no next round to wait for.
+`.settled` lists threads the reviewer resolved with a last message (reason `go`) since your latest version:
+`{ id, path, range, title, message }`. Each `message` is an instruction, not a question: do what it says, without
+asking for confirmation and without replying. Read `stet thread show <id>` for what was discussed. If you hit a
+problem it does not cover, reply `--intent question` in that thread: that reopens it for the reviewer.
+
+On an approval:
+
+- no thread waits for you (`.counts.needsAgent` is 0) and `.settled` is empty: the work is done. Write the
+  human a short summary of it and stop. Commit or push only if they asked.
+- threads wait for you, or are settled: they are nits. Fix them, reply `fixed` to each open one (step 4), do what
+  each settled one says, create a version (step 5), write the summary and stop. There is no next round to wait for.
 
 For `changes`, and for nits, read the threads:
 
@@ -144,14 +151,16 @@ the version that brought each line and the threads that version answered (`fixed
 stet version create --label "fixes for review <N>"   # --guide <file> as .guide in stet status says (step 1)
 ```
 
-Report to the human: how many threads fixed / answered / disagreed / questions, and the
-version number. Then go back to step 2; after the nits of an approval, write the summary and stop instead.
+Report to the human: how many threads fixed / answered / disagreed / questions, which settled threads
+you carried out, and the version number. Then go back to step 2; after the nits of an approval, write the
+summary and stop instead.
 
 ## Rules
 
 - Reply in the language the reviewer wrote the thread in (a comment in Spanish gets a reply in Spanish),
   whatever language the code, commits or docs use. Code identifiers, paths and event names stay as is.
-- Never resolve or reopen threads: that is the reviewer's call. (`stet resolve` exits 3 for you.)
+- Never resolve or reopen threads: that is the reviewer's call. (`stet resolve` exits 3 for you.) The one way to
+  reopen is a `question` reply in a settled thread, when doing what it says turned out not to work.
 - Never commit, amend, checkout, stash or reset unless the human asked; stet snapshots the
   working tree itself, uncommitted changes are fine. The one exception is the staged mode above:
   `git add` the files you fixed.
