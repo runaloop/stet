@@ -193,4 +193,34 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE submissions ADD COLUMN guide INTEGER NOT NULL DEFAULT 0 CHECK(guide IN (0,1));
   `,
+  `
+  CREATE TABLE threads_go(
+    id INTEGER PRIMARY KEY,
+    review_id INTEGER NOT NULL REFERENCES reviews(id),
+    path TEXT NOT NULL,
+    side TEXT NOT NULL DEFAULT 'new' CHECK(side IN ('new','old')),
+    start_line INTEGER NOT NULL,
+    end_line INTEGER NOT NULL CHECK(end_line >= start_line),
+    anchor_sha TEXT NOT NULL REFERENCES snapshots(sha),
+    anchor_lines TEXT NOT NULL,
+    ctx_before TEXT NOT NULL,
+    ctx_after TEXT NOT NULL,
+    version_id INTEGER REFERENCES versions(id),
+    status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','resolved')),
+    resolve_reason TEXT CHECK(resolve_reason IN ('fixed','wontfix','answered','go')),
+    resolved_by TEXT,
+    resolved_at TEXT,
+    created_at TEXT NOT NULL,
+    region TEXT
+  );
+  INSERT INTO threads_go(id, review_id, path, side, start_line, end_line, anchor_sha, anchor_lines, ctx_before, ctx_after,
+      version_id, status, resolve_reason, resolved_by, resolved_at, created_at, region)
+    SELECT id, review_id, path, side, start_line, end_line, anchor_sha, anchor_lines, ctx_before, ctx_after,
+      version_id, status, resolve_reason, resolved_by, resolved_at, created_at, region FROM threads;
+  DROP TABLE threads;
+  ALTER TABLE threads_go RENAME TO threads;
+  CREATE INDEX threads_review ON threads(review_id);
+
+  ALTER TABLE comments ADD COLUMN resolves INTEGER NOT NULL DEFAULT 0 CHECK(resolves IN (0,1));
+  `,
 ];

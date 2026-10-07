@@ -56,6 +56,7 @@ import type {
   ReviewedDto,
   StatusDto,
   SubmissionDto,
+  SettledDto,
   SubmittedDto,
   ThreadDetail,
   ThreadSummary,
@@ -398,6 +399,8 @@ export interface ReplyInput {
   at?: string | null;
   pinnedNow?: string | null;
   restore?: RestoreText | null;
+  /** The reviewer's last word: a draft that resolves the thread as `go` when the review is submitted. */
+  resolves?: boolean;
 }
 
 export async function addReply(ctx: Ctx, review: ReviewRow, threadId: number, input: ReplyInput): Promise<CommentDto> {
@@ -424,14 +427,17 @@ export async function addReply(ctx: Ctx, review: ReviewRow, threadId: number, in
   const version = latestVersion(ctx, review.id);
   const id = ctx.store.tx(() => {
     const c = ctx.store.db.run(
-      `INSERT INTO comments(thread_id, parent_id, role, author, body, intent, snapshot, version_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [thread.id, parentId, ctx.role, ctx.author, input.body, input.intent ?? null, snapshot, version?.id ?? null, nowIso()],
+      `INSERT INTO comments(thread_id, parent_id, role, author, body, intent, snapshot, version_id, created_at, resolves)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [thread.id, parentId, ctx.role, ctx.author, input.body, input.intent ?? null, snapshot, version?.id ?? null, nowIso(), input.resolves ? 1 : 0],
     );
     const commentId = Number(c.lastInsertRowid);
     if (input.restore) insertRestore(ctx, commentId, input.restore);
-    if (input.draft || root.published_seq === null) draftChanged(ctx, review, thread.id, commentId);
-    else publish(ctx, review, commentId, thread.id, null);
+    if (input.draft || input.resolves || root.published_seq === null) draftChanged(ctx, review, thread.id, commentId);
+    else {
+      publish(ctx, review, commentId, thread.id, null);
+      reopenOnQuestion(ctx, review, thread.id, input.intent ?? null);
+    }
     return commentId;
   });
   const detail = commentRows(ctx, [thread.id]).find((c) => c.id === id)!;
@@ -599,9 +605,14 @@ export function submitReview(ctx: Ctx, review: ReviewRow, opts: SubmitOptions = 
       [review.id, ctx.role, ctx.author, opts.body ?? null, version?.id ?? null, nowIso(), verdict, opts.guide ? 1 : 0],
     );
     const submissionId = Number(r.lastInsertRowid);
-    for (const d of drafts) publish(ctx, review, d.id, d.thread_id, submissionId);
+    for (const d of drafts) {
+      publish(ctx, review, d.id, d.thread_id, submissionId);
+      reopenOnQuestion(ctx, review, d.thread_id, d.intent);
+    }
+    const settled = [...new Set(drafts.filter((d) => d.resolves).map((d) => d.thread_id))];
+    for (const id of settled) markResolved(ctx, review, id, "go");
     ctx.store.addEvent({ review_id: review.id, type: "review.submitted", role: ctx.role, thread_id: null, comment_id: null, version_id: version?.id ?? null, submission_id: submissionId });
-    return { submission: submissionId, verdict, version: version?.number ?? null, threads, comments: drafts.length, resolved, ...(opts.guide ? { guide: true as const } : {}) };
+    return { submission: submissionId, verdict, version: version?.number ?? null, threads, comments: drafts.length, resolved, settled, ...(opts.guide ? { guide: true as const } : {}) };
   });
 }
 
@@ -657,9 +668,30 @@ export function resolveThread(ctx: Ctx, review: ReviewRow, id: number, reason: R
   if (ctx.role === "agent") {
     throw forbidden("only the reviewer resolves threads: reply with an intent (fixed, answered) and let the reviewer close it");
   }
+  if (reason === "go") throw usage("go comes with a message for the agent: stet resolve <id> --body <text>");
   const t = visibleThread(ctx, review, id);
   if (rootComment(ctx, id)!.published_seq === null) throw conflict(`thread #${id} is a draft`);
   ctx.store.tx(() => markResolved(ctx, review, t.id, reason));
+}
+
+/**
+ * The reviewer's last word on a thread: a draft message that resolves it as `go` when the review is submitted, and
+ * the agent then does as it says without asking again. A thread has one: a second message replaces the first.
+ */
+export async function resolveWithMessage(ctx: Ctx, review: ReviewRow, id: number, body: string): Promise<CommentDto> {
+  if (ctx.role === "agent") {
+    throw forbidden("only the reviewer resolves threads: reply with an intent (fixed, answered) and let the reviewer close it");
+  }
+  if (!body.trim()) throw usage("comment body is empty");
+  const t = visibleThread(ctx, review, id);
+  if (rootComment(ctx, id)!.published_seq === null) throw conflict(`thread #${id} is a draft`);
+  const pending = ctx.store.db
+    .query<CommentRow, [number, Role]>("SELECT * FROM comments WHERE thread_id = ? AND resolves = 1 AND published_seq IS NULL AND role = ?")
+    .get(t.id, ctx.role);
+  if (!pending) return addReply(ctx, review, t.id, { body, resolves: true });
+  editDraft(ctx, review, pending.id, body);
+  const versions = new Map(versionRows(ctx, review.id).map((v) => [v.id, v.number]));
+  return commentDto(ctx, commentRows(ctx, [t.id]).find((c) => c.id === pending.id)!, versions, 0);
 }
 
 function markResolved(ctx: Ctx, review: ReviewRow, threadId: number, reason: ResolveReason | null): void {
@@ -672,13 +704,26 @@ function markResolved(ctx: Ctx, review: ReviewRow, threadId: number, reason: Res
 
 export function reopenThread(ctx: Ctx, review: ReviewRow, id: number): void {
   if (ctx.role === "agent") {
-    throw forbidden("only the reviewer reopens threads");
+    throw forbidden(
+      threadRow(ctx, id)?.resolve_reason === "go"
+        ? `only the reviewer reopens threads; to ask about #${id}, reply with --intent question: that reopens it`
+        : "only the reviewer reopens threads",
+    );
   }
   const t = visibleThread(ctx, review, id);
-  ctx.store.tx(() => {
-    ctx.store.db.run("UPDATE threads SET status = 'open', resolve_reason = NULL, resolved_by = NULL, resolved_at = NULL WHERE id = ?", [t.id]);
-    ctx.store.addEvent({ review_id: review.id, type: "thread.reopened", role: ctx.role, thread_id: t.id, comment_id: null, version_id: null, submission_id: null });
-  });
+  ctx.store.tx(() => markOpen(ctx, review, t.id));
+}
+
+function markOpen(ctx: Ctx, review: ReviewRow, threadId: number): void {
+  ctx.store.db.run("UPDATE threads SET status = 'open', resolve_reason = NULL, resolved_by = NULL, resolved_at = NULL WHERE id = ?", [threadId]);
+  ctx.store.addEvent({ review_id: review.id, type: "thread.reopened", role: ctx.role, thread_id: threadId, comment_id: null, version_id: null, submission_id: null });
+}
+
+/** The agent's question or objection in a thread the reviewer settled (`go`) opens it again, for the reviewer to answer. */
+function reopenOnQuestion(ctx: Ctx, review: ReviewRow, threadId: number, intent: Intent | null): void {
+  if (ctx.role !== "agent" || (intent !== "question" && intent !== "disagree")) return;
+  const t = threadRow(ctx, threadId);
+  if (t?.status === "resolved" && t.resolve_reason === "go") markOpen(ctx, review, threadId);
 }
 
 function readerOf(ctx: Ctx): string {
@@ -837,6 +882,7 @@ function commentDto(ctx: Ctx, c: CommentRow, versionNumbers: Map<number, number>
     step,
     unread: c.published_seq !== null && c.role !== ctx.role && c.published_seq > seen,
     ...(restore ? { restore } : {}),
+    ...(c.resolves ? { resolves: true as const } : {}),
   };
 }
 
@@ -1028,6 +1074,8 @@ export interface ThreadFilter {
   newSince?: number;
   file?: string;
   drafts?: boolean;
+  /** Only the threads resolved with a message for the agent since its latest version, whatever `status` says. */
+  settled?: boolean;
 }
 
 export async function listThreads(
@@ -1037,8 +1085,12 @@ export async function listThreads(
   opts: { pinnedNow?: string | null; against?: string } = {},
 ): Promise<ThreadSummary[]> {
   let list = await threadSummaries(ctx, review, { includeDrafts: filter.drafts ?? false, pinnedNow: opts.pinnedNow, against: opts.against });
-  const status = filter.status ?? "open";
+  const status = filter.settled ? "all" : (filter.status ?? "open");
   if (status !== "all") list = list.filter((t) => t.status === status);
+  if (filter.settled) {
+    const settled = new Set(settledThreads(ctx, review));
+    list = list.filter((t) => settled.has(t.id));
+  }
   if (filter.state?.length) list = list.filter((t) => filter.state!.includes(t.anchor.state));
   if (filter.needsReply) list = list.filter((t) => t.needsReply === ctx.role);
   if (filter.unread) list = list.filter((t) => t.unread);
@@ -1359,6 +1411,27 @@ export function eventsSince(ctx: Ctx, review: ReviewRow, since: number, limit = 
     .map((e) => eventDto(e, versionNumbers));
 }
 
+/**
+ * Threads the reviewer resolved with a message (`go`) after the agent's latest version, with that message: the agent
+ * does as it says in its next version. A version made after it settles them for good.
+ */
+function settledMessages(ctx: Ctx, review: ReviewRow): Map<number, CommentRow> {
+  const rows = ctx.store.db
+    .query<CommentRow, [number, number]>(
+      `SELECT c.* FROM threads t JOIN comments c ON c.id = (
+         SELECT id FROM comments WHERE thread_id = t.id AND resolves = 1 AND published_seq IS NOT NULL ORDER BY published_seq DESC LIMIT 1)
+       WHERE t.review_id = ? AND t.status = 'resolved' AND t.resolve_reason = 'go'
+         AND c.published_seq > (SELECT coalesce(max(seq), 0) FROM events WHERE review_id = ? AND type = 'version.created')
+       ORDER BY t.id`,
+    )
+    .all(review.id, review.id);
+  return new Map(rows.map((c) => [c.thread_id, c]));
+}
+
+export function settledThreads(ctx: Ctx, review: ReviewRow): number[] {
+  return [...settledMessages(ctx, review).keys()];
+}
+
 export async function status(ctx: Ctx, review: ReviewRow, opts: { pinnedNow?: string | null } = {}): Promise<StatusDto> {
   const versions = versionRows(ctx, review.id);
   const latest = versions[versions.length - 1] ?? null;
@@ -1382,6 +1455,13 @@ export async function status(ctx: Ctx, review: ReviewRow, opts: { pinnedNow?: st
   const all = await threadSummaries(ctx, review, { includeDrafts: true, pinnedNow: now?.sha ?? null });
   const published = all.filter((t) => !t.draft);
   const drafts = listDrafts(ctx, review).length;
+  const messages = settledMessages(ctx, review);
+  const settled: SettledDto[] = published
+    .filter((t) => messages.has(t.id))
+    .map((t) => {
+      const m = messages.get(t.id)!;
+      return { id: t.id, path: t.anchor.path ?? t.path, range: t.anchor.range, title: t.title, message: m.body, by: m.author, at: m.created_at };
+    });
   return {
     review: reviewDto(review),
     versions: versions.length,
@@ -1396,7 +1476,9 @@ export async function status(ctx: Ctx, review: ReviewRow, opts: { pinnedNow?: st
       needsAgent: published.filter((t) => t.needsReply === "agent").length,
       needsReviewer: published.filter((t) => t.needsReply === "reviewer").length,
       unread: published.filter((t) => t.unread).length,
+      settled: settled.length,
     },
+    settled,
     lastSubmission: last ? { ...last, changedAfter } : null,
     guide: guideWanted(ctx, review.id),
     lastSeq: ctx.store.maxSeq(review.id),
@@ -1412,6 +1494,8 @@ export interface WaitResult {
   cursor: number;
   /** With `approved`: the version the reviewer approved. */
   version?: number | null;
+  /** With `--for review`: threads the reviewer resolved with a message for you to act on, as `.settled` in `stet status`. */
+  settled: number[];
   /** Whether the next version gets a guide, as `stet status` says. */
   guide: GuideWanted;
 }
@@ -1466,18 +1550,19 @@ export async function waitFor(
   while (true) {
     const approval = kind === "review" ? standingApproval(ctx, review) : null;
     const pending = pendingThreads(ctx, review, kind);
+    const settled = kind === "review" ? settledThreads(ctx, review) : [];
     const events = eventsSince(ctx, review, since).filter(matches);
     const cursor = ctx.store.maxSeq(review.id);
     const guide = () => guideWanted(ctx, review.id);
-    if (approval) return { reason: "approved", events, threads: approval.threads, cursor, version: approval.version, guide: guide() };
-    if (pending.length > 0 && (kind === "review" || kind === "reply")) {
-      return { reason: "pending", events, threads: pending, cursor, guide: guide() };
+    if (approval) return { reason: "approved", events, threads: approval.threads, cursor, version: approval.version, settled, guide: guide() };
+    if ((pending.length > 0 || settled.length > 0) && (kind === "review" || kind === "reply")) {
+      return { reason: "pending", events, threads: pending, cursor, settled, guide: guide() };
     }
     if (events.length > 0 && kind !== "review" && kind !== "reply") {
-      return { reason: "event", events, threads: [...new Set(events.map((e) => e.threadId).filter((x): x is number => x !== null))], cursor, guide: guide() };
+      return { reason: "event", events, threads: [...new Set(events.map((e) => e.threadId).filter((x): x is number => x !== null))], cursor, settled, guide: guide() };
     }
     if (opts.signal?.aborted || (opts.timeoutMs !== undefined && Date.now() - start >= opts.timeoutMs)) {
-      return { reason: "timeout", events: [], threads: [], cursor, guide: guide() };
+      return { reason: "timeout", events: [], threads: [], cursor, settled: [], guide: guide() };
     }
     await Bun.sleep(poll);
   }

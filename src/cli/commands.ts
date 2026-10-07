@@ -61,12 +61,17 @@ Versions
 Threads
   threads list [--status open|resolved|all] [--state ok,moved,changed,outdated]
                [--needs-reply] [--unread] [--new-since <N>] [--file <glob>] [--drafts] [--against <ref>]
+               [--settled]                      --settled: threads the reviewer resolved with a message
+                                                since your latest version: do as it says
   thread show <id>                              comments, timeline, code then / now; a comment with
                                                 \`restore\` asks to put back old lines exactly as they were
   comment add --file <path> --range <a-b> --body <text|-> [--at <ref>] [--side new|old] [--draft]
               --region <x,y,w,h> in place of --range: an area of an image, in pixels
   reply <id> --body <text|-> [--intent fixed|answered|disagree|question] [--to <commentId>] [--draft]
   resolve <id> [--reason fixed|wontfix|answered] | reopen <id>
+  resolve <id> --body <text|->                  resolve with a message (reason go): a draft that resolves
+                                                the thread when you submit the review; the agent does as
+                                                it says without asking again
   drafts list | drafts discard <commentId> | drafts edit <commentId> --body <text>
   read <id> | read --all                        mark threads as read
 
@@ -267,6 +272,7 @@ const commands: Record<string, { options: Options; run: (p: Parsed) => Promise<n
       file: { type: "string" },
       drafts: { type: "boolean" },
       against: { type: "string" },
+      settled: { type: "boolean" },
     },
     async run(p) {
       const ctx = await context(p);
@@ -285,6 +291,7 @@ const commands: Record<string, { options: Options; run: (p: Parsed) => Promise<n
           newSince: ns ? int(ns.replace(/^v/, ""), "--new-since") : undefined,
           file: str(p, "file"),
           drafts: bool(p, "drafts"),
+          settled: bool(p, "settled"),
         },
         { against: str(p, "against") },
       );
@@ -365,13 +372,21 @@ const commands: Record<string, { options: Options; run: (p: Parsed) => Promise<n
   },
 
   resolve: {
-    options: { reason: { type: "string" } },
+    options: { reason: { type: "string" }, body: { type: "string", short: "m" }, "body-file": { type: "string" } },
     async run(p) {
       const ctx = await context(p);
       const review = await requireReview(ctx, str(p, "branch"));
       const reason = str(p, "reason");
-      if (reason && !REASONS.includes(reason)) throw usage(`--reason must be one of ${REASONS.join(", ")}`);
       const ids = p.positionals.map((x) => int(x, "thread id"));
+      if (str(p, "body") !== undefined || str(p, "body-file") !== undefined) {
+        if (reason && reason !== "go") throw usage("a message resolves the thread as go: drop --reason, or use --reason go");
+        if (ids.length !== 1) throw usage("usage: stet resolve <id> --body <text|->");
+        const cm = await svc.resolveWithMessage(ctx, review, ids[0]!, await readBody(p));
+        emit(p, cm, () => `draft #${cm.id}: resolves thread #${cm.threadId} with your message when you submit the review (stet review submit)`);
+        return;
+      }
+      if (reason === "go") throw usage("--reason go takes the message for the agent: --body <text|->");
+      if (reason && !REASONS.includes(reason)) throw usage(`--reason must be one of ${REASONS.join(", ")}, or go with --body`);
       if (ids.length === 0) throw usage("usage: stet resolve <id> [<id>...]");
       for (const id of ids) svc.resolveThread(ctx, review, id, (reason as ResolveReason | undefined) ?? null);
       emit(p, { resolved: ids }, () => `resolved ${ids.map((i) => "#" + i).join(" ")}`);
@@ -413,10 +428,11 @@ const commands: Record<string, { options: Options; run: (p: Parsed) => Promise<n
         throw e;
       }
       const sent = `${r.comments} comment${r.comments === 1 ? "" : "s"} in ${r.threads.length} thread${r.threads.length === 1 ? "" : "s"}`;
+      const settled = r.settled.length ? `; resolved ${r.settled.map((i) => "#" + i).join(" ")} with your message` : "";
       emit(p, r, () =>
         r.verdict === "approved"
-          ? `approved v${r.version}${r.comments ? `; ${sent} went to the agent as nits` : ""}${r.resolved.length ? `; resolved ${r.resolved.map((i) => "#" + i).join(" ")}` : ""}`
-          : `submitted review ${r.submission}: ${sent}${r.guide ? "; asked for a guide to the next version" : ""}`);
+          ? `approved v${r.version}${r.comments ? `; ${sent} went to the agent as nits` : ""}${r.resolved.length ? `; resolved ${r.resolved.map((i) => "#" + i).join(" ")}` : ""}${settled}`
+          : `submitted review ${r.submission}: ${sent}${settled}${r.guide ? "; asked for a guide to the next version" : ""}`);
     },
   },
 
@@ -450,7 +466,7 @@ const commands: Record<string, { options: Options; run: (p: Parsed) => Promise<n
       const ctx = await context(p);
       const review = await requireReview(ctx, str(p, "branch"));
       const d = svc.listDrafts(ctx, review);
-      emit(p, d, () => (d.length ? d.map((x) => `#${x.id} thread #${x.threadId}: ${[svc.firstLine(x.body), x.restore ? svc.restoreTitle(x.restore) : ""].filter(Boolean).join(" · ")}`).join("\n") : "no drafts"));
+      emit(p, d, () => (d.length ? d.map((x) => `#${x.id} thread #${x.threadId}: ${[svc.firstLine(x.body), x.restore ? svc.restoreTitle(x.restore) : "", x.resolves ? "resolves the thread" : ""].filter(Boolean).join(" · ")}`).join("\n") : "no drafts"));
     },
   },
 
@@ -510,7 +526,7 @@ const commands: Record<string, { options: Options; run: (p: Parsed) => Promise<n
       emit(p, r, () =>
         r.reason === "timeout"
           ? "timed out"
-          : `${r.reason === "approved" ? `approved v${r.version}` : r.reason}: threads ${r.threads.map((i) => "#" + i).join(" ") || "-"}${r.guide === "requested" ? "; the reviewer asked for a guide to the next version" : ""}`);
+          : `${r.reason === "approved" ? `approved v${r.version}` : r.reason}: threads ${r.threads.map((i) => "#" + i).join(" ") || "-"}${r.settled.length ? `; settled ${r.settled.map((i) => "#" + i).join(" ")}: do as the reviewer says` : ""}${r.guide === "requested" ? "; the reviewer asked for a guide to the next version" : ""}`);
       return r.reason === "timeout" ? 5 : 0;
     },
   },

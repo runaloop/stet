@@ -119,7 +119,7 @@ function verdictText(s: SubmissionDto): string {
   return `${s.verdict === "approved" ? "approved" : "changes requested"}${s.version !== null ? ` at v${s.version}` : ""}`;
 }
 
-const REASONS = { fixed: "fixed", wontfix: "won't fix", answered: "answered" } as const;
+const REASONS = { fixed: "fixed", wontfix: "won't fix", answered: "answered", go: "go ahead" } as const;
 
 function threadLine(x: ReviewExport, d: ThreadDetail): string {
   const t = d.thread;
@@ -134,7 +134,7 @@ function threadLine(x: ReviewExport, d: ThreadDetail): string {
   const at = settledAt(x, d);
   if (t.resolveReason === "fixed") return `${head} — fixed${at === null ? "" : ` in v${at}`}`;
   const outcome = `${t.resolveReason ? REASONS[t.resolveReason] : "resolved"}${at === null ? "" : ` at v${at}`}`;
-  const other = t.author.role === "agent" ? replies.find((c) => c.role === "reviewer") : lastAgent;
+  const other = t.resolveReason === "go" ? replies.find((c) => c.resolves) : t.author.role === "agent" ? replies.find((c) => c.role === "reviewer") : lastAgent;
   const g = other ? gist(other.body) : null;
   return `${head} — ${outcome}${g ? `: ${g}` : ""}`;
 }

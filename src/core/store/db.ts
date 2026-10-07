@@ -5,7 +5,8 @@ import { MIGRATIONS } from "./migrations.ts";
 
 export type Role = "reviewer" | "agent";
 export type Intent = "fixed" | "answered" | "disagree" | "question";
-export type ResolveReason = "fixed" | "wontfix" | "answered";
+/** `go`: the reviewer's last message settles it, and the agent does as it says without asking again. */
+export type ResolveReason = "fixed" | "wontfix" | "answered" | "go";
 export type Verdict = "changes" | "approved";
 
 export interface ReviewRow {
@@ -80,6 +81,8 @@ export interface CommentRow {
   published_seq: number | null;
   created_at: string;
   updated_at: string | null;
+  /** 1 on the reviewer's message that resolves the thread (`go`) once the review is submitted. */
+  resolves: number;
 }
 
 /** A comment that asks to put lines back as they were in a version (`version_id`), or in the base when it is null. */
@@ -145,8 +148,11 @@ export class Store {
     this.db.exec("PRAGMA busy_timeout = 10000");
     this.db.exec("PRAGMA journal_mode = WAL");
     this.db.exec("PRAGMA synchronous = FULL");
-    this.db.exec("PRAGMA foreign_keys = ON");
+    // A migration that rebuilds a table drops the old one: with foreign keys on, that would delete the rows
+    // that refer to it (ON DELETE CASCADE). The pragma does nothing inside a transaction, so it is set here.
+    this.db.exec("PRAGMA foreign_keys = OFF");
     this.migrate();
+    this.db.exec("PRAGMA foreign_keys = ON");
     if (path !== ":memory:") for (const p of [path, `${path}-wal`, `${path}-shm`]) tighten(p, 0o600);
   }
 

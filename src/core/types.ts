@@ -93,6 +93,8 @@ export interface SubmittedDto {
   comments: number;
   /** Open threads resolved before an approval. */
   resolved: number[];
+  /** Threads resolved with the message sent in this review (`go`): the agent does as it says. */
+  settled: number[];
   /** Set when the review asks for a guide to the next version. */
   guide?: true;
 }
@@ -158,6 +160,8 @@ export interface CommentDto {
   unread: boolean;
   /** Set when the comment asks to restore old lines; its body may then be empty. */
   restore?: RestoreDto;
+  /** Set on the reviewer's message that resolves the thread (`go`): as a draft it does so when the review is submitted. */
+  resolves?: true;
 }
 
 export interface Excerpt {
@@ -268,7 +272,10 @@ export interface StatusDto {
     needsAgent: number;
     needsReviewer: number;
     unread: number;
+    settled: number;
   };
+  /** Threads the reviewer resolved with a message since the latest version: the agent does as it says, without asking. */
+  settled: SettledDto[];
   /**
    * The reviewer's latest submission: its verdict stands until the next one. `changedAfter`: a newer version
    * exists, or "now" differs from the version it was about.
@@ -277,6 +284,19 @@ export interface StatusDto {
   /** Whether the next version gets a guide. */
   guide: GuideWanted;
   lastSeq: number;
+}
+
+/** A thread resolved with the reviewer's last word (`go`): an instruction to act on, not a question. */
+export interface SettledDto {
+  id: number;
+  /** Where its lines are now. */
+  path: string;
+  range: Range | null;
+  title: string;
+  /** What to do. */
+  message: string;
+  by: string;
+  at: string;
 }
 
 export interface NowStateDto {

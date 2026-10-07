@@ -114,6 +114,10 @@ export function formatStatus(s: StatusDto, url?: string | null): string {
   out.push(
     `threads: ${k.open} open (${k.needsAgent} need agent, ${k.needsReviewer} need reviewer, ${k.changed} changed, ${k.outdated} outdated), ${k.resolved} resolved, ${k.drafts} drafts, ${k.unread} unread`,
   );
+  if (s.settled.length) {
+    out.push(`settled by the reviewer, do as described (no need to ask): ${s.settled.map((t) => `#${t.id}`).join(" ")}`);
+    for (const t of s.settled) out.push(dim(`  #${t.id} ${t.path}${t.range ? `:${range(t.range)}` : ""}: ${t.message.trim().split("\n")[0]}`));
+  }
   const ls = s.lastSubmission;
   if (ls) {
     const what = `${ls.verdict === "approved" ? "approved" : "changes requested"}${ls.version !== null ? ` at v${ls.version}` : ""}`;

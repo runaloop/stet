@@ -218,7 +218,11 @@ route("PATCH", "/api/comments/:id", async (s, req, url, p) => {
 route("DELETE", "/api/comments/:id", async (s, _req, url, p) => svc.discardDraft(s.ctx, review(s, url), num(p.id, "comment id")));
 
 route("POST", "/api/threads/:id/resolve", async (s, req, url, p) => {
-  const b = await body<{ reason?: ResolveReason | null }>(req).catch(() => ({ reason: null }));
+  const b = await body<{ reason?: ResolveReason | null; body?: string }>(req).catch(() => ({ reason: null, body: undefined }));
+  if (b.body !== undefined) {
+    if (typeof b.body !== "string") throw usage("body must be text");
+    return svc.resolveWithMessage(s.ctx, review(s, url), num(p.id, "thread id"), b.body);
+  }
   svc.resolveThread(s.ctx, review(s, url), num(p.id, "thread id"), b.reason ?? null);
   return { ok: true };
 });

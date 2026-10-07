@@ -231,3 +231,16 @@ test("the page sets agent.guide, and only that setting, with the values the CLI 
   await set({ key: "agent.guide", value: "on" });
   expect((await (await api("/api/review")).json()).ui.guide).toBe("on");
 });
+
+test("resolve with a message through the API: a draft until submit, then resolved as go", async () => {
+  const t = await (await api("/api/threads", { method: "POST", body: JSON.stringify({ path: "a.kt", start: 9, end: 9, at: "1", body: "columns?", draft: false }) })).json();
+  const draft = await (await api(`/api/threads/${t.id}/resolve`, { method: "POST", body: JSON.stringify({ body: "yes, do it" }) })).json();
+  expect(draft).toMatchObject({ threadId: t.id, draft: true, resolves: true, body: "yes, do it" });
+  expect((await (await api(`/api/threads/${t.id}`)).json()).thread.status).toBe("open");
+  expect((await api(`/api/threads/${t.id}/resolve`, { method: "POST", body: JSON.stringify({ body: " " }) })).status).toBe(400);
+  const sub = await (await api("/api/review/submit", { method: "POST", body: "{}" })).json();
+  expect(sub.settled).toEqual([t.id]);
+  const d = await (await api(`/api/threads/${t.id}`)).json();
+  expect(d.thread).toMatchObject({ status: "resolved", resolveReason: "go" });
+  expect(d.comments.at(-1)).toMatchObject({ body: "yes, do it", resolves: true, draft: false });
+});
