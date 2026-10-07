@@ -2304,6 +2304,51 @@ try {
       { switchBefore, switchOff, storedOff, switchOn, storedOn },
     );
 
+    // without a toast left over from an earlier step over the buttons; Preact still owns the element, so it stays
+    const plainShot = async (name: string) => {
+      await b.eval(`document.querySelector(".toast")?.style.setProperty("visibility", "hidden"); true`);
+      await b.screenshot(join(OUT, "shots", name));
+      await b.eval(`document.querySelector(".toast")?.style.removeProperty("visibility"); true`);
+    };
+    const settle = JSON.parse(run(repo, ["bun", CLI, "comment", "add", "--file", "src/Zbig.kt", "--range", "50-51", "--body", "a block to configure the columns?", "--as", "reviewer", "--json"])).id as number;
+    run(repo, ["bun", CLI, "reply", String(settle), "--intent", "answered", "--body", "I wrote the idea up in docs/x.md", "--json"]);
+    await b.eval(`location.hash = "#/thread/${settle}"; true`);
+    await waitFor(`document.querySelector(".detail-head .tid")?.textContent === "#${settle}" && document.querySelector(".head-actions .resolve-msg")`, 8000);
+    await click(".head-actions .resolve-msg");
+    const boxByClick = await waitFor(`document.activeElement?.closest(".resolve-box") ? document.querySelector(".resolve-box-head")?.textContent : null`, 3000);
+    await keys("");
+    const resolveBoxClosed = await waitFor(`!document.querySelector(".resolve-box")`, 2000);
+    await keys(" ", "r", "x");
+    const boxByKey = await waitFor(`document.activeElement?.closest(".resolve-box") ? true : null`, 3000);
+    await keys(..."yes, let's do it".split(""));
+    await sleep(200);
+    await plainShot("ui-check-resolve-message.png");
+    await chord([CTRL], "s");
+    const pending = await waitFor(`!document.querySelector(".resolve-box") && [...document.querySelectorAll(".comment .badge")].some(x => x.textContent === "✓ resolves the thread when sent") ? document.querySelector(".state-strip")?.textContent : null`, 5000);
+    const stillOpen = await b.eval(`[...document.querySelectorAll(".head-actions button")].some(x => x.textContent === "Resolve")`);
+    check(
+      "Resolve with message (the button, Esc closes it, Space r x) saves a draft that leaves the thread open until the review is submitted",
+      /Resolve with message/.test(boxByClick ?? "") && !!resolveBoxClosed && !!boxByKey && /resolves this thread when you submit/.test(pending ?? "") && stillOpen === true,
+      { boxByClick, resolveBoxClosed, boxByKey, pending, stillOpen },
+    );
+
+    await b.eval(`location.hash = "#/drafts"; true`);
+    const listedDraft = await waitFor(`(() => { const d = [...document.querySelectorAll(".drafts .draft")].find(x => x.querySelector(".draft-head a")?.textContent.startsWith("#${settle} ")); return d ? { mark: d.querySelector(".resolves")?.textContent ?? null, body: d.querySelector(".draft-head ~ *")?.textContent ?? null } : null; })()`, 5000);
+    await plainShot("ui-check-resolve-drafts.png");
+    await click(".submit-actions .btn.primary");
+    const sentToast = await waitFor(`/#${settle} resolved with your message/.test(document.querySelector(".toast")?.textContent ?? "") ? document.querySelector(".toast").textContent : null`, 5000);
+    await b.eval(`location.hash = "#/thread/${settle}"; true`);
+    const settledView = await waitFor(`(() => { const badge = [...document.querySelectorAll(".head-badges .badge")].map(x => x.textContent).find(x => x === "✓ resolved: go"); const strip = document.querySelector(".state-strip.resolved")?.textContent ?? ""; const last = [...document.querySelectorAll(".comment .msg")].pop(); return badge && /with your message/.test(strip) ? { strip, last: last?.textContent ?? null } : null; })()`, 8000);
+    await plainShot("ui-check-resolve-settled.png");
+    const agentSees = JSON.parse(run(repo, ["bun", CLI, "status", "--json"])) as { settled: { id: number; message: string }[] };
+    check(
+      "the Drafts page lists it as resolving the thread; submitting resolves the thread as go, it shows the message, and stet status gives it to the agent under settled",
+      listedDraft?.mark === "✓ resolves the thread" && /yes, let's do it/.test(listedDraft.body ?? "") && !!sentToast &&
+        /✓ resolved with this/.test(settledView?.last ?? "") && /yes, let's do it/.test(settledView?.last ?? "") &&
+        agentSees.settled.some((s) => s.id === settle && s.message === "yes, let's do it"),
+      { listedDraft, sentToast, settledView, settled: agentSees.settled },
+    );
+
     // a step whose lines the diff viewer gets without the changes around them, which add lines above and below
     const steps = (edit: (i: number) => string | null) => Array.from({ length: 60 }, (_, i) => edit(i + 1) ?? `val s${i + 1} = ${i + 1}`).join("\n") + "\n";
     const line30 = "val s30 = listOf(\"thirty\", \"old\", \"value\", \"with\", \"many\", \"words\", \"on\", \"one\", \"line\")";
