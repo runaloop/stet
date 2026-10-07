@@ -27,6 +27,30 @@ export function refPatch(
   return revealedPatch(oldFile, newFile, hunks, { spans: [around, ...more], full: false }, { old: [], new: [ref.range] });
 }
 
+/**
+ * The lines of each side a step's reference shows rendered: its lines and those in `more`, without the lines around
+ * them its code shows, as a rendered block shows whole; a whole-file reference, its file's diff.
+ */
+export function refShown(
+  ref: GuideRefDto,
+  oldFile: { path: string; text: string },
+  newFile: { path: string; text: string },
+  hunks: readonly HunkShape[],
+  more: readonly Span[] = [],
+): { old: Span[]; new: Span[] } | null {
+  const patch = refPatch(ref, oldFile, newFile, hunks, more, 0);
+  const heads = patch
+    ? [...patch.matchAll(/^@@ -(\d+),(\d+) \+(\d+),(\d+) @@/gm)].map((m) => ({ deletionStart: +m[1]!, deletionCount: +m[2]!, additionStart: +m[3]!, additionCount: +m[4]! }))
+    : ref.range
+      ? null
+      : hunks;
+  if (!heads) return null;
+  return {
+    old: heads.map((h) => ({ start: h.deletionStart, end: h.deletionStart + h.deletionCount - 1 })),
+    new: heads.map((h) => ({ start: h.additionStart, end: h.additionStart + h.additionCount - 1 })),
+  };
+}
+
 /** The changed files of the compare that no step names, in the compare's order. */
 export function notInGuide(files: readonly CompareFile[], guide: GuideDto): CompareFile[] {
   const named = new Set(guide.steps.flatMap((s) => s.refs.map((r) => r.path)));

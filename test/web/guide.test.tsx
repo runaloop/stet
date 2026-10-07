@@ -122,6 +122,19 @@ describe("the guide's pieces", () => {
     expect(lib.refPatch({ path: "src/a.kt", range: null }, a, b, hunks, [{ start: 8, end: 9 }])!.split("\n").slice(-4, -1)).toEqual([" line 7", " line 8", " line 9"]);
   });
 
+  test("rendered, a step shows its own lines and those opened, not the lines around them; a whole-file step its file's diff", () => {
+    const a = { path: "src/a.kt", text: TEXTS["s1:src/a.kt"]! };
+    const b = { path: "src/a.kt", text: TEXTS["s2:src/a.kt"]! };
+    const hunks = compare.baseFiles.value![0]!.hunks;
+    expect(lib.refShown({ path: "src/a.kt", range: { start: 4, end: 5 } }, a, b, hunks)).toEqual({ old: [{ start: 4, end: 5 }], new: [{ start: 4, end: 5 }] });
+    expect(lib.refShown({ path: "src/a.kt", range: { start: 4, end: 5 } }, a, b, hunks, [{ start: 12, end: 13 }])).toEqual({
+      old: [{ start: 4, end: 5 }, { start: 12, end: 13 }],
+      new: [{ start: 4, end: 5 }, { start: 12, end: 13 }],
+    });
+    expect(lib.refShown({ path: "src/a.kt", range: null }, a, b, hunks)).toEqual({ old: [{ start: 1, end: 7 }], new: [{ start: 1, end: 7 }] });
+    expect(lib.refShown({ path: "src/a.kt", range: null }, a, b, hunks, [{ start: 9, end: 9 }])).toEqual({ old: [{ start: 1, end: 7 }, { start: 9, end: 9 }], new: [{ start: 1, end: 7 }, { start: 9, end: 9 }] });
+  });
+
   test("lines opened around a step's lines in a new file stay added lines", () => {
     const hunks = compare.baseFiles.value![1]!.hunks;
     const b = { path: "src/b.kt", text: lines(6) };

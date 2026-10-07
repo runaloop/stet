@@ -32,7 +32,7 @@ import { isSimple, markInline, markPairs, markRemoved, markWords, splitRewritten
 import { breakAfter, unitKey, unitOf } from "../lib/breaks.ts";
 import { closeGaps, foldInside, meets, opening, withBlanks } from "../lib/mdfold.ts";
 import { CHUNK, newLineOf, withSpan } from "../lib/reveal.ts";
-import type { NavBlock, Span } from "../lib/cursor.ts";
+import type { LineRange, NavBlock, Span } from "../lib/cursor.ts";
 import { compileQuery, type Side } from "../lib/search.ts";
 import { innermost, touchedBy } from "../lib/selection.ts";
 import { pickedBySelection } from "../plus.ts";
@@ -332,6 +332,8 @@ export interface MdShown {
 
 interface RenderedProps {
   file: string;
+  /** What the cursor calls the file when it is not its path (a guide's step): the view goes by it. */
+  id?: string;
   /** The diff from `old` to `now`, for its hunks. */
   fd: MdDiff | null;
   old: MdSource | null;
@@ -345,6 +347,8 @@ interface RenderedProps {
   cardOf?: (p: MdThread) => VNode | null;
   /** On the Changes page: the cursor, comments, search and the gutter beside a block. */
   live?: boolean;
+  /** Lines marked as gone to; else, live, the lines a link opened. */
+  linked?: LineRange | null;
   onStops?: (navs: NavBlock[]) => void;
 }
 
@@ -355,7 +359,7 @@ interface RenderedProps {
  * Threads show on the blocks their lines are in; on the Changes page a block can be commented on like lines of code,
  * and search hits are highlighted in the text.
  */
-export function RenderedMarkdown({ file, fd, old, now, split: splitWanted, threads: placed, shown = null, onReveal, cardOf = miniCard, live = false, onStops }: RenderedProps) {
+export function RenderedMarkdown({ file, id = file, fd, old, now, split: splitWanted, threads: placed, shown = null, onReveal, cardOf = miniCard, live = false, linked: own, onStops }: RenderedProps) {
   const oldPath = old?.path ?? file;
   const oldSha = fd && old ? old.sha : null;
   const newSha = fd && now ? now.sha : null;
@@ -373,7 +377,7 @@ export function RenderedMarkdown({ file, fd, old, now, split: splitWanted, threa
   const split = splitWanted && !!sides.old && !!sides.new;
   const placedKey = JSON.stringify(placed.map((p) => [p.threadId, p.side, p.range.start, p.range.end, p.state]));
   const pending = live ? pendingLines.value : null;
-  const mine = pending?.path === file ? pending : null;
+  const mine = pending?.path === file && (pending.guide ?? file) === id ? pending : null;
   const shownKey = shown ? JSON.stringify(shown) : "";
   const revealing = !!onReveal;
   const pendingKey = mine ? `${mine.range.side}:${lo(mine.range)}-${hi(mine.range)}` : "";
@@ -521,13 +525,13 @@ export function RenderedMarkdown({ file, fd, old, now, split: splitWanted, threa
     const g = grid.current;
     if (!g) return;
     for (const el of g.querySelectorAll(".md-cursor, .md-visual")) el.classList.remove("md-cursor", "md-visual");
-    if (!layout || !live || c?.path !== file || c.row < 0) return;
+    if (!layout || !live || c?.path !== id || c.row < 0) return;
     const mark = (k: number, cls: string) => g.querySelectorAll(`[data-stop="${k}"]`).forEach((el) => el.classList.add(cls));
-    if (anchor?.path === file && anchor.row >= 0) for (let k = Math.min(anchor.row, c.row); k <= Math.max(anchor.row, c.row); k++) mark(k, "md-visual");
+    if (anchor?.path === id && anchor.row >= 0) for (let k = Math.min(anchor.row, c.row); k <= Math.max(anchor.row, c.row); k++) mark(k, "md-visual");
     mark(c.row, "md-cursor");
   }, [c, anchor, layout]);
 
-  const linked = live && linkedLines.value?.path === file ? linkedLines.value : null;
+  const linked = own ?? (live && linkedLines.value?.path === file ? linkedLines.value : null);
   useLayoutEffect(() => {
     const g = grid.current;
     if (!g || !layout || !linked) return;
@@ -691,8 +695,8 @@ export function RenderedMarkdown({ file, fd, old, now, split: splitWanted, threa
   const [hover, setHover] = useState<{ stop: number; side: MdSide; top: number; left: number } | null>(null);
 
   if (!fd || !(old || now)) return null;
-  if ((oldSha && oldBlob === "loading") || (newSha && newBlob === "loading")) return <div class="note" data-file={file}>loading…</div>;
-  if (!layout) return <div class="note" data-file={file}>{file} is not a text file here.</div>;
+  if ((oldSha && oldBlob === "loading") || (newSha && newBlob === "loading")) return <div class="note" data-file={id}>loading…</div>;
+  if (!layout) return <div class="note" data-file={id}>{file} is not a text file here.</div>;
 
   const from = old ?? now!;
   const to = now ?? old!;
@@ -715,8 +719,8 @@ export function RenderedMarkdown({ file, fd, old, now, split: splitWanted, threa
     const r = side === "old" ? layout.stops[k]?.nav.old : layout.stops[k]?.nav.new;
     const lines = picked ?? (r ? { side: diffSide(side), start: r.start, end: r.end } : null);
     if (!lines) return;
-    setCursor({ path: file, row: picked ? last : k }, false);
-    linesNav()?.startComment({ path: file, ...lines });
+    setCursor({ path: id, row: picked ? last : k }, false);
+    linesNav()?.startComment({ path: id, ...lines });
   };
 
   // In split view a selection keeps to the column it starts in, as the code's does: without this it would take the
@@ -726,7 +730,7 @@ export function RenderedMarkdown({ file, fd, old, now, split: splitWanted, threa
     if (cell && grid.current) grid.current.dataset.selecting = cell.dataset.side;
   };
 
-  const toCode = (k: number, side: MdSide) => linesNav()?.showCode(file, k, side);
+  const toCode = (k: number, side: MdSide) => linesNav()?.showCode(id, k, side);
 
   const click = (e: MouseEvent) => {
     const el = e.target as Element;
@@ -749,7 +753,7 @@ export function RenderedMarkdown({ file, fd, old, now, split: splitWanted, threa
     }
     if (!live || !(window.getSelection()?.isCollapsed ?? true)) return;
     const block = el.closest<HTMLElement>("[data-stop]");
-    if (block) setCursor({ path: file, row: Number(block.dataset.stop) }, false);
+    if (block) setCursor({ path: id, row: Number(block.dataset.stop) }, false);
   };
 
   // The innermost block level with the pointer, so the gutter beside a block stays while the pointer moves to it.
@@ -793,7 +797,7 @@ export function RenderedMarkdown({ file, fd, old, now, split: splitWanted, threa
   const one = old && now && old.sha === now.sha && old.path === now.path;
 
   return (
-    <div class={`md-view${split ? " md-split" : " md-one"}`} data-file={file}>
+    <div class={`md-view${split ? " md-split" : " md-one"}`} data-file={id}>
       {one ? null : (
         <div class="md-bar">
           <span class="md-caption">{caption}</span>

@@ -295,6 +295,8 @@ export interface GuideFile {
   folded: boolean;
   /** The step's first line, when it names lines rather than the file's whole change. */
   start: number | null;
+  /** Markdown shown rendered: its blocks, where the cursor stops. */
+  blocks?: readonly NavBlock[];
 }
 
 /** The Guide tab's file diffs by key, `<step>.<reference>`: a file can be in several steps. */
@@ -656,7 +658,7 @@ export const cursorSpace = computed(() => {
     return new CursorSpace(
       guideKeys.value.flatMap((k) => {
         const f = files.get(k)!;
-        return f.fd ? [{ fd: f.fd, collapsed: f.folded, id: k }] : [];
+        return f.fd ? [{ fd: f.fd, collapsed: f.folded, id: k, ...(f.blocks ? { blocks: f.blocks } : {}) }] : [];
       }),
     );
   }

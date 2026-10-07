@@ -1,7 +1,7 @@
 import { computed, effect, signal } from "@preact/signals";
 import type { GuideDto } from "../src/core/types.ts";
 import { api } from "./api.ts";
-import { compareData, compareNav, cursor, guideFiles, guideOpen, guideShown, guideVersion } from "./compare.ts";
+import { compareData, compareNav, cursor, guideFiles, guideOpen, guideShown, guideVersion, type FileView } from "./compare.ts";
 import { navigate, notify, reviewId, routeHash, versions, type Route } from "./state.ts";
 
 export { guideOpen, guideShown, guideVersion } from "./compare.ts";
@@ -24,6 +24,9 @@ export function foldRef(key: string, folded: boolean): void {
   guideFolds.value = new Map(guideFolds.value).set(key, folded);
 }
 
+/** Markdown file diffs of the guide the reader switched to rendered or to code; the others are as `compare.markdown` says. */
+export const guideViews = signal<ReadonlyMap<string, FileView>>(new Map());
+
 /** The guide's file diff the reader is at: under the cursor, gone to with a key or a click, else the top one in view. */
 export const guideAt = signal<string | null>(null);
 
@@ -45,6 +48,7 @@ effect(() => {
   if (range === shownRange) return;
   shownRange = range;
   guideFolds.value = new Map();
+  guideViews.value = new Map();
   guideAt.value = null;
   guideStep.value = null;
 });

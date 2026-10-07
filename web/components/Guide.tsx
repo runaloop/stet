@@ -13,15 +13,19 @@ import {
   guideKeys,
   guideNav,
   leaveCode,
+  markdownView,
   pendingLines,
   setCursor,
   shownPlacements,
   visualAnchor,
   type CodeHandle,
+  type FileView,
 } from "../compare.ts";
-import { fetchGuide, foldRef, guideAt, guideFolds, guideOpen, guideShown, guideStep, guideVersion, isFolded, openInDiff, refKey } from "../guide.ts";
-import { guideHtml, notInGuide, refLabel, refPatch, threadsOn } from "../lib/guide.ts";
-import type { Cursor, LineRange, Seen, Span } from "../lib/cursor.ts";
+import { fetchGuide, foldRef, guideAt, guideFolds, guideOpen, guideShown, guideStep, guideVersion, guideViews, isFolded, openInDiff, refKey } from "../guide.ts";
+import { guideHtml, notInGuide, refLabel, refPatch, refShown, threadsOn } from "../lib/guide.ts";
+import { carry, type Cursor, type LineRange, type NavBlock, type Seen, type Span } from "../lib/cursor.ts";
+import { snapshot, visibleBox, type Fade } from "../lib/fade.ts";
+import { isMarkdown } from "../lib/markdown.ts";
 import { drawnLines, type LineMark } from "../lib/marks.ts";
 import { CHUNK, expansionOf, hydrateSubset, textLines } from "../lib/reveal.ts";
 import { plainClick } from "../lib/route.ts";
@@ -29,11 +33,12 @@ import { diffRows, type Side } from "../lib/search.ts";
 import { diffStyle, guard, navigate, notify, reloadAll, reviewId, routeHash, threads, wrap, type Route } from "../state.ts";
 import { Badge, Kbd, rangeText } from "./Bits.tsx";
 import { DiffView } from "./Code.tsx";
+import { RenderedMarkdown, spansOf } from "./MarkdownView.tsx";
 import { hi, lo, PendingBox } from "./NewThread.tsx";
 import { askRestore, restorable } from "./Restore.tsx";
 import { ThreadMini } from "./ThreadMini.tsx";
 import { useBlob } from "./useBlob.ts";
-import { linesInSight } from "../views/anchor.ts";
+import { blocksInSight, linesInSight, stopElement } from "../views/anchor.ts";
 
 export function GuideToggle() {
   const n = guideVersion.value;
@@ -77,6 +82,20 @@ export function refRoute(d: CompareDto, from: string, to: string, ref: GuideRefD
 
 const fileOf = (path: string) => baseFiles.value?.find((f) => f.name === path || (f.type === "deleted" && f.prevName === path));
 
+const NO_CHANGE = { hunks: [] };
+
+// a copy of a file diff's old view by its key, faded out once the other view is drawn
+const fades = new Map<string, Fade>();
+// the file diff ‹/› beside a rendered block showed as code, with the cursor on the block's lines to bring in view
+let toCode: string | null = null;
+
+/** Shows a Markdown file diff of the guide rendered or as code, the old view fading out. */
+function switchView(k: string, view: FileView): void {
+  const el = document.querySelector(`.guide .guide-ref[data-key="${k}"] .guide-code`);
+  if (el) fades.set(k, snapshot(visibleBox(el), [el]));
+  guideViews.value = new Map(guideViews.value).set(k, view);
+}
+
 function RefBlock({ d, from, to, r, k }: { d: CompareDto; from: string; to: string; r: GuideRefDto; k: string }) {
   const fd = fileOf(r.path);
   const oldPath = fd?.prevName ?? r.path;
@@ -100,9 +119,32 @@ function RefBlock({ d, from, to, r, k }: { d: CompareDto; from: string; to: stri
   const rows = useMemo(() => (diff ? diffRows(diff) : null), [diff]);
   const folded = !!rows && isFolded(k, rows.length);
   const path = fd?.name ?? r.path;
+  const md = isMarkdown(path);
+  const rendered = md && (guideViews.value.get(k) ?? markdownView.value) === "rendered";
+  const [stops, setStops] = useState<readonly NavBlock[] | null>(null);
   useEffect(() => {
-    guideFiles.value = new Map(guideFiles.peek()).set(k, { fd: diff, path, oldPath, folded, start: r.range?.start ?? null });
-  }, [diff, path, folded]);
+    if (!rendered) setStops(null);
+    const f = fades.get(k);
+    fades.delete(k);
+    if (!f) return;
+    const frame = requestAnimationFrame(() => requestAnimationFrame(f.go));
+    return () => cancelAnimationFrame(frame);
+  }, [rendered]);
+  // rendered, the cursor waits for the blocks to stop at
+  const waiting = rendered && !folded && !!diff && !stops;
+  useEffect(() => {
+    if (waiting) return;
+    const was = cursorSpace.peek();
+    guideFiles.value = new Map(guideFiles.peek()).set(k, { fd: diff, path, oldPath, folded, start: r.range?.start ?? null, ...(rendered && stops ? { blocks: stops } : {}) });
+    const now = cursorSpace.peek();
+    const c = cursor.peek();
+    const a = visualAnchor.peek();
+    if (c?.path === k) cursor.value = carry(c, was, now);
+    if (a?.path === k) visualAnchor.value = carry(a, was, now);
+    if (toCode !== k || rendered) return;
+    toCode = null;
+    requestAnimationFrame(() => requestAnimationFrame(() => cursor.peek() && guideNav.current?.revealCursor(cursor.peek()!, "center")));
+  }, [diff, path, folded, rendered, stops, waiting]);
   useEffect(
     () => () => {
       const m = new Map(guideFiles.peek());
@@ -120,14 +162,23 @@ function RefBlock({ d, from, to, r, k }: { d: CompareDto; from: string; to: stri
   const p = pendingLines.value;
   const mine = p?.guide === k && p.path === path ? p : null;
   const mineSide: Side = mine?.range.side === "deletions" ? "deletions" : "additions";
-  const annotations = useMemo((): DiffLineAnnotation<Anno>[] => {
+  const on = useMemo(() => {
     if (!diff || !rows) return [];
     const shown = { old: rows.flatMap((x) => (x.old === null ? [] : [x.old])), new: rows.flatMap((x) => (x.new === null ? [] : [x.new])) };
-    return [
-      ...threadsOn(placed, diff.name, shown).map(({ placement: p, line }) => ({ side: p.side, lineNumber: line, metadata: { kind: "thread" as const, id: p.threadId, state: p.state } })),
+    return threadsOn(placed, diff.name, shown);
+  }, [diff, rows, placed]);
+  const annotations = useMemo(
+    (): DiffLineAnnotation<Anno>[] => [
+      ...on.map(({ placement: p, line }) => ({ side: p.side, lineNumber: line, metadata: { kind: "thread" as const, id: p.threadId, state: p.state } })),
       ...(mine ? [{ side: mineSide, lineNumber: hi(mine.range), metadata: { kind: "new" as const } }] : []),
-    ];
-  }, [diff, rows, placed, mine]);
+    ],
+    [on, mine],
+  );
+  const blocksShown = useMemo(() => {
+    if (!rendered || !diff || typeof newText !== "string" || typeof oldText !== "string") return null;
+    return refShown(r, { path: oldPath, text: oldText }, { path: r.path, text: newText }, fd?.hunks ?? [], more) ?? spansOf(diff.hunks);
+  }, [rendered, diff, oldText, newText, r, more]);
+  const linked = useMemo((): LineRange | null => (r.range ? { path: k, side: "additions", start: r.range.start, end: r.range.end } : null), [r, k]);
   const selected = useMemo(() => (mine ? { start: lo(mine.range), end: hi(mine.range), side: mineSide } : null), [mine]);
   const marks = useMemo((): LineMark[] => {
     const own: LineMark[] = r.range ? [{ side: "additions", start: r.range.start, end: r.range.end, tag: "linked" }] : [];
@@ -169,6 +220,11 @@ function RefBlock({ d, from, to, r, k }: { d: CompareDto; from: string; to: stri
           </span>
         ) : null}
         <span class="spacer" />
+        {md && !note ? (
+          <button class="btn ghost small md-toggle" title="Markdown: show it rendered or as code" onClick={() => switchView(k, rendered ? "code" : "rendered")}>
+            {rendered ? "‹/› code" : "¶ rendered"}
+          </button>
+        ) : null}
         <a class="guide-open" title="the normal diff at exactly these lines" {...diffLink(refRoute(d, from, to, r, fd))}>
           open in Diff
         </a>
@@ -179,6 +235,29 @@ function RefBlock({ d, from, to, r, k }: { d: CompareDto; from: string; to: stri
         <button class="guide-unfold" onClick={() => foldRef(k, false)}>
           ▸ show {rows!.length} line{rows!.length === 1 ? "" : "s"}
         </button>
+      ) : diff && rendered ? (
+        <div class="guide-code">
+          {blocksShown ? (
+            <div class="md-anno">
+              <RenderedMarkdown
+                file={path}
+                id={k}
+                fd={fd ?? NO_CHANGE}
+                old={!fd ? { sha: d.to.sha, path, label: d.to.label } : fd.type === "new" ? null : { sha: d.from.sha, path: oldPath, label: d.from.label }}
+                now={deleted ? null : { sha: d.to.sha, path, label: d.to.label }}
+                split={diffStyle.value === "split"}
+                threads={on.map((x) => x.placement)}
+                shown={blocksShown}
+                onReveal={(span) => setMore((m) => [...m, span])}
+                live
+                linked={linked}
+                onStops={setStops}
+              />
+            </div>
+          ) : (
+            <div class="note">loading…</div>
+          )}
+        </div>
       ) : diff ? (
         <div class="guide-code">
           <DiffView<Anno>
@@ -308,6 +387,8 @@ export function GuideView({ from, to }: { from: string; to: string }) {
   // the drawn line under the cursor, or the head of its file diff when that is folded
   const lineElement = (c: Cursor): Element | null => {
     const ref = box.current?.querySelector(`.guide-ref[data-key="${c.path}"]`);
+    const block = cursorSpace.peek().block(c);
+    if (block) return stopElement(c.path, c.row, block.new ? "additions" : "deletions") ?? ref ?? null;
     const at = cursorSpace.peek().position(c);
     const host = ref?.querySelector("diffs-container");
     return (at && host ? drawnLines(host).find((x) => x.at.some(([side, n]) => side === at.side && n === at.line))?.el : null) ?? ref ?? null;
@@ -328,6 +409,8 @@ export function GuideView({ from, to }: { from: string; to: string }) {
     if (!el) return [];
     const head = el.querySelector(".guide-head")?.getBoundingClientRect().height ?? 0;
     return [...el.querySelectorAll<HTMLElement>(".guide-ref[data-key]")].flatMap((ref) => {
+      const md = ref.querySelector(".md-view");
+      if (md) return blocksInSight(el, md, ref.dataset.key!, head);
       const host = ref.querySelector("diffs-container");
       return host ? linesInSight(el, host, ref.dataset.key!, cursorSpace.peek(), head) : [];
     });
@@ -379,7 +462,12 @@ export function GuideView({ from, to }: { from: string; to: string }) {
       cancelComment: () => void (pendingLines.value = null),
       pageRows: () => Math.max(4, Math.floor((box.current?.clientHeight ?? 600) / 40)),
       pageFrom: () => null,
-      showCode: () => undefined,
+      showCode: (k, stop) => {
+        cursor.value = { path: k, row: stop };
+        codeFocus.value = true;
+        toCode = k;
+        switchView(k, "code");
+      },
     };
     guideNav.current = nav;
     // A click or a focused field in a step's lines puts the keys on the code; one elsewhere takes them back, but the
