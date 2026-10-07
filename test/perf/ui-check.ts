@@ -1113,6 +1113,100 @@ try {
       page,
     );
 
+    const zoomOf = (sel: string) => b.eval(`[...document.querySelectorAll(${JSON.stringify(sel)})].map(v => ({ zoomed: v.classList.contains("zoomed"), w: Math.round(v.firstElementChild.getBoundingClientRect().width), x: Math.round(v.scrollLeft), y: Math.round(v.scrollTop) }))`) as Promise<{ zoomed: boolean; w: number; x: number; y: number }[]>;
+    const centre = (sel: string) => b.eval(`(() => { const r = document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect(); return { x: Math.round(r.left + Math.min(r.width, 200) / 2), y: Math.round(r.top + Math.min(r.height, 200) / 2) }; })()`) as Promise<{ x: number; y: number }>;
+    await b.eval(`[...document.querySelectorAll(".code-label .seg button")].find(x => x.textContent === "whole image").click(); true`);
+    await waitFor(`document.querySelector(".image-area .imgview img")?.complete && document.querySelector(".code-label .zoom-bar")`, 5000);
+    await b.eval(`document.activeElement?.blur(); true`);
+    await pointer([{ type: "pointerMove", ...(await centre(".image-area .imgview")) }]);
+    const wholeFit = await zoomOf(".image-area .imgview");
+    await keys("+");
+    await sleep(200);
+    const wholeIn = { views: await zoomOf(".image-area .imgview"), level: await b.eval(`document.querySelector(".code-label .zoom-level")?.textContent`) };
+    await keys("0");
+    await sleep(200);
+    const wholeBack = await zoomOf(".image-area .imgview");
+    check(
+      "on an image thread's page the whole image zooms: + over it zooms in, 0 fits it again",
+      wholeFit[0]?.zoomed === false && wholeIn.views[0]?.zoomed === true && wholeIn.level === "150%" && wholeIn.views[0].w === Math.round(wholeFit[0].w * 1.5) && JSON.stringify(wholeBack) === JSON.stringify(wholeFit),
+      { wholeFit, wholeIn, wholeBack },
+    );
+
+    await b.eval(`location.hash = "#/compare/${imgV - 1}..${imgV}"; true`);
+    const pair = `.imgdiff[data-file="res/card.png"] .imgview`;
+    await waitFor(`document.querySelectorAll('${pair} img').length === 2 && [...document.querySelectorAll('${pair} img')].every(i => i.complete)`, 10000);
+    await b.eval(`document.activeElement?.blur(); true`);
+    await keys("g", "g");
+    await sleep(400);
+    const pairFit = await zoomOf(pair);
+    const newView = `.imgdiff[data-file="res/card.png"] .imgpane:nth-child(2) .imgview`;
+    await pointer([{ type: "pointerMove", ...(await centre(newView)) }]);
+    await keys("+", "+", "+", "+");
+    await sleep(300);
+    const overNew = await centre(newView);
+    await b.send("input.performActions", { context: b.context, actions: [{ type: "wheel", id: "wheel", actions: [{ type: "scroll", x: overNew.x, y: overNew.y, deltaX: 150, deltaY: 120 }] }] });
+    await sleep(600);
+    const pairIn = { views: await zoomOf(pair), level: await b.eval(`document.querySelector('.imgdiff[data-file="res/card.png"] .zoom-level')?.textContent`) };
+    await b.screenshot(join(OUT, "shots", "ui-check-image-zoom-pair.png"));
+    check(
+      "the two versions side by side zoom and scroll together: + four times is 400% on both, a wheel over one scrolls both",
+      pairIn.level === "400%" && pairIn.views.length === 2 && pairIn.views.every((v) => v.zoomed && v.w === 960 && v.x > 0 && v.y > 0 && v.x === pairIn.views[0]!.x && v.y === pairIn.views[0]!.y),
+      { pairFit, pairIn },
+    );
+
+    const zv = await b.eval(`(() => { const v = document.querySelector('${newView}'); const r = v.getBoundingClientRect(); return { left: r.left, top: r.top, sl: v.scrollLeft, st: v.scrollTop }; })()`);
+    const d1 = { x: Math.round(zv.left + 60), y: Math.round(zv.top + 40) };
+    const d2 = { x: Math.round(zv.left + 180), y: Math.round(zv.top + 120) };
+    const want = { x: Math.floor((d1.x - zv.left + zv.sl) / 4), y: Math.floor((d1.y - zv.top + zv.st) / 4), x1: Math.ceil((d2.x - zv.left + zv.sl) / 4), y1: Math.ceil((d2.y - zv.top + zv.st) / 4) };
+    await pointer([{ type: "pointerMove", ...d1 }, { type: "pointerDown", button: 0 }, { type: "pointerMove", x: d2.x - 20, y: d2.y - 10 }, { type: "pointerMove", ...d2 }]);
+    await sleep(200);
+    await b.screenshot(join(OUT, "shots", "ui-check-image-zoom-draw.png"));
+    await pointer([{ type: "pointerUp", button: 0 }]);
+    await waitFor(`document.querySelector(".imgdiff .new-thread textarea")`, 3000);
+    await b.eval(`(() => { const t = document.querySelector(".imgdiff .new-thread textarea"); t.focus(); return true; })()`);
+    await keys(..."this corner");
+    await b.eval(`[...document.querySelectorAll(".imgdiff .new-thread button")].find(x => x.textContent.includes("Save draft")).click(); true`);
+    const zoomedId = await waitFor(`[...document.querySelectorAll('.imgdiff[data-file="res/card.png"] a.img-frame[data-thread]')].map(a => a.dataset.thread).find(id => id !== "${framed}")`, 8000);
+    const zoomedRegion = zoomedId ? JSON.parse(run(repo, ["bun", CLI, "thread", "show", String(zoomedId), "--as", "reviewer", "--json"])).thread.region : null;
+    const frameOnScreen = await b.eval(`(() => { const v = document.querySelector('${newView}'); const r = v.querySelector('a.img-frame[data-thread="${zoomedId}"]')?.getBoundingClientRect(); const o = v.getBoundingClientRect(); return r ? { x: (r.left - o.left + v.scrollLeft) / 4, y: (r.top - o.top + v.scrollTop) / 4 } : null; })()`);
+    const near = (a: number, b: number) => Math.abs(a - b) <= 1;
+    check(
+      "a frame drawn on a zoomed, scrolled image is saved in the image's pixels and drawn where it was dragged",
+      !!zoomedRegion && zoomedRegion.iw === 240 && near(zoomedRegion.x, want.x) && near(zoomedRegion.y, want.y) && near(zoomedRegion.w, want.x1 - want.x) && near(zoomedRegion.h, want.y1 - want.y) && !!frameOnScreen && near(frameOnScreen.x, zoomedRegion.x) && near(frameOnScreen.y, zoomedRegion.y),
+      { want, zoomedRegion, frameOnScreen },
+    );
+
+    const wheelFrom = await b.eval(`(() => { const v = document.querySelector('${newView}'); const r = v.getBoundingClientRect(); return { left: r.left, top: r.top, sl: v.scrollLeft, st: v.scrollTop, w: v.firstElementChild.getBoundingClientRect().width }; })()`);
+    const under = { x: Math.round(wheelFrom.left + 100), y: Math.round(wheelFrom.top + 80) };
+    // a WebDriver wheel action carries no Ctrl in Firefox: the event is dispatched from the page
+    await b.eval(`document.querySelector('${newView}').dispatchEvent(new WheelEvent("wheel", { ctrlKey: true, deltaY: -100, clientX: ${under.x}, clientY: ${under.y}, bubbles: true, cancelable: true })); true`);
+    await sleep(400);
+    const wheelTo = await b.eval(`(() => { const v = document.querySelector('${newView}'); const r = v.getBoundingClientRect(); return { left: r.left, top: r.top, sl: v.scrollLeft, st: v.scrollTop, w: v.firstElementChild.getBoundingClientRect().width }; })()`);
+    const k0 = wheelFrom.w / 240;
+    const k = wheelTo.w / 240;
+    const pointBefore = { x: (under.x - wheelFrom.left + wheelFrom.sl) / k0, y: (under.y - wheelFrom.top + wheelFrom.st) / k0 };
+    const pointAfter = { x: (under.x - wheelTo.left + wheelTo.sl) / k, y: (under.y - wheelTo.top + wheelTo.st) / k };
+    check(
+      "Ctrl+wheel zooms in around the mouse: the pixel under it stays under it",
+      k0 === 4 && k > 4.5 && Math.abs(pointBefore.x - pointAfter.x) < 1 && Math.abs(pointBefore.y - pointAfter.y) < 1,
+      { k0, k, pointBefore, pointAfter },
+    );
+
+    await keys("0");
+    await sleep(300);
+    const pairBack = await zoomOf(pair);
+    await b.eval(`[...document.querySelectorAll('.imgdiff[data-file="res/card.png"] .zoom-bar button')].find(x => x.textContent === "100%").click(); true`);
+    await sleep(200);
+    const pairFull = await zoomOf(pair);
+    await b.eval(`[...document.querySelectorAll('.imgdiff[data-file="res/card.png"] .zoom-bar button')].find(x => x.textContent === "fit").click(); true`);
+    await sleep(200);
+    const pairFitAgain = await zoomOf(pair);
+    check(
+      "0 and the fit button put both versions back as they were, scroll and all; 100% shows the image's own pixels",
+      JSON.stringify(pairBack) === JSON.stringify(pairFit) && pairFull.every((v) => v.zoomed && v.w === 240) && JSON.stringify(pairFitAgain) === JSON.stringify(pairFit),
+      { pairFit, pairBack, pairFull, pairFitAgain },
+    );
+
     writeFileSync(join(repo, "docs/guide.md"), ["# Guide", "", "Intro.", "", "Old paragraph that goes away.", "", "## Usage", "", "Run it.", "", "![the card](../res/card.png)", ""].join("\n"));
     run(repo, ["git", "add", "-A"]);
     const mdFrom = JSON.parse(run(repo, ["bun", CLI, "version", "create", "--label", "guide", "--json"])).version.snapshot as string;
