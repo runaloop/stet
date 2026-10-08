@@ -1,7 +1,7 @@
 import type { AnchorState, Method, OutdatedReason } from "./reanchor.ts";
-import type { EventType, Intent, ResolveReason, Role, Verdict } from "./store/db.ts";
+import type { ChangeKind, EventType, Intent, ResolveReason, Role, Verdict } from "./store/db.ts";
 
-export type { AnchorState, EventType, Intent, Method, OutdatedReason, ResolveReason, Role, Verdict };
+export type { AnchorState, ChangeKind, EventType, Intent, Method, OutdatedReason, ResolveReason, Role, Verdict };
 
 export interface Range {
   start: number;

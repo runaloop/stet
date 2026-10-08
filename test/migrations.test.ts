@@ -210,6 +210,99 @@ test("threads learn the go reason without losing their comments, reads and shots
   }
 });
 
+test("change counters come to a database with reads, viewed files, cursors and settings, and count every write to them", () => {
+  const dir = mkdtempSync(join(tmpdir(), "stet-mig-"));
+  const path = join(dir, "review.db");
+  try {
+    const old = new Database(path, { create: true, strict: true });
+    const at = before("CREATE TABLE changes");
+    for (const sql of MIGRATIONS.slice(0, at)) old.exec(sql);
+    old.exec(`PRAGMA user_version = ${at}`);
+    old.exec(`
+      INSERT INTO meta(key, value) VALUES ('compare.tests', '*.test.ts');
+      INSERT INTO reviews(id, branch, created_at) VALUES (1, 'feat', 't'), (2, 'other', 't');
+      INSERT INTO snapshots(sha, tree, created_at) VALUES ('s', 't', 't');
+      INSERT INTO threads(id, review_id, path, start_line, end_line, anchor_sha, anchor_lines, ctx_before, ctx_after, created_at)
+        VALUES (7, 1, 'f.txt', 2, 3, 's', 'x', 'a', 'b', 't'), (8, 2, 'g.txt', 1, 1, 's', 'y', 'a', 'b', 't');
+      INSERT INTO reads(reader, thread_id, seen_seq) VALUES ('reviewer', 7, 5);
+      INSERT INTO viewed(review_id, reader, file_key, created_at) VALUES (1, 'reviewer', 'f.txt@a..b', 't');
+      INSERT INTO cursors(review_id, reader, key, value, updated_at) VALUES (1, 'reviewer', 'reviewed', 'v1', 't');
+    `);
+    old.close();
+
+    const store = new Store(path);
+    const db = store.db;
+    expect(db.query("SELECT key, value FROM meta").all()).toEqual([{ key: "compare.tests", value: "*.test.ts" }]);
+    expect(db.query("SELECT reader, thread_id, seen_seq FROM reads").all()).toEqual([{ reader: "reviewer", thread_id: 7, seen_seq: 5 }]);
+    expect(db.query("SELECT file_key FROM viewed").all()).toEqual([{ file_key: "f.txt@a..b" }]);
+    expect(db.query("SELECT value FROM cursors").all()).toEqual([{ value: "v1" }]);
+    expect(db.query("SELECT * FROM changes").all()).toEqual([]);
+
+    const counts = (review: number | null) => Object.fromEntries(store.changeCounts(review));
+    const upsertRead = "INSERT INTO reads(reader, thread_id, seen_seq) VALUES (?, ?, ?) ON CONFLICT(reader, thread_id) DO UPDATE SET seen_seq = max(seen_seq, excluded.seen_seq)";
+    db.run(upsertRead, ["reviewer", 7, 5]);
+    expect(counts(1)).toEqual({});
+    db.run(upsertRead, ["reviewer", 7, 9]);
+    db.run(upsertRead, ["agent", 7, 9]);
+    db.run(upsertRead, ["reviewer", 8, 1]);
+    expect(counts(1)).toEqual({ reads: 2 });
+    expect(counts(2)).toEqual({ reads: 1 });
+
+    db.run("INSERT OR IGNORE INTO viewed(review_id, reader, file_key, created_at) VALUES (1, 'reviewer', 'f.txt@a..b', 't')");
+    db.run("INSERT OR IGNORE INTO viewed(review_id, reader, file_key, created_at) VALUES (1, 'reviewer', 'g.txt@a..b', 't')");
+    db.run("DELETE FROM viewed WHERE file_key = 'f.txt@a..b'");
+    const upsertCursor = "INSERT INTO cursors(review_id, reader, key, value, updated_at) VALUES (1, 'reviewer', 'reviewed', ?, ?) ON CONFLICT(review_id, reader, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at";
+    db.run(upsertCursor, ["v1", "t2"]);
+    expect(counts(1)).toEqual({ reads: 2, viewed: 2 });
+    db.run(upsertCursor, ["v2", "t3"]);
+    expect(counts(1)).toEqual({ reads: 2, viewed: 2, cursors: 1 });
+
+    store.setMeta("compare.tests", "*.test.ts");
+    store.setMeta("compare.tests", "*.spec.ts");
+    store.setMeta("compare.order", "tests-last");
+    store.setMeta("compare.order", null);
+    expect(counts(1)).toEqual({ reads: 2, viewed: 2, cursors: 1, config: 3 });
+    expect(counts(2)).toEqual({ reads: 1, config: 3 });
+    expect(counts(null)).toEqual({ reads: 3, viewed: 2, cursors: 1, config: 3 });
+
+    const quiet = counts(null);
+    db.run("INSERT INTO anchor_cache(key, result) VALUES ('k', '{}')");
+    db.run("INSERT OR REPLACE INTO anchor_cache(key, result) VALUES ('k', '[]')");
+    db.run("DELETE FROM anchor_cache");
+    db.run("INSERT INTO snapshots(sha, tree, created_at) VALUES ('s2', 't', 't')");
+    db.run("UPDATE snapshots SET kept = 1");
+    store.addEvent({ review_id: 1, type: "draft.changed", role: "reviewer", thread_id: 7, comment_id: null, version_id: null, submission_id: null });
+    expect(counts(null)).toEqual(quiet);
+
+    db.run("DELETE FROM threads WHERE id = 7");
+    expect(db.query("SELECT count(*) AS n FROM reads WHERE thread_id = 7").get()).toEqual({ n: 0 });
+    store.db.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a database from before any change counters gets them, whatever version it was at", () => {
+  const dir = mkdtempSync(join(tmpdir(), "stet-mig-"));
+  try {
+    for (let at = 0; at < before("CREATE TABLE changes"); at++) {
+      const path = join(dir, `review-${at}.db`);
+      const old = new Database(path, { create: true, strict: true });
+      old.exec("PRAGMA synchronous = OFF");
+      for (const sql of MIGRATIONS.slice(0, at)) old.exec(sql);
+      old.exec(`PRAGMA user_version = ${at}`);
+      old.close();
+      const store = new Store(path);
+      expect(store.db.query<{ user_version: number }, []>("PRAGMA user_version").get()?.user_version).toBe(MIGRATIONS.length);
+      store.setMeta("compare.order", "tests-last");
+      expect(Object.fromEntries(store.changeCounts(1))).toEqual({ config: 1 });
+      store.db.close();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("a fresh database has no origin columns", () => {
   const store = new Store(":memory:");
   for (const table of ["threads", "comments"]) {

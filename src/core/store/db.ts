@@ -115,6 +115,9 @@ export type EventType =
   | "version.created"
   | "draft.changed";
 
+/** What the `changes` counters count: writes that make no event but that other open UIs show. */
+export type ChangeKind = "reads" | "viewed" | "cursors" | "config";
+
 export interface SubmissionRow {
   id: number;
   review_id: number;
@@ -205,6 +208,16 @@ export class Store {
       ? this.db.query<{ m: number | null }, []>("SELECT max(seq) AS m FROM events").get()
       : this.db.query<{ m: number | null }, [number]>("SELECT max(seq) AS m FROM events WHERE review_id = ?").get(reviewId);
     return row?.m ?? 0;
+  }
+
+  /** The `changes` counters of a review, the repository's settings among them; of every review when `reviewId` is null. */
+  changeCounts(reviewId: number | null): Map<ChangeKind, number> {
+    const rows = this.db
+      .query<{ kind: ChangeKind; n: number }, [number | null, number | null]>(
+        "SELECT kind, sum(n) AS n FROM changes WHERE ? IS NULL OR review_id IN (?, 0) GROUP BY kind",
+      )
+      .all(reviewId, reviewId);
+    return new Map(rows.map((r) => [r.kind, r.n]));
   }
 
   close(): void {

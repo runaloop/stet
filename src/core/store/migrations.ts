@@ -223,4 +223,58 @@ export const MIGRATIONS: string[] = [
 
   ALTER TABLE comments ADD COLUMN resolves INTEGER NOT NULL DEFAULT 0 CHECK(resolves IN (0,1));
   `,
+  // Counters the server streams to open pages as `event: store`, bumped by triggers so that every writer counts,
+  // older builds included. Settings in meta belong to the repository, not a review: they count under review 0.
+  // A migration that rebuilds one of these tables drops its triggers and must create them again.
+  `
+  CREATE TABLE changes(
+    review_id INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    n INTEGER NOT NULL,
+    PRIMARY KEY(review_id, kind)
+  );
+
+  CREATE TRIGGER reads_changes_insert AFTER INSERT ON reads BEGIN
+    INSERT INTO changes(review_id, kind, n) SELECT review_id, 'reads', 1 FROM threads WHERE id = NEW.thread_id
+      ON CONFLICT(review_id, kind) DO UPDATE SET n = n + 1;
+  END;
+  CREATE TRIGGER reads_changes_update AFTER UPDATE ON reads WHEN NEW.seen_seq IS NOT OLD.seen_seq BEGIN
+    INSERT INTO changes(review_id, kind, n) SELECT review_id, 'reads', 1 FROM threads WHERE id = NEW.thread_id
+      ON CONFLICT(review_id, kind) DO UPDATE SET n = n + 1;
+  END;
+  CREATE TRIGGER reads_changes_delete AFTER DELETE ON reads BEGIN
+    INSERT INTO changes(review_id, kind, n) SELECT review_id, 'reads', 1 FROM threads WHERE id = OLD.thread_id
+      ON CONFLICT(review_id, kind) DO UPDATE SET n = n + 1;
+  END;
+
+  CREATE TRIGGER viewed_changes_insert AFTER INSERT ON viewed BEGIN
+    INSERT INTO changes(review_id, kind, n) VALUES (NEW.review_id, 'viewed', 1) ON CONFLICT(review_id, kind) DO UPDATE SET n = n + 1;
+  END;
+  CREATE TRIGGER viewed_changes_update AFTER UPDATE ON viewed BEGIN
+    INSERT INTO changes(review_id, kind, n) VALUES (NEW.review_id, 'viewed', 1) ON CONFLICT(review_id, kind) DO UPDATE SET n = n + 1;
+  END;
+  CREATE TRIGGER viewed_changes_delete AFTER DELETE ON viewed BEGIN
+    INSERT INTO changes(review_id, kind, n) VALUES (OLD.review_id, 'viewed', 1) ON CONFLICT(review_id, kind) DO UPDATE SET n = n + 1;
+  END;
+
+  CREATE TRIGGER cursors_changes_insert AFTER INSERT ON cursors BEGIN
+    INSERT INTO changes(review_id, kind, n) VALUES (NEW.review_id, 'cursors', 1) ON CONFLICT(review_id, kind) DO UPDATE SET n = n + 1;
+  END;
+  CREATE TRIGGER cursors_changes_update AFTER UPDATE ON cursors WHEN NEW.value IS NOT OLD.value BEGIN
+    INSERT INTO changes(review_id, kind, n) VALUES (NEW.review_id, 'cursors', 1) ON CONFLICT(review_id, kind) DO UPDATE SET n = n + 1;
+  END;
+  CREATE TRIGGER cursors_changes_delete AFTER DELETE ON cursors BEGIN
+    INSERT INTO changes(review_id, kind, n) VALUES (OLD.review_id, 'cursors', 1) ON CONFLICT(review_id, kind) DO UPDATE SET n = n + 1;
+  END;
+
+  CREATE TRIGGER meta_changes_insert AFTER INSERT ON meta BEGIN
+    INSERT INTO changes(review_id, kind, n) VALUES (0, 'config', 1) ON CONFLICT(review_id, kind) DO UPDATE SET n = n + 1;
+  END;
+  CREATE TRIGGER meta_changes_update AFTER UPDATE ON meta WHEN NEW.value IS NOT OLD.value BEGIN
+    INSERT INTO changes(review_id, kind, n) VALUES (0, 'config', 1) ON CONFLICT(review_id, kind) DO UPDATE SET n = n + 1;
+  END;
+  CREATE TRIGGER meta_changes_delete AFTER DELETE ON meta BEGIN
+    INSERT INTO changes(review_id, kind, n) VALUES (0, 'config', 1) ON CONFLICT(review_id, kind) DO UPDATE SET n = n + 1;
+  END;
+  `,
 ];
