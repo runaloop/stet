@@ -60,6 +60,9 @@ describe("settings and help from the modules", () => {
     expect(threads.indexOf("notes list")).toBeGreaterThan(threads.indexOf("read <id> | read --all"));
     expect(text.replace(/\s+/g, " ")).toContain("modules.notes (on or off: notes on files; default on), notes.style (short or long)");
     expect(help([])).not.toContain("modules.");
+    const area: ModuleSpec = { id: "area", label: "areas", default: "on", fileKinds: [{ id: "picture", match: () => true, size: () => ({ w: 1, h: 1 }) }] };
+    expect(help([area])).toContain("  comment add --file <path> --range <a-b> --body <text|-> [--at <ref>] [--side new|old] [--draft]\n              --region <x,y,w,h> in place of --range: an area of an image, in pixels\n  reply ");
+    expect(help([])).toContain("[--draft]\n  reply ");
     expect(commandsOf([notes, lab]).map((c) => `${c.module.id}: ${c.command.name}`)).toEqual(["notes: notes list"]);
   });
 });

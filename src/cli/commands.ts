@@ -60,6 +60,8 @@ function column(text: string): string {
 
 function sections(modules: readonly ModuleSpec[]): Record<HelpSection, string> {
   const keys = builtConfig(modules).map((k) => (k.help ? `${k.key} (${k.help})` : k.key));
+  // a build without a kind of file that has areas refuses --region, so its help does not offer it
+  const areas = modules.some((m) => m.fileKinds?.some((k) => k.size));
   return {
     Review: `  init [--staged] [--base <ref>|empty] [--worktree <path>]
                                                 start a review for the current branch; --staged reviews
@@ -99,8 +101,7 @@ function sections(modules: readonly ModuleSpec[]): Record<HelpSection, string> {
   thread show <id>                              comments, timeline, code then / now; a comment with
                                                 \`restore\` asks to put back old lines exactly as they were
   comment add --file <path> --range <a-b> --body <text|-> [--at <ref>] [--side new|old] [--draft]
-              --region <x,y,w,h> in place of --range: an area of an image, in pixels
-  reply <id> --body <text|-> [--intent fixed|answered|disagree|question] [--to <commentId>] [--draft]
+${areas ? "              --region <x,y,w,h> in place of --range: an area of an image, in pixels\n" : ""}  reply <id> --body <text|-> [--intent fixed|answered|disagree|question] [--to <commentId>] [--draft]
   resolve <id> [--reason fixed|wontfix|answered] | reopen <id>
   resolve <id> --body <text|->                  resolve with a message (reason go): a draft that resolves
                                                 the thread when you submit the review; the agent does as
