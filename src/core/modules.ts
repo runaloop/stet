@@ -1,6 +1,7 @@
 import { MODULES } from "../modules.gen.ts";
-import type { Ctx } from "./context.ts";
-import type { CommandSpec, FileKind, ModuleSpec } from "./module.ts";
+import { CORE_ACTIONS } from "./actions.ts";
+import { StetError, usage, type Ctx } from "./context.ts";
+import type { ActionDef, CommandSpec, FileKind, ModuleSpec } from "./module.ts";
 
 /** The modules of this build, from the list `scripts/modules.ts` writes. */
 export const built = (): readonly ModuleSpec[] => MODULES;
@@ -37,4 +38,19 @@ export function kindOf(ctx: Ctx, path: string): FileKind | null {
 /** The CLI commands modules bring, each with the module it belongs to. */
 export function commandsOf(from: readonly ModuleSpec[] = MODULES): { module: ModuleSpec; command: CommandSpec }[] {
   return from.flatMap((m) => (m.cli ?? []).map((command) => ({ module: m, command })));
+}
+
+/** The actions a UI may offer: the core's, then the enabled modules'. */
+export function actionsOf(ctx: Ctx, from: readonly ModuleSpec[] = MODULES): ActionDef[] {
+  return [...CORE_ACTIONS, ...enabled(ctx, from).flatMap((m) => m.actions ?? [])];
+}
+
+/** The action `id`, or an error that says why there is none: its module is off, or this build has no such action. */
+export function actionOf(ctx: Ctx, id: string, from: readonly ModuleSpec[] = MODULES): ActionDef {
+  const on = actionsOf(ctx, from);
+  const action = on.find((a) => a.id === id);
+  if (action) return action;
+  const owner = from.find((m) => m.actions?.some((a) => a.id === id));
+  if (owner) throw usage(`the action ${id} belongs to the ${owner.id} module, which is off in this repository: stet config set modules.${owner.id} on`);
+  throw new StetError(`no action ${id} in this build; it has ${on.map((a) => a.id).join(", ")}`, 2, "not_found");
 }

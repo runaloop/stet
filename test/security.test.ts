@@ -72,12 +72,19 @@ test("a wrong token of the right length, or with non-ASCII characters, is a 401,
 });
 
 test("the Editor button runs STET_EDITOR without a shell: a file named $(touch pwned).kt stays a name", async () => {
-  const r = await api("/api/open?review=1", { method: "POST", body: JSON.stringify({ threadId, tool: "editor" }) });
+  const r = await api("/api/actions/editor.open?review=1", { method: "POST", body: JSON.stringify({ thread: threadId }) });
   expect(await r.json()).toMatchObject({ launched: true });
   for (let i = 0; i < 40 && !existsSync(f.path(`${EVIL}.opened`)); i++) await Bun.sleep(50);
   expect(existsSync(f.path(`${EVIL}.opened`))).toBe(true);
   expect(existsSync(f.path("pwned"))).toBe(false);
   expect(existsSync(f.path("src/pwned"))).toBe(false);
+});
+
+test("an action opens files of the repository only: a path outside it is refused", async () => {
+  for (const path of ["../outside.kt", "/etc/passwd", "src/../../outside.kt"]) {
+    const r = await api("/api/actions/editor.open?review=1", { method: "POST", body: JSON.stringify({ path, line: 1 }) });
+    expect(r.status).toBe(400);
+  }
 });
 
 test("config takes only known keys, so the agent cannot store an editor command in the repository", async () => {

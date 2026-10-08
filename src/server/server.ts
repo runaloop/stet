@@ -2,6 +2,7 @@ import index from "../../web/index.html";
 import { timingSafeEqual } from "node:crypto";
 import diffsWorker from "@pierre/diffs/worker/worker-portable.js" with { type: "text" };
 import { basename } from "node:path";
+import { openerArgv } from "../core/actions.ts";
 import { findReview, type Ctx } from "../core/context.ts";
 import { handleApi, type ServerState } from "./api.ts";
 import { readServerInfo, removeServerInfo, reviewUrl, savedPort, savePort, serverToken, writeServerInfo, type ServerInfo } from "./info.ts";
@@ -91,11 +92,8 @@ function eventStream(state: ServerState, req: Request, reviewId: number | null, 
 }
 
 function openBrowser(url: string): void {
-  const argv = process.platform === "darwin" ? ["open", url]
-    : process.platform === "win32" ? ["rundll32", "url.dll,FileProtocolHandler", url]
-    : ["xdg-open", url];
   try {
-    Bun.spawn(argv, { stdout: "ignore", stderr: "ignore", stdin: "ignore" }).unref();
+    Bun.spawn(openerArgv(url), { stdout: "ignore", stderr: "ignore", stdin: "ignore" }).unref();
   } catch {
     return;
   }
@@ -196,7 +194,7 @@ export async function serve(ctx: Ctx, opts: ServeOptions): Promise<number> {
 
 // A server started by an agent's shell dies with it: harnesses stop background commands after a time limit.
 // Detached, it runs in its own systemd unit, or its own session.
-async function startDetached(ctx: Ctx, opts: ServeOptions): Promise<ServerInfo | null> {
+export async function startDetached(ctx: Ctx, opts: ServeOptions): Promise<ServerInfo | null> {
   const compiled = Bun.main.startsWith("/$bunfs/") || /^[A-Z]:[\\/]~BUN[\\/]/i.test(Bun.main);
   const self = compiled ? [process.execPath] : [process.execPath, Bun.main];
   const args = [...self, "serve", "--port", String(opts.port || 0), ...(opts.branch ? ["--branch", opts.branch] : [])];

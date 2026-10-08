@@ -3,13 +3,14 @@ import { configKey, configValue, uiConfig } from "../core/config.ts";
 import { unifiedPatch } from "../core/diff.ts";
 import { readBlobAt } from "../core/git.ts";
 import { imageType } from "../core/media.ts";
-import { editorCommand, editorTemplate, renderTemplate } from "../core/jump.ts";
+import { actionTarget, editorCommand, editorTemplate, launchCommand } from "../core/actions.ts";
 import * as svc from "../core/service.ts";
 import { takeNow } from "../core/snapshot.ts";
 import type { Intent, ResolveReason, ReviewRow, Verdict } from "../core/store/db.ts";
 import { gitState } from "../core/gitstate.ts";
 import { requireGuide } from "../core/guide.ts";
-import { enabled } from "../core/modules.ts";
+import type { ModuleSpec } from "../core/module.ts";
+import { actionOf, actionsOf, enabled } from "../core/modules.ts";
 import type { Watcher } from "./watch.ts";
 
 export interface ServerState {
@@ -17,6 +18,8 @@ export interface ServerState {
   defaultReview: number | null;
   pinnedNow: Map<number, { sha: string; at: string }>;
   watcher?: Watcher;
+  /** The modules of the build; a test gives its own. */
+  modules?: readonly ModuleSpec[];
 }
 
 type Params = Record<string, string>;
@@ -94,7 +97,8 @@ route("GET", "/api/review", async (s, _req, url) => {
   const r = review(s, url);
   const now = await pinned(s, r);
   const status = await svc.status(s.ctx, r, { pinnedNow: now });
-  const ui = { config: uiConfig(s.ctx), modules: enabled(s.ctx).map((m) => m.id) };
+  const actions = actionsOf(s.ctx, s.modules).map((a) => ({ id: a.id, label: a.label, command: a.command, where: a.where }));
+  const ui = { config: uiConfig(s.ctx), modules: enabled(s.ctx, s.modules).map((m) => m.id), actions };
   const rows = svc.versionRows(s.ctx, r.id);
   const versionsList = await Promise.all(
     rows.map(async (v, i) => ({ ...svc.versionDto(v), files: await svc.filesBetween(s.ctx, i > 0 ? rows[i - 1]!.snapshot : await baseOf(s, r, v.snapshot), v.snapshot) })),
@@ -342,18 +346,23 @@ route("POST", "/api/read", async (s, req, url) => {
   return { ok: true };
 });
 
-route("POST", "/api/open", async (s, req, url) => {
-  const b = await body<{ threadId: number }>(req);
+/**
+ * Resolves an action for the page and runs what the page cannot: a file goes to `STET_EDITOR` when the server has one,
+ * else the page copies the command. Other launches go back for the page to open.
+ */
+route("POST", "/api/actions/:id", async (s, req, url, params) => {
   const r = review(s, url);
-  const id = num(String(b.threadId), "thread id");
-  const cmd = await editorCommand(s.ctx, r, id);
-  const template = editorTemplate();
-  if (template) {
-    const argv = renderTemplate(template, { file: cmd.file, line: cmd.line, root: cmd.cwd, path: cmd.file });
-    Bun.spawn(argv, { cwd: cmd.cwd, stdout: "ignore", stderr: "ignore", stdin: "ignore" }).unref();
-    return { launched: true, command: cmd.shell };
+  const action = actionOf(s.ctx, params.id!, s.modules);
+  const target = actionTarget(await body<unknown>(req));
+  if (!action.available(s.ctx, target)) throw usage(`${action.id} has nothing to open there`);
+  const launch = await action.resolve(s.ctx, r, target);
+  if (launch.kind === "file") {
+    const cmd = editorCommand(launch);
+    const launched = editorTemplate() !== null;
+    if (launched) Bun.spawn(cmd.argv, { cwd: cmd.cwd, stdout: "ignore", stderr: "ignore", stdin: "ignore" }).unref();
+    return { launch, launched, command: cmd.shell };
   }
-  return { launched: false, command: cmd.shell };
+  return { launch, launched: false, command: launch.kind === "url" ? launch.url : launchCommand(launch).shell };
 });
 
 export async function handleApi(s: ServerState, req: Request, url: URL): Promise<Response> {

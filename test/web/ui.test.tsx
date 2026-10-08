@@ -146,6 +146,41 @@ describe("thread detail", () => {
     expect(state.threads.value[0]!.unread).toBe(false);
     render(null, host);
   });
+
+  test("e asks the server's editor.open for the thread: it opens the editor, or the page copies the command", async () => {
+    const copied: string[] = [];
+    Object.defineProperty(navigator, "clipboard", { value: { writeText: async (t: string) => void copied.push(t) }, configurable: true });
+    const asked: unknown[] = [];
+    let launched = false;
+    respond = (url, init) => {
+      if (!url.startsWith("/api/actions/")) return null;
+      asked.push([url, JSON.parse(String(init?.body))]);
+      const launch = { kind: "file", root: "/r", path: "src/a.kt", file: "/r/src/a.kt", line: 2 };
+      return Response.json({ launch, launched, command: "nvim +2 /r/src/a.kt" });
+    };
+    state.route.value = { name: "thread", id: 7 };
+    state.detail.value = detail;
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(<ThreadDetailView id={7} />, host);
+    await tick();
+    try {
+      expect(key("e")).toBe(true);
+      await tick();
+      expect(asked).toEqual([["/api/actions/editor.open?review=1", { thread: 7 }]]);
+      expect(copied).toEqual(["nvim +2 /r/src/a.kt"]);
+      expect(state.toast.value?.text).toBe("copied: nvim +2 /r/src/a.kt");
+      launched = true;
+      (host.querySelector<HTMLButtonElement>("button[title='e']"))!.click();
+      await tick();
+      expect(asked).toHaveLength(2);
+      expect(copied).toHaveLength(1);
+      expect(state.toast.value?.text).toBe("opened in the editor");
+    } finally {
+      respond = null;
+      render(null, host);
+    }
+  });
 });
 
 describe("code rendering", () => {

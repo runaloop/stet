@@ -14,11 +14,12 @@ import {
   usage,
   type Ctx,
 } from "../core/context.ts";
+import { launchCommand } from "../core/actions.ts";
 import { unifiedPatch } from "../core/diff.ts";
 import { builtConfig, configKey, configValue } from "../core/config.ts";
 import { guideMarkdown, parseGuide, requireGuide } from "../core/guide.ts";
 import type { HelpSection, ModuleSpec } from "../core/module.ts";
-import { built, commandsOf, enabled } from "../core/modules.ts";
+import { actionOf, built, commandsOf, enabled } from "../core/modules.ts";
 import * as svc from "../core/service.ts";
 import type { Intent, ResolveReason, Role } from "../core/store/db.ts";
 import type { SubmittedDto } from "../core/types.ts";
@@ -115,6 +116,8 @@ function sections(modules: readonly ModuleSpec[]): Record<HelpSection, string> {
     Tools: `  serve [--port <n>] [--open] [--print-url]     local web UI; --open (or --detach) starts it on its own and
         [--detach] [--foreground] [--stop]      returns, so it outlives the shell; --stop stops it
   open <id> [--print]                           jump to the editor at the thread
+  open [<id>] --browser [--print]               the thread, or without one the review, in the browser;
+                                                starts the server when none runs
   config get <key> | config set <key> <value> | config set <key> --unset
 ${column(`keys: ${keys.join(", ")}`)}  prune [--dry-run]
   export [--all] [--out <file> [--force]] [--review <id>]
@@ -591,14 +594,17 @@ const commands: Record<string, Command> = {
   },
 
   open: {
-    options: { print: { type: "boolean" } },
+    options: { print: { type: "boolean" }, browser: { type: "boolean" } },
     async run(p) {
       const ctx = await context(p);
       const review = await requireReview(ctx, str(p, "branch"));
-      const { editorCommand } = await import("../core/jump.ts");
-      const cmd = await editorCommand(ctx, review, int(p.positionals[0], "thread id"));
+      const browser = bool(p, "browser");
+      const target = browser && p.positionals[0] === undefined ? {} : { thread: int(p.positionals[0], "thread id") };
+      const launch = await actionOf(ctx, browser ? "browser.open" : "editor.open").resolve(ctx, review, target);
+      const cmd = launchCommand(launch);
       if (bool(p, "print") || bool(p, "json") || !process.stdout.isTTY) {
-        emit(p, cmd);
+        if (launch.kind === "url") emit(p, { url: launch.url }, () => launch.url);
+        else emit(p, cmd);
         return;
       }
       const r = spawnSync(cmd.argv[0]!, cmd.argv.slice(1), { stdio: "inherit", cwd: cmd.cwd });

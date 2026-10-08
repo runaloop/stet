@@ -660,7 +660,7 @@ export async function openExternal(): Promise<void> {
   const d = detail.value;
   const rid = reviewId.value;
   if (!d || rid === null) return;
-  const r = await guard(api.open(rid, d.thread.id));
+  const r = await guard(api.action(rid, "editor.open", { thread: d.thread.id }));
   if (!r) return;
   if (r.launched) {
     notify("opened in the editor");

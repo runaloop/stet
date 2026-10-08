@@ -1,4 +1,6 @@
 import type { Options, Parsed } from "../cli/args.ts";
+import type { Ctx } from "./context.ts";
+import type { ReviewRow } from "./store/db.ts";
 
 /**
  * A part of stet in `modules/<id>/` that a build may leave out (`bun run build -- --without <id>`) and a repository
@@ -19,6 +21,7 @@ export interface ModuleSpec {
   cli?: CommandSpec[];
   config?: ConfigKeySpec[];
   fileKinds?: FileKind[];
+  actions?: ActionDef[];
 }
 
 export type HelpSection = "Review" | "Versions" | "Threads" | "Agent loop" | "Tools";
@@ -55,3 +58,36 @@ export interface FileKind {
   /** Whether bytes a UI sent are a picture of such a file that a thread may keep for the agent. */
   acceptsShot?(bytes: Uint8Array): boolean;
 }
+
+/** Where a UI offers an action: the page or part of it that has the focus. */
+export type Where = "compare" | "guide" | "thread" | "code" | "drafts" | "everywhere";
+
+/**
+ * Something a person runs on a part of a review that leaves stet: the editor at a line, the page in the browser. The
+ * core resolves it to a `Launch`, and each UI runs that its own way: the CLI in the terminal, the server for the page.
+ */
+export interface ActionDef {
+  /** `<module or area>.<verb>`, as in `POST /api/actions/<id>`. */
+  id: string;
+  label: string;
+  /** The id of the command in a UI's key table that runs it. */
+  command: string;
+  where: Where[];
+  available(ctx: Ctx, target: ActionTarget): boolean;
+  resolve(ctx: Ctx, review: ReviewRow, target: ActionTarget): Promise<Launch>;
+}
+
+/** What an action runs on: a thread, or a file's line at a version (`at`, in a compare from `from`), or the review. */
+export interface ActionTarget {
+  thread?: number;
+  path?: string;
+  line?: number;
+  at?: string;
+  from?: string;
+}
+
+/** `file`: an absolute `file` that is `path` under `root`, at `line`. */
+export type Launch =
+  | { kind: "file"; root: string; path: string; file: string; line: number }
+  | { kind: "url"; url: string }
+  | { kind: "argv"; argv: string[]; cwd: string };

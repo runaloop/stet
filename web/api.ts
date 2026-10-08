@@ -21,13 +21,14 @@ import type {
   Verdict,
   VersionDto,
 } from "../src/core/types.ts";
+import type { ActionTarget, Launch } from "../src/core/module.ts";
 
 export type ReviewStatus = StatusDto & {
   pinnedNow: string | null;
   versionsList: VersionDto[];
   submissions?: SubmissionDto[];
-  /** The settings marked `ui` by key, and the modules on in the repository. */
-  ui?: { config: Record<string, string | null>; modules: string[] };
+  /** The settings marked `ui` by key, the modules on in the repository, and the actions the page may run. */
+  ui?: { config: Record<string, string | null>; modules: string[]; actions: { id: string; label: string; command: string; where: string[] }[] };
 };
 
 export interface BlobDto {
@@ -115,7 +116,9 @@ export const api = {
   guide: (review: number, version: number) => call<GuideDto>("GET", "/api/guide", { query: { review, version } }),
   read: (review: number, threadId: number) => call("POST", "/api/read", { query: { review }, body: { threadId } }),
   readAll: (review: number) => call("POST", "/api/read", { query: { review }, body: { all: true } }),
-  open: (review: number, threadId: number) => call<{ launched: boolean; command: string }>("POST", "/api/open", { query: { review }, body: { threadId } }),
+  /** Runs an action on the server; `launched` is false when the page has to pass `command` on, as a copy. */
+  action: (review: number, id: string, target: ActionTarget) =>
+    call<{ launch: Launch; launched: boolean; command: string }>("POST", `/api/actions/${id}`, { query: { review }, body: target }),
   session: () => call<{ token: string }>("GET", "/api/session"),
   startSession: () => call<{ ok: boolean }>("POST", "/api/session"),
   placements: (review: number, sha: string, path: string) =>
