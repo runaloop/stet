@@ -67,7 +67,8 @@ const cssomText = (s: CSSStyleSheet): string => {
  * text replaces them once fetched. Called once early, it has them before the first copy.
  */
 export function pageSheet(): CSSStyleSheet {
-  if (sheet) return sheet;
+  // a sheet made for another window (tests put up a new DOM per file) cannot be adopted here
+  if (sheet instanceof CSSStyleSheet) return sheet;
   const own = (sheet = new CSSStyleSheet());
   own.replaceSync([...document.styleSheets].map(cssomText).join("\n"));
   const text = (el: Element) => (el instanceof HTMLLinkElement ? fetch(el.href).then((r) => (r.ok ? r.text() : Promise.reject())) : (el.textContent ?? ""));

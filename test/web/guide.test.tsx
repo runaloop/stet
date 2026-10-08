@@ -8,10 +8,11 @@ GlobalRegistrator.register({ url: "http://127.0.0.1:4000/" });
 (globalThis as { __STET_NO_WORKERS?: boolean }).__STET_NO_WORKERS = true;
 
 const lines = (n: number, edits: Record<number, string> = {}) => Array.from({ length: n }, (_, i) => edits[i + 1] ?? `line ${i + 1}`).join("\n") + "\n";
+// snapshot ids of its own: the blob cache in web/api.ts lives on across test files
 const TEXTS: Record<string, string> = {
-  "s1:src/a.kt": lines(20),
-  "s2:src/a.kt": lines(20, { 4: "line 4, changed" }),
-  "s2:src/b.kt": "fun b() = 1\n",
+  "g1:src/a.kt": lines(20),
+  "g2:src/a.kt": lines(20, { 4: "line 4, changed" }),
+  "g2:src/b.kt": "fun b() = 1\n",
 };
 
 const GUIDE: GuideDto = {
@@ -85,8 +86,8 @@ diff --git a/README.md b/README.md
 `;
 
 const DATA: CompareDto = {
-  from: { ref: "1", sha: "s1", label: "v1" },
-  to: { ref: "2", sha: "s2", label: "v2" },
+  from: { ref: "1", sha: "g1", label: "v1" },
+  to: { ref: "2", sha: "g2", label: "v2" },
   files: [
     { path: "src/a.kt", oldPath: "src/a.kt", status: "M", additions: 1, deletions: 1, binary: false },
     { path: "src/b.kt", oldPath: null, status: "A", additions: 1, deletions: 0, binary: false },
@@ -112,8 +113,8 @@ afterAll(async () => {
 
 describe("the guide's pieces", () => {
   test("a step's lines with three lines around them, and the lines removed among them", () => {
-    const a = { path: "src/a.kt", text: TEXTS["s1:src/a.kt"]! };
-    const b = { path: "src/a.kt", text: TEXTS["s2:src/a.kt"]! };
+    const a = { path: "src/a.kt", text: TEXTS["g1:src/a.kt"]! };
+    const b = { path: "src/a.kt", text: TEXTS["g2:src/a.kt"]! };
     const hunks = compare.baseFiles.value![0]!.hunks;
     const patch = lib.refPatch({ path: "src/a.kt", range: { start: 4, end: 5 } }, a, b, hunks)!;
     expect(patch.split("\n").slice(3, -1)).toEqual(["@@ -1,8 +1,8 @@", " line 1", " line 2", " line 3", "-line 4", "+line 4, changed", " line 5", " line 6", " line 7", " line 8"]);
@@ -123,8 +124,8 @@ describe("the guide's pieces", () => {
   });
 
   test("rendered, a step shows its own lines and those opened, not the lines around them; a whole-file step its file's diff", () => {
-    const a = { path: "src/a.kt", text: TEXTS["s1:src/a.kt"]! };
-    const b = { path: "src/a.kt", text: TEXTS["s2:src/a.kt"]! };
+    const a = { path: "src/a.kt", text: TEXTS["g1:src/a.kt"]! };
+    const b = { path: "src/a.kt", text: TEXTS["g2:src/a.kt"]! };
     const hunks = compare.baseFiles.value![0]!.hunks;
     expect(lib.refShown({ path: "src/a.kt", range: { start: 4, end: 5 } }, a, b, hunks)).toEqual({ old: [{ start: 4, end: 5 }], new: [{ start: 4, end: 5 }] });
     expect(lib.refShown({ path: "src/a.kt", range: { start: 4, end: 5 } }, a, b, hunks, [{ start: 12, end: 13 }])).toEqual({
@@ -298,7 +299,7 @@ describe("the Guide tab", () => {
     expect(host.querySelector(".guide")!.classList.contains("code-focus")).toBe(true);
     expect(host.querySelector(".guide-ref[data-key='1.0'] .new-thread .note")?.textContent).toContain("New thread on src/a.kt (v2) · lines 4");
     await compare.guideNav.current!.submitComment("why four?", "draft");
-    expect(posted.pop()).toEqual({ path: "src/a.kt", start: 4, end: 4, side: "new", at: "s2", body: "why four?", draft: true });
+    expect(posted.pop()).toEqual({ path: "src/a.kt", start: 4, end: 4, side: "new", at: "g2", body: "why four?", draft: true });
     expect(compare.pendingLines.value).toBeNull();
 
     press("j");
@@ -335,7 +336,7 @@ describe("the Guide tab", () => {
   });
 
   test("a version without a guide has no tab, and Space u g says so", () => {
-    compare.compareData.value = { ...DATA, to: { ref: "1", sha: "s1", label: "v1" }, from: { ref: "base", sha: "s0", label: "base" } };
+    compare.compareData.value = { ...DATA, to: { ref: "1", sha: "g1", label: "v1" }, from: { ref: "base", sha: "g0", label: "base" } };
     state.route.value = { name: "compare", from: "base", to: "1" };
     expect(guide.guideVersion.value).toBeNull();
     press(" ", "u", "g");
@@ -347,7 +348,7 @@ describe("the Guide tab", () => {
     guide.guideOpen.value = false;
     state.status.value = { versionsList: [{ number: 1 }, { number: 2, guide: true }, { number: 3, guide: true, guideRequested: true }] } as never;
     const to = (n: number) => {
-      compare.compareData.value = { ...DATA, from: { ref: String(n - 1), sha: "s1", label: `v${n - 1}` }, to: { ref: String(n), sha: "s2", label: `v${n}` } };
+      compare.compareData.value = { ...DATA, from: { ref: String(n - 1), sha: "g1", label: `v${n - 1}` }, to: { ref: String(n), sha: "g2", label: `v${n}` } };
       state.route.value = { name: "compare", from: String(n - 1), to: String(n) };
     };
     to(2);
