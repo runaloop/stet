@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { ThreadSummary } from "../../src/core/types.ts";
-import { DEFAULT_TEST_GLOBS, isTestPath } from "../../web/lib/fold.ts";
-import { FileOrder, groupTitle, parseOrder } from "../../web/lib/order.ts";
-import { groupByFile } from "../../web/lib/tree.ts";
+import { DEFAULT_TEST_GLOBS, isTestPath } from "../../src/ui/fold.ts";
+import { FileOrder, groupTitle, parseOrder } from "../../src/ui/order.ts";
+import { groupByFile } from "../../src/ui/tree.ts";
 
 describe("file order by kind", () => {
   const order = new FileOrder(parseOrder(null));

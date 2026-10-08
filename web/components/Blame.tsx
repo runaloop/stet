@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { BlameDto, BlameRunDto } from "../../src/core/types.ts";
 import { api } from "../api.ts";
 import { cursor } from "../compare.ts";
-import type { Cursor } from "../lib/cursor.ts";
+import type { Cursor } from "../../src/ui/cursor.ts";
 import type { Route } from "../lib/route.ts";
 import { codeMode, link, navigate, reviewId, route, selectedStep, versions } from "../state.ts";
 import { Kbd, rangeText } from "./Bits.tsx";

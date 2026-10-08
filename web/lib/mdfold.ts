@@ -1,5 +1,5 @@
-import type { Span } from "./cursor.ts";
-import { CHUNK } from "./reveal.ts";
+import type { Span } from "../../src/ui/cursor.ts";
+import { CHUNK } from "../../src/ui/reveal.ts";
 
 /** The source lines of a rendered block (`data-start`, `data-end`), or null for what is not a block of the source. */
 export function linesOf(el: Element): Span | null {

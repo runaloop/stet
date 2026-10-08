@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { FileDiffMetadata } from "@pierre/diffs";
-import { isViewedIn, unviewKeys, viewedIndex, viewedKey } from "../../web/lib/viewed.ts";
+import { isViewedIn, unviewKeys, viewedIndex, viewedKey } from "../../src/ui/viewed.ts";
 
 const NONE = "0000000";
 const fd = (old: string, now: string, name = "src/A.kt"): FileDiffMetadata =>

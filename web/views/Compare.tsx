@@ -61,17 +61,17 @@ import {
 } from "../compare.ts";
 import { MARK_CSS, paintMarks } from "../lib/marks.ts";
 import { isMarkdown } from "../lib/markdown.ts";
-import { CHUNK, expansionOf, newLineOf, textLines, withSpan, type Reveal } from "../lib/reveal.ts";
-import { rowPosition, type Cursor, type LineRange, type Seen } from "../lib/cursor.ts";
-import { compareOrder } from "../lib/nav.ts";
+import { CHUNK, expansionOf, newLineOf, textLines, withSpan, type Reveal } from "../../src/ui/reveal.ts";
+import { rowPosition, type Cursor, type LineRange, type Seen } from "../../src/ui/cursor.ts";
+import { compareOrder } from "../../src/ui/nav.ts";
 import { PeekView } from "./Peek.tsx";
 import { plusLines } from "../plus.ts";
 import { blocksInSight, codeTop, lineAt, linesInSight, onScreen, placeAt, renderedTop, rowElement, stopElement } from "./anchor.ts";
 import { holdFade, snapshot, visibleBox } from "../lib/fade.ts";
 import { Presets, rangeTitle, ReviewedButton, VersionStrip } from "../components/VersionStrip.tsx";
 import { takeSpot } from "../jumps.ts";
-import { compileQuery, diffRows } from "../lib/search.ts";
-import type { Side } from "../lib/search.ts";
+import { compileQuery, diffRows } from "../../src/ui/search.ts";
+import type { Side } from "../../src/ui/search.ts";
 import { compareFocus, diffStyle, guard, navigate, noteJump, notify, reloadAll, reviewId, route, showResolved, status, threads, wrap } from "../state.ts";
 
 function FileToggle({ path }: { path: string }) {

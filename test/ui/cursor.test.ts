@@ -1,6 +1,6 @@
 import { parsePatchFiles } from "@pierre/diffs";
 import { describe, expect, test } from "bun:test";
-import { carry, CursorSpace, moveStart, selectionLines } from "../../web/lib/cursor.ts";
+import { carry, CursorSpace, moveStart, selectionLines } from "../../src/ui/cursor.ts";
 
 const patch = (path: string, body: string) => `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n${body}`;
 const fs = parsePatchFiles(
@@ -147,7 +147,7 @@ describe("a text selection as lines", () => {
 
 describe("fuzzy file finder", () => {
   test("matches subsequences, prefers the file name and word starts", async () => {
-    const { fuzzyFilter, fuzzyScore } = await import("../../web/lib/fuzzy.ts");
+    const { fuzzyFilter, fuzzyScore } = await import("../../src/ui/fuzzy.ts");
     const paths = ["app/src/main/java/store/PriceHistoryQueue.kt", "app/src/main/java/store/Queue.kt", "docs/guide/README.md", "app/src/test/PriceHistoryQueueTest.kt"];
     expect(fuzzyScore("zzz", paths[0]!)).toBeNull();
     expect(fuzzyFilter(paths, "phq", (p) => p)[0]).toBe("app/src/main/java/store/PriceHistoryQueue.kt");
@@ -159,7 +159,7 @@ describe("fuzzy file finder", () => {
 
 describe("key search", () => {
   test("every word must match; earlier matches rank first", async () => {
-    const { wordFilter } = await import("../../web/lib/fuzzy.ts");
+    const { wordFilter } = await import("../../src/ui/fuzzy.ts");
     const keys = ["next change ]c", "previous change [c", "change nothing", "next file ]b"];
     expect(wordFilter(keys, "change next", (k) => k)).toEqual(["next change ]c"]);
     expect(wordFilter(keys, "]b", (k) => k)).toEqual(["next file ]b"]);

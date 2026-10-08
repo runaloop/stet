@@ -1,8 +1,8 @@
 import type { CodeView } from "@pierre/diffs";
-import type { CursorSpace, Seen } from "../lib/cursor.ts";
+import type { CursorSpace, Seen } from "../../src/ui/cursor.ts";
 import { holdFade } from "../lib/fade.ts";
 import { drawnLines } from "../lib/marks.ts";
-import type { Side } from "../lib/search.ts";
+import type { Side } from "../../src/ui/search.ts";
 
 /** The sticky file header covers this much of the top of the code view. */
 const HEADER = 48;

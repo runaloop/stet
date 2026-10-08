@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { ThreadDetail } from "../../src/core/types.ts";
-import { stateTone } from "../lib/timeline.ts";
-import { foldRuns, keptTimeline } from "../lib/versions.ts";
+import { stateTone } from "../../src/ui/timeline.ts";
+import { foldRuns, keptTimeline } from "../../src/ui/versions.ts";
 import { rangeText, revealRange } from "./Bits.tsx";
 import { StepThumb } from "../modules.tsx";
 

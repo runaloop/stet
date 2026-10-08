@@ -1,4 +1,4 @@
-import type { ThreadSummary } from "../../src/core/types.ts";
+import type { ThreadSummary } from "../core/types.ts";
 
 export interface FileGroup {
   path: string;

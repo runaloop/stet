@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { getSharedHighlighter, hydratePartialDiff, parsePatchFiles, renderDiffWithHighlighter, type FileDiffMetadata } from "@pierre/diffs";
-import { filePatch } from "../../web/lib/region.ts";
-import { expansionOf, fileLines, gapsOf, hydrateSubset, mergeSpans, NOTHING, revealedPatch, withSpan } from "../../web/lib/reveal.ts";
+import { filePatch } from "../../src/ui/region.ts";
+import { expansionOf, fileLines, gapsOf, hydrateSubset, mergeSpans, NOTHING, revealedPatch, withSpan } from "../../src/ui/reveal.ts";
 
 const file = (n: number, edits: Record<number, string> = {}) => Array.from({ length: n }, (_, i) => edits[i + 1] ?? `line ${i + 1}`).join("\n") + "\n";
 const hunksOf = (patch: string) => parsePatchFiles(patch).flatMap((p) => p.files)[0]!.hunks;

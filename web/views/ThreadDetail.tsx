@@ -40,16 +40,16 @@ import { apply, takeSpot } from "../jumps.ts";
 import { swapped, toggleSwap } from "../layout.ts";
 import { transition } from "../transition.ts";
 import { latchNew, openAtNews } from "../msgs.ts";
-import { stepThread, stepUnread } from "../lib/nav.ts";
+import { stepThread, stepUnread } from "../../src/ui/nav.ts";
 import { isMarkdown } from "../lib/markdown.ts";
-import { contextPatch, filePatch, regionPatch } from "../lib/region.ts";
+import { contextPatch, filePatch, regionPatch } from "../../src/ui/region.ts";
 import { snapshot, visibleBox, type Fade } from "../lib/fade.ts";
 import { drawnLines, threadMarks, type ThreadLines } from "../lib/marks.ts";
-import { CHUNK, expansionOf, hydrateSubset, NOTHING, revealedPatch, textLines, withSpan, type Reveal } from "../lib/reveal.ts";
-import { carry, type Cursor, type CursorFile, type LineRange, type NavBlock, type Seen, type Span } from "../lib/cursor.ts";
-import type { Side } from "../lib/search.ts";
+import { CHUNK, expansionOf, hydrateSubset, NOTHING, revealedPatch, textLines, withSpan, type Reveal } from "../../src/ui/reveal.ts";
+import { carry, type Cursor, type CursorFile, type LineRange, type NavBlock, type Seen, type Span } from "../../src/ui/cursor.ts";
+import type { Side } from "../../src/ui/search.ts";
 import { blocksInSight, linesInSight, stopElement } from "./anchor.ts";
-import { clampStep, diffPair } from "../lib/timeline.ts";
+import { clampStep, diffPair } from "../../src/ui/timeline.ts";
 import {
   codeMode,
   compareFocus,

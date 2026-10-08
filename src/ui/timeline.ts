@@ -1,4 +1,4 @@
-import type { ThreadDetail, TimelineStepDto } from "../../src/core/types.ts";
+import type { ThreadDetail, TimelineStepDto } from "../core/types.ts";
 
 export type DiffBase = "then" | "prev";
 

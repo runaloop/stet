@@ -1,7 +1,7 @@
 import MarkdownIt, { type Env } from "markdown-it";
 import type { CompareFile, ComparePlacement, GuideDto, GuideRefDto } from "../../src/core/types.ts";
-import type { Span } from "./cursor.ts";
-import { revealedPatch, type HunkShape } from "./reveal.ts";
+import type { Span } from "../../src/ui/cursor.ts";
+import { revealedPatch, type HunkShape } from "../../src/ui/reveal.ts";
 
 /** Lines shown around a step's lines at first. */
 export const GUIDE_CONTEXT = 3;

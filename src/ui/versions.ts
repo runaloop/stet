@@ -1,4 +1,4 @@
-import type { Verdict } from "../../src/core/types.ts";
+import type { Verdict } from "../core/types.ts";
 
 export interface Round {
   /** 0: the versions before the first review; k: the agent's answer to review k. */

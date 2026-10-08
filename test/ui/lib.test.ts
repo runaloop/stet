@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import type { ThreadDetail } from "../../src/core/types.ts";
 import { thread } from "../helpers/threads.ts";
-import { applyFilters, DEFAULT_FILTERS, landingTab, matchesFile } from "../../web/lib/filters.ts";
-import { compareOrder, stepFile, stepThread, stepUnread } from "../../web/lib/nav.ts";
+import { applyFilters, DEFAULT_FILTERS, landingTab, matchesFile } from "../../src/ui/filters.ts";
+import { compareOrder, stepFile, stepThread, stepUnread } from "../../src/ui/nav.ts";
 import { threadMarks } from "../../web/lib/marks.ts";
-import { filePatch, regionDiff, regionPatch } from "../../web/lib/region.ts";
+import { filePatch, regionDiff, regionPatch } from "../../src/ui/region.ts";
 import { parseHash, routeHash, sameView, takeToken, type Route } from "../../web/lib/route.ts";
-import { diffPair } from "../../web/lib/timeline.ts";
-import { flatten, groupByFile } from "../../web/lib/tree.ts";
+import { diffPair } from "../../src/ui/timeline.ts";
+import { flatten, groupByFile } from "../../src/ui/tree.ts";
 
 const list = [
   thread({ id: 3, path: "src/b.kt", range: { start: 30, end: 31 } }),

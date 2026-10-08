@@ -1,6 +1,6 @@
 import { signal } from "@preact/signals";
 import { compareNav, cursor, peek, type Peek } from "./compare.ts";
-import type { Cursor } from "./lib/cursor.ts";
+import type { Cursor } from "../src/ui/cursor.ts";
 import { expectNavigation, jumpHooks, notify, selectedStep } from "./state.ts";
 import { transition } from "./transition.ts";
 

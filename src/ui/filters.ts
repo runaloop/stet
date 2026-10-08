@@ -1,4 +1,4 @@
-import type { AnchorState, ThreadSummary } from "../../src/core/types.ts";
+import type { AnchorState, ThreadSummary } from "../core/types.ts";
 import { fileOf } from "./tree.ts";
 
 export interface Filters {

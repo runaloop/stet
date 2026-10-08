@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { foldRuns, keptSteps, keptTimeline, onlyVersion, rounds, withEnd } from "../../web/lib/versions.ts";
+import { foldRuns, keptSteps, keptTimeline, onlyVersion, rounds, withEnd } from "../../src/ui/versions.ts";
 
 const v = (number: number, createdAt: string) => ({ number, createdAt });
 

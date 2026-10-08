@@ -1,7 +1,7 @@
 import { parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
 import { describe, expect, test } from "bun:test";
 import { createTwoFilesPatch } from "diff";
-import { CursorSpace } from "../../web/lib/cursor.ts";
+import { CursorSpace } from "../../src/ui/cursor.ts";
 import { changedBlocks, changesOf, hitBlocks, isMarkdown, layoutOf, likeness, renderMarkdown, resolveRef, slotsOf, stopsOn, unnumbered, type Block, type SideChanges } from "../../web/lib/markdown.ts";
 
 const imageUrl = (path: string) => `/raw/${path}`;

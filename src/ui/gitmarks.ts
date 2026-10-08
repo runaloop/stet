@@ -1,4 +1,4 @@
-import type { GitFileDto, GitStateDto } from "../../src/core/types.ts";
+import type { GitFileDto, GitStateDto } from "../core/types.ts";
 
 export type Tone = "ok" | "warn" | "bad" | "soft" | "accent";
 

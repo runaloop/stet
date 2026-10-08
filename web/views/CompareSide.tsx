@@ -38,11 +38,11 @@ import {
   setCursor,
 } from "../compare.ts";
 import { guideFile } from "../guide.ts";
-import { diffRows, groupHits, type DiffRow, type Hit, type HitGroup } from "../lib/search.ts";
+import { diffRows, groupHits, type DiffRow, type Hit, type HitGroup } from "../../src/ui/search.ts";
 import type { GrepLineDto } from "../../src/core/types.ts";
 import type { Route } from "../lib/route.ts";
 import { canQuote, quoteLines } from "../quote.ts";
-import { clampStep } from "../lib/timeline.ts";
+import { clampStep } from "../../src/ui/timeline.ts";
 import { fileTag } from "../modules.tsx";
 import { detail, link, route, selectedStep } from "../state.ts";
 import { transition } from "../transition.ts";

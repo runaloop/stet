@@ -27,12 +27,12 @@ import {
   threadCode,
   visualAnchor,
 } from "./compare.ts";
-import { moveStart, type Cursor, type Span } from "./lib/cursor.ts";
-import { stepFile, stepThread, stepUnread } from "./lib/nav.ts";
+import { moveStart, type Cursor, type Span } from "../src/ui/cursor.ts";
+import { stepFile, stepThread, stepUnread } from "../src/ui/nav.ts";
 import { commitPicker } from "./commits.ts";
 import { gitOpen } from "./components/GitState.tsx";
 import { edgeMsg, foldAllMsgs, foldMsg, halfPage, replyAtCursor, stepMsg } from "./msgs.ts";
-import { clampStep, diffPair } from "./lib/timeline.ts";
+import { clampStep, diffPair } from "../src/ui/timeline.ts";
 import { openBlame } from "./components/Blame.tsx";
 import { foldAllGuide, foldGuide, guideCursor, openGuideStep, scrollGuide, stepGuide } from "./components/Guide.tsx";
 import { guideAt, guideShown, toggleGuide } from "./guide.ts";

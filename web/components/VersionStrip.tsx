@@ -3,7 +3,7 @@ import { markReviewed, nowDirty, presets, reviewedCursor, reviewedRef, status, t
 import { ago, revealRange } from "./Bits.tsx";
 import { commitAt, commitOf, commits, commitSubject, isSha, rowOf } from "../commits.ts";
 import { picker } from "../keys.ts";
-import { foldRuns, keptSteps } from "../lib/versions.ts";
+import { foldRuns, keptSteps } from "../../src/ui/versions.ts";
 
 export interface StripStep {
   ref: string;

@@ -1,6 +1,6 @@
 import type { ThreadSummary } from "../../src/core/types.ts";
 import { Badge, ThreadBadges, whereText } from "../components/Bits.tsx";
-import { lineOf } from "../lib/tree.ts";
+import { lineOf } from "../../src/ui/tree.ts";
 import { currentThreadId, filters, groups, link, setFilters, threads, versions } from "../state.ts";
 
 function ThreadRow({ t, active }: { t: ThreadSummary; active: boolean }) {

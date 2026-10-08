@@ -4,11 +4,11 @@ const ROOT = join(import.meta.dir, "..");
 const withUi = process.argv.includes("--ui");
 
 const ACCEPTED_SEMGREP: { rule: string; path: string; why: string }[] = [
-  { rule: "regex_dos", path: "web/lib/filters.ts", why: "globs become anchored [^/]* / (?:.*/)? patterns, typed by the reviewer into their own browser" },
-  { rule: "regex_dos", path: "web/lib/fold.ts", why: "same glob patterns, from the reviewer's own config" },
-  { rule: "regex_dos", path: "web/lib/order.ts", why: "compare.order globs through the same globToRegExp as compare.tests" },
-  { rule: "regex_dos", path: "web/lib/versions.ts", why: "/^\\d+$/ on a version ref: linear, no nested quantifiers" },
-  { rule: "regex_dos", path: "web/lib/search.ts", why: "the reviewer's own search in their own browser; the flagged line is /[A-Z]/" },
+  { rule: "regex_dos", path: "src/ui/filters.ts", why: "globs become anchored [^/]* / (?:.*/)? patterns, typed by the reviewer into their own browser" },
+  { rule: "regex_dos", path: "src/ui/fold.ts", why: "same glob patterns, from the reviewer's own config" },
+  { rule: "regex_dos", path: "src/ui/order.ts", why: "compare.order globs through the same globToRegExp as compare.tests" },
+  { rule: "regex_dos", path: "src/ui/versions.ts", why: "/^\\d+$/ on a version ref: linear, no nested quantifiers" },
+  { rule: "regex_dos", path: "src/ui/search.ts", why: "the reviewer's own search in their own browser; the flagged line is /[A-Z]/" },
   { rule: "regex_dos", path: "web/lib/markdown.ts", why: "anchored URL-scheme, ?query and #L<line> patterns on a link of the Markdown file: linear, no nested quantifiers" },
   { rule: "node_insecure_random_generator", path: "scripts/guide/lib.ts", why: "picks a debugging port for a local headless Firefox that takes the guide screenshots; not a secret" },
   { rule: "node_timing_attack", path: "web/state.ts", why: "compares location.hash, not a secret" },

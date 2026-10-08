@@ -1,6 +1,6 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { afterAll, describe, expect, test } from "bun:test";
-import type { Span } from "../../web/lib/cursor.ts";
+import type { Span } from "../../src/ui/cursor.ts";
 
 const mine = !GlobalRegistrator.isRegistered;
 if (mine) GlobalRegistrator.register();
@@ -73,8 +73,8 @@ describe("folding rendered Markdown to the lines shown", () => {
 
   test("the lines opened for the code are the blocks shown rendered: one model for both views", async () => {
     const { parsePatchFiles } = await import("@pierre/diffs");
-    const { filePatch } = await import("../../web/lib/region.ts");
-    const { revealedPatch, withSpan, NOTHING } = await import("../../web/lib/reveal.ts");
+    const { filePatch } = await import("../../src/ui/region.ts");
+    const { revealedPatch, withSpan, NOTHING } = await import("../../src/ui/reveal.ts");
     const page = (v: number) => Array.from({ length: 30 }, (_, i) => `Paragraph ${i + 1}${i === 0 || i === 29 ? `, version ${v}` : ""}.`).join("\n\n") + "\n";
     const a = { path: "a.md", text: page(1) };
     const b = { path: "a.md", text: page(2) };

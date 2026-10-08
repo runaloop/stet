@@ -1,7 +1,7 @@
 import type { ComponentChildren } from "preact";
 import type { AnchorState, Intent, ThreadSummary } from "../../src/core/types.ts";
-import { stateTone } from "../lib/timeline.ts";
-import type { Round } from "../lib/versions.ts";
+import { stateTone } from "../../src/ui/timeline.ts";
+import type { Round } from "../../src/ui/versions.ts";
 import { link, threads } from "../state.ts";
 
 export function Badge({ tone = "muted", children, title }: { tone?: string; children: ComponentChildren; title?: string }) {

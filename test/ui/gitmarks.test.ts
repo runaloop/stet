@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { GitFileDto, GitStateDto } from "../../src/core/types.ts";
-import { fileMarks, gitSummary } from "../../web/lib/gitmarks.ts";
+import { fileMarks, gitSummary } from "../../src/ui/gitmarks.ts";
 
 const file = (path: string, f: Partial<GitFileDto> = {}): GitFileDto => ({ path, staged: false, unstaged: false, untracked: false, conflict: false, unpushed: false, ...f });
 const state = (g: Partial<GitStateDto> = {}): GitStateDto => ({

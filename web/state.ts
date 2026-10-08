@@ -1,13 +1,13 @@
 import { batch, computed, effect, signal, untracked } from "@preact/signals";
 import type { CommentDto, GitStateDto, NowStateDto, ReviewDto, ReviewedDto, ThreadDetail, ThreadSummary } from "../src/core/types.ts";
 import { api, ApiError, getToken, setToken, subscribe, type ReviewStatus } from "./api.ts";
-import { applyFilters, DEFAULT_FILTERS, type Filters } from "./lib/filters.ts";
-import { DEFAULT_TEST_GLOBS, isTestPath, parseList } from "./lib/fold.ts";
-import { FileOrder, parseOrder } from "./lib/order.ts";
+import { applyFilters, DEFAULT_FILTERS, type Filters } from "../src/ui/filters.ts";
+import { DEFAULT_TEST_GLOBS, isTestPath, parseList } from "../src/ui/fold.ts";
+import { FileOrder, parseOrder } from "../src/ui/order.ts";
 import { parseHash, plainClick, routeHash as formatHash, type Route } from "./lib/route.ts";
-import type { DiffBase } from "./lib/timeline.ts";
-import { rounds } from "./lib/versions.ts";
-import { flatten, groupByFile } from "./lib/tree.ts";
+import type { DiffBase } from "../src/ui/timeline.ts";
+import { rounds } from "../src/ui/versions.ts";
+import { flatten, groupByFile } from "../src/ui/tree.ts";
 
 export type { Route };
 export { parseHash };

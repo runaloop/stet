@@ -31,9 +31,9 @@ import { changesOf, pairsOf, renderMarkdown, rowsOf, slotsOf, stopsOf, stopsOn, 
 import { isSimple, markInline, markPairs, markRemoved, markWords, splitRewritten, textOf as blockText, unitsOf } from "../lib/richdiff.ts";
 import { breakAfter, unitKey, unitOf } from "../lib/breaks.ts";
 import { closeGaps, foldInside, meets, opening, withBlanks } from "../lib/mdfold.ts";
-import { CHUNK, newLineOf, withSpan } from "../lib/reveal.ts";
-import type { LineRange, NavBlock, Span } from "../lib/cursor.ts";
-import { compileQuery, type Side } from "../lib/search.ts";
+import { CHUNK, newLineOf, withSpan } from "../../src/ui/reveal.ts";
+import type { LineRange, NavBlock, Span } from "../../src/ui/cursor.ts";
+import { compileQuery, type Side } from "../../src/ui/search.ts";
 import { innermost, touchedBy } from "../lib/selection.ts";
 import { pickedBySelection } from "../plus.ts";
 import { compareFocus, diffStyle } from "../state.ts";

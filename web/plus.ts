@@ -1,5 +1,5 @@
 import type { SelectedLineRange } from "@pierre/diffs";
-import { selectionLines, type SideLines } from "./lib/cursor.ts";
+import { selectionLines, type SideLines } from "../src/ui/cursor.ts";
 import { drawnLines } from "./lib/marks.ts";
 import { selectionIn, touchedBy } from "./lib/selection.ts";
 import { notify } from "./state.ts";

@@ -2,9 +2,9 @@ import type { ComponentChild } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { compareNav, cursorSpace, fileRows, setCursor, type FileRow } from "../compare.ts";
 import { bindings, bindingsHere, contexts, nextKeys, picker, tokens, whichKey, type Binding, type Where } from "../keys.ts";
-import { fuzzyFilter, wordFilter } from "../lib/fuzzy.ts";
+import { fuzzyFilter, wordFilter } from "../../src/ui/fuzzy.ts";
 import type { VersionDto } from "../../src/core/types.ts";
-import { onlyVersion, withEnd, type Round } from "../lib/versions.ts";
+import { onlyVersion, withEnd, type Round } from "../../src/ui/versions.ts";
 import { defaultCompare, helpOpen, lastCompare, navigate, notify, reviewedCursor, route, versionRounds, versions } from "../state.ts";
 import { ago, Kbd, roundTitle } from "./Bits.tsx";
 

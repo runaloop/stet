@@ -1,4 +1,4 @@
-import type { ComparePlacement, ThreadSummary } from "../../src/core/types.ts";
+import type { ComparePlacement, ThreadSummary } from "../core/types.ts";
 import type { FileGroup } from "./tree.ts";
 
 export function stepThread(list: ThreadSummary[], currentId: number | null, dir: 1 | -1): number | null {

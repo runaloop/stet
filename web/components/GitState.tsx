@@ -2,7 +2,7 @@ import { signal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import type { GitFileDto } from "../../src/core/types.ts";
 import { compareData } from "../compare.ts";
-import { fileMarks, gitSummary, type Mark } from "../lib/gitmarks.ts";
+import { fileMarks, gitSummary, type Mark } from "../../src/ui/gitmarks.ts";
 import { gitFiles, gitInfo, link, status } from "../state.ts";
 
 export const gitOpen = signal(false);

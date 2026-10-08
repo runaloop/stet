@@ -1,4 +1,4 @@
-import type { Side } from "./search.ts";
+import type { Side } from "../../src/ui/search.ts";
 
 export interface LineMark {
   side: Side;

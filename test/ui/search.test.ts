@@ -1,8 +1,8 @@
 import { parsePatchFiles } from "@pierre/diffs";
 import { describe, expect, test } from "bun:test";
-import { globToRegExp } from "../../web/lib/filters.ts";
-import { DEFAULT_COLLAPSE_GLOBS, DEFAULT_SKIP_MARKERS, DEFAULT_TEST_GLOBS, foldOf, parseList } from "../../web/lib/fold.ts";
-import { compileQuery, diffRows, flatHits, groupHits, searchDiff, snippet } from "../../web/lib/search.ts";
+import { globToRegExp } from "../../src/ui/filters.ts";
+import { DEFAULT_COLLAPSE_GLOBS, DEFAULT_SKIP_MARKERS, DEFAULT_TEST_GLOBS, foldOf, parseList } from "../../src/ui/fold.ts";
+import { compileQuery, diffRows, flatHits, groupHits, searchDiff, snippet } from "../../src/ui/search.ts";
 
 const patch = (path: string, body: string) => `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n${body}`;
 const files = (...patches: string[]) => parsePatchFiles(patches.join(""), "t").flatMap((p) => p.files);
