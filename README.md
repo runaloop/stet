@@ -107,7 +107,7 @@ All commands print JSON when piped or with `--json`, except `stet export`, which
 | `stet resolve <id> [--reason fixed\|wontfix\|answered]` / `stet reopen <id>` | reviewer only |
 | `stet resolve <id> --body <t\|->` | reviewer only: resolve with a message, a draft that resolves the thread (reason `go`) when you submit the review, with Request changes or an approval. The agent does as it says without asking again; its `question` or `disagree` reply reopens the thread |
 | `stet wait --for review\|reply\|version\|any [--timeout 30m]` | block until there is something to do (exit 5 on timeout) |
-| `stet open <id>` | open the editor at the thread |
+| `stet open <id>` / `stet open [<id>] --browser` | open the editor at the thread; `--browser`: the thread, or without an id the review, in the browser, starting the server when none runs. `--print` prints the command or the URL instead |
 | `stet prune` | drop snapshot refs nothing points at |
 | `stet export [--all] [--out <file>]` | the review as Markdown, drafts left out: one line per thread with its outcome and place (fixed in v2, answered, won't fix, waits for the agent), for a merge request description; `--all` adds the code then and now, every conversation and timeline, the versions and each review's verdict, for an archive or another agent. A closed review too: the branch's last one, or `--review <id>` |
 | `stet skill install` / `stet skill show` | install the agent's skill / print it |
@@ -135,7 +135,9 @@ Stored per repository with `stet config set <key> <value>`:
 The "Editor" button runs the command in `STET_EDITOR`, set in the environment of `stet serve`, e.g.
 `STET_EDITOR="zed {file}:{line}" stet serve` (`{file}`, `{line}`, `{root}`, `{path}`; no shell is involved).
 It is not stored in the repository on purpose: anything the agent can write there must not become a
-command that runs when you click.
+command that runs when you click. `{file}` is the absolute path, `{path}` the path in the repository.
+Without `STET_EDITOR` the button copies the command instead, from `$VISUAL` or `$EDITOR`. Either way it is
+the command `stet open <id> --print` gives.
 
 ## Keys
 
