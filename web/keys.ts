@@ -34,7 +34,6 @@ import { gitOpen } from "./components/GitState.tsx";
 import { edgeMsg, foldAllMsgs, foldMsg, halfPage, replyAtCursor, stepMsg } from "./msgs.ts";
 import { clampStep, diffPair } from "./lib/timeline.ts";
 import { openBlame } from "./components/Blame.tsx";
-import { zoomKey } from "./components/ImageZoom.tsx";
 import { foldAllGuide, foldGuide, guideCursor, openGuideStep, scrollGuide, stepGuide } from "./components/Guide.tsx";
 import { guideAt, guideShown, toggleGuide } from "./guide.ts";
 import {
@@ -72,6 +71,7 @@ import { question } from "./components/Choice.tsx";
 import { approveReview, submitReview } from "./views/Drafts.tsx";
 import { openExternal, reopenCurrent, resolveCurrent, showThreadCode } from "./views/ThreadDetail.tsx";
 import { openResolveWithMessage } from "./components/ResolveWithMessage.tsx";
+import { moduleBindings } from "./modules.tsx";
 
 /** `code`: a thread's code or the Guide tab's lines while they have the focus; there these come before the page's own keys. */
 export type Where = "compare" | "guide" | "thread" | "code" | "drafts" | "everywhere";
@@ -387,6 +387,7 @@ const toggle = (fn: () => void) => () => {
   return true;
 };
 
+/** The core's bindings; `bindings()` adds the enabled modules' after them. */
 export const BINDINGS: Binding[] = [
   { keys: "j", desc: "cursor down (5j: five lines)", where: "compare", visual: true, run: (n) => moveBy(n) },
   { keys: "k", desc: "cursor up", where: "compare", visual: true, run: (n) => moveBy(-n) },
@@ -455,10 +456,6 @@ export const BINDINGS: Binding[] = [
     else compareHandle.current?.cancelPending();
   }) },
   { keys: "<Space>ug", desc: "the agent's guide to the version on the right, or back to the diff (experimental)", where: "compare", visual: true, run: toggleGuide },
-  { keys: "+", desc: "zoom in on the picture under the mouse (or the one in sight)", where: "compare", run: () => zoomKey(1) },
-  { keys: "=", desc: "zoom in on the picture (same as +)", where: "compare", run: () => zoomKey(1) },
-  { keys: "-", desc: "zoom out of the picture", where: "compare", run: () => zoomKey(-1) },
-  { keys: "0", desc: "fit the picture in its place again", where: "compare", run: () => zoomKey(0) },
 
   { keys: "<Space>ug", desc: "back to the diff", where: "guide", run: toggleGuide },
   { keys: "<Esc>", desc: "back to the diff", where: "guide", run: toggleGuide },
@@ -520,10 +517,6 @@ export const BINDINGS: Binding[] = [
   { keys: "a", desc: "into the code: comment (same as i)", where: "thread", run: intoCode(comment) },
   { keys: "c", desc: "into the code: comment (same as i)", where: "thread", run: intoCode(comment) },
   { keys: "gcc", desc: "into the code: comment on the cursor line", where: "thread", run: intoCode(comment) },
-  { keys: "+", desc: "zoom in on the picture under the mouse (or the one in sight)", where: "thread", run: () => zoomKey(1) },
-  { keys: "=", desc: "zoom in on the picture (same as +)", where: "thread", run: () => zoomKey(1) },
-  { keys: "-", desc: "zoom out of the picture", where: "thread", run: () => zoomKey(-1) },
-  { keys: "0", desc: "fit the picture in its place again", where: "thread", run: () => zoomKey(0) },
 
   { keys: "j", desc: "cursor down (5j: five lines)", where: "code", visual: true, run: (n) => moveBy(n) },
   { keys: "k", desc: "cursor up", where: "code", visual: true, run: (n) => moveBy(-n) },
@@ -608,6 +601,8 @@ export const BINDINGS: Binding[] = [
   { keys: "<Space>?", desc: "all keys", where: "everywhere", run: toggle(() => (helpOpen.value = true)) },
 ];
 
+export const bindings = (): Binding[] => [...BINDINGS, ...moduleBindings()];
+
 export function tokens(keys: string): string[] {
   return keys.match(/<[^>]+>|./g) ?? [];
 }
@@ -660,7 +655,7 @@ export function contexts(): Where[] {
 /** The bindings of this page, the first context's first: a key bound twice does what the first one says. */
 export function bindingsHere(): Binding[] {
   const where = contexts();
-  return BINDINGS.filter((b) => where.includes(b.where)).sort((a, b) => where.indexOf(a.where) - where.indexOf(b.where));
+  return bindings().filter((b) => where.includes(b.where)).sort((a, b) => where.indexOf(a.where) - where.indexOf(b.where));
 }
 
 function candidates(prefix: string[]): Binding[] {

@@ -1,7 +1,7 @@
 import type { ComponentChild } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { compareNav, cursorSpace, fileRows, setCursor, type FileRow } from "../compare.ts";
-import { BINDINGS, bindingsHere, contexts, nextKeys, picker, tokens, whichKey, type Binding, type Where } from "../keys.ts";
+import { bindings, bindingsHere, contexts, nextKeys, picker, tokens, whichKey, type Binding, type Where } from "../keys.ts";
 import { fuzzyFilter, wordFilter } from "../lib/fuzzy.ts";
 import type { VersionDto } from "../../src/core/types.ts";
 import { onlyVersion, withEnd, type Round } from "../lib/versions.ts";
@@ -145,7 +145,7 @@ export function keysHere(): { b: Binding; here: boolean }[] {
     seen.add(b.keys);
     here.push({ b, here: true });
   }
-  return [...here, ...BINDINGS.filter((b) => !where.includes(b.where)).map((b) => ({ b, here: false }))];
+  return [...here, ...bindings().filter((b) => !where.includes(b.where)).map((b) => ({ b, here: false }))];
 }
 
 const keyText = (b: Binding) => `${b.desc} ${keyLabel(b.keys)} ${b.keys} ${WHERE[b.where]}`;
@@ -270,7 +270,7 @@ export function Help() {
   }, [open]);
   if (!open) return null;
   const close = () => (helpOpen.value = false);
-  const matching = new Set(wordFilter(BINDINGS, q, keyText));
+  const matching = new Set(wordFilter(bindings(), q, keyText));
   return (
     <div class="overlay" onClick={close}>
       <div class="help" onClick={(e) => e.stopPropagation()}>
@@ -297,7 +297,7 @@ export function Help() {
         <div class="help-cols">
           {SECTIONS.map(([where, title]) => {
             const seen = new Set<string>();
-            const rows = BINDINGS.filter((b) => b.where === where && matching.has(b) && !seen.has(b.desc + b.keys) && seen.add(b.desc + b.keys));
+            const rows = bindings().filter((b) => b.where === where && matching.has(b) && !seen.has(b.desc + b.keys) && seen.add(b.desc + b.keys));
             if (rows.length === 0) return null;
             return (
               <section>

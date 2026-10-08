@@ -3,7 +3,7 @@ import type { ThreadDetail } from "../../src/core/types.ts";
 import { stateTone } from "../lib/timeline.ts";
 import { foldRuns, keptTimeline } from "../lib/versions.ts";
 import { rangeText, revealRange } from "./Bits.tsx";
-import { RegionThumb } from "./ImageView.tsx";
+import { StepThumb } from "../modules.tsx";
 
 /** A thread's code at each version. Runs of versions where nothing happened to it fold into one step. */
 export function Timeline({ detail, selected, onSelect }: { detail: ThreadDetail; selected: number; onSelect: (i: number) => void }) {
@@ -43,9 +43,7 @@ export function Timeline({ detail, selected, onSelect }: { detail: ThreadDetail;
               <span class="step-label">{s.label}</span>
               <span class="step-state">{s.index === 0 ? "written" : s.state}</span>
               {region && s.path ? (
-                <span class="step-thumb">
-                  <RegionThumb sha={s.sha} path={s.path} region={region} />
-                </span>
+                <StepThumb sha={s.sha} path={s.path} region={region} />
               ) : (
                 <span class="step-where">{s.range ? `${s.path !== detail.thread.path ? `${s.path}:` : "L"}${rangeText(s.range)}` : (s.reason ?? "gone")}</span>
               )}

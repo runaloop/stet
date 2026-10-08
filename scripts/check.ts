@@ -30,6 +30,8 @@ async function step(name: string, fn: () => Promise<[Outcome, string]>): Promise
   results.push([name, outcome, `${note}${note ? " · " : ""}${((performance.now() - t) / 1000).toFixed(1)}s`]);
 }
 
+await step("module lists of a build with every module", async () => [(await run(["bun", "scripts/modules.ts", "--check"])).code === 0 ? "ok" : "fail", ""]);
+
 await step("typecheck", async () => [(await run(["bun", "run", "typecheck"])).code === 0 ? "ok" : "fail", ""]);
 
 await step("unit and e2e tests", async () => [(await run(["bun", "test"])).code === 0 ? "ok" : "fail", ""]);
@@ -49,7 +51,7 @@ await step("semgrep (typescript, nodejsscan, secrets)", async () => {
   const cmd = Bun.which("semgrep") ? ["semgrep"] : Bun.which("uvx") ? ["uvx", "--quiet", "semgrep"] : null;
   if (!cmd) return ["skipped", "install uv (uvx runs semgrep without a global install)"];
   // semgrep-core opens io_uring rings, which fail with ENOMEM once the per-user locked-memory limit is used up
-  const r = await run([...cmd, "scan", "--metrics=off", "--config", "p/typescript", "--config", "p/nodejsscan", "--config", "p/secrets", "--json", "--quiet", "src", "web", "scripts"], { quiet: true, env: { EIO_BACKEND: "posix" } });
+  const r = await run([...cmd, "scan", "--metrics=off", "--config", "p/typescript", "--config", "p/nodejsscan", "--config", "p/secrets", "--json", "--quiet", "src", "web", "modules", "scripts"], { quiet: true, env: { EIO_BACKEND: "posix" } });
   let found: { check_id: string; path: string; start: { line: number }; extra: { message: string } }[];
   try {
     found = JSON.parse(r.out).results;

@@ -2,14 +2,13 @@ import { CodeView, parsePatchFiles, type CodeViewItem, type CodeViewScrollTarget
 import { effect } from "@preact/signals";
 import { render, type ComponentChild } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import { isPixelImage, isSvg } from "../../modules/images/core.ts";
 import type { ComparePlacement } from "../../src/core/types.ts";
 import { api } from "../api.ts";
+import { headerControl, isPicture, isSwitchable, viewerByKind, viewerFor, webModules } from "../modules.tsx";
 import { Kbd } from "../components/Bits.tsx";
 import { mount, workerPool } from "../components/Code.tsx";
 import { FileGitMarks } from "../components/GitState.tsx";
 import { GuideToggle, GuideView } from "../components/Guide.tsx";
-import { ImageDiff } from "../components/ImageView.tsx";
 import { MarkdownView } from "../components/MarkdownView.tsx";
 import { hi, lo, PendingBox } from "../components/NewThread.tsx";
 import { askRestore, restorable } from "../components/Restore.tsx";
@@ -104,15 +103,11 @@ function FileMeta({ path }: { path: string }) {
       ) : null}
       {row?.keptBecause ? <span class="kept" title="a test file that is shown on purpose: tests are hidden only when they only add code">⚠ {row.keptBecause}</span> : null}
       <FileGitMarks path={path} />
-      {isSvg(path) ? (
-        <button class="btn ghost small svg-toggle" title="an SVG: show it as a picture or as code" onClick={() => setFileView(path, drawnFiles.value.has(path) ? "code" : "picture")}>
-          {drawnFiles.value.has(path) ? "‹/› code" : "▣ picture"}
-        </button>
-      ) : isMarkdown(path) ? (
+      {headerControl(path) ?? (isMarkdown(path) ? (
         <button class="btn ghost small md-toggle" title="Markdown: show it rendered or as code" onClick={() => (compareHandle.current?.switchView ?? setFileView)(path, drawnFiles.value.has(path) ? "code" : "rendered")}>
           {drawnFiles.value.has(path) ? "‹/› code" : "¶ rendered"}
         </button>
-      ) : null}
+      ) : null)}
       {isMarkdown(path) && fd && fd.type !== "new" && fd.type !== "deleted" ? (
         <button
           class={`btn ghost small md-whole${isWhole(path) ? " on" : ""}`}
@@ -189,22 +184,18 @@ function FoldSummary() {
   );
 }
 
-type Viewer = "image" | "markdown";
-type Anno = { kind: "thread"; placement: ComparePlacement } | { kind: "new" } | { kind: Viewer; path: string; version: number };
+/** `markdown`, or the kind of a module's viewer. */
+type Viewer = string;
+type Anno = { kind: "thread"; placement: ComparePlacement } | { kind: "new" } | { kind: "viewer"; viewer: Viewer; path: string; version: number };
 type SelectionContext = { item: { id: string; fileDiff?: FileDiffMetadata } };
 
 /**
- * What a file is drawn as instead of its lines: a picture for an image git calls binary, or for an SVG unless the
- * reader picked its code or lines of it have threads; rendered Markdown unless the reader or `compare.markdown` picked
- * its code.
+ * What a file is drawn as instead of its lines: rendered Markdown unless the reader or `compare.markdown` picked its
+ * code, or what a module's viewer draws it as.
  */
 function viewerOf(fd: FileDiffMetadata, placed: ComparePlacement[] | undefined): Viewer | null {
-  if (fd.hunks.length === 0 && isPixelImage(fd.name)) return "image";
   if (isMarkdown(fd.name)) return (fileView.value.get(fd.name) ?? markdownView.value) === "rendered" ? "markdown" : null;
-  if (!isSvg(fd.name)) return null;
-  const view = fileView.value.get(fd.name);
-  if (view) return view === "picture" ? "image" : null;
-  return (placed ?? []).some((p) => !threads.peek().find((t) => t.id === p.threadId)?.region) ? null : "image";
+  return viewerFor(fd, placed, fileView.value.get(fd.name))?.kind ?? null;
 }
 
 // The empty file a viewer is drawn on gets a key of its own: pierre takes an equal file (same name, same empty text) for
@@ -435,7 +426,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
   };
 
   const settleOn = (path: string) => {
-    if (isPixelImage(path) || drawnFiles.peek().has(path)) settle({ type: "item", id: path, align: "start" });
+    if (isPicture(path) || drawnFiles.peek().has(path)) settle({ type: "item", id: path, align: "start" });
   };
 
   const scrollToThread = (id: number) => {
@@ -458,14 +449,14 @@ export function CompareView({ from, to }: { from: string; to: string }) {
 
   // Lines of an SVG shown as a picture or of rendered Markdown: show its code first.
   const codeOf = (path: string): boolean => {
-    if (!(isSvg(path) || isMarkdown(path)) || !drawnFiles.peek().has(path)) return false;
+    if (!(isSwitchable(path) || isMarkdown(path)) || !drawnFiles.peek().has(path)) return false;
     setFileView(path, "code");
     return true;
   };
 
   const scrollToLine = (path: string, side: Side, line: number, align: "center" | "start" = "center") => {
     const h = host.current;
-    const fade = h && (isSvg(path) || isMarkdown(path)) && drawnFiles.peek().has(path) ? coverView(h) : null;
+    const fade = h && (isSwitchable(path) || isMarkdown(path)) && drawnFiles.peek().has(path) ? coverView(h) : null;
     const switched = codeOf(path);
     const target: CodeViewScrollTarget = { type: "line", id: path, lineNumber: line, side, align, offset: align === "start" ? 60 : 0 };
     scrollOrQueue(target, reveal(path, true) || switched);
@@ -914,8 +905,12 @@ export function CompareView({ from, to }: { from: string; to: string }) {
         if (ctx.item.fileDiff) sharedExpansion(inst as Expandable, ctx.item.id);
       },
       renderAnnotation: (a: DiffLineAnnotation<Anno>) => {
-        if (a.metadata.kind === "image") return viewer(a.metadata.path, a.metadata.version, <ImageDiff file={a.metadata.path} />, "anno image-anno");
-        if (a.metadata.kind === "markdown") return viewer(a.metadata.path, a.metadata.version, <MarkdownView file={a.metadata.path} />, "anno md-anno");
+        if (a.metadata.kind === "viewer") {
+          const { path, version } = a.metadata;
+          if (a.metadata.viewer === "markdown") return viewer(path, version, <MarkdownView file={path} />, "anno md-anno");
+          const own = viewerByKind(a.metadata.viewer);
+          return own ? viewer(path, version, own.render(path), `anno ${own.cssClass}`) : undefined;
+        }
         if (a.metadata.kind === "thread") return mount(<ThreadMini id={a.metadata.placement.threadId} state={a.metadata.placement.state} />, "anno");
         const p = pendingLines.peek();
         return p ? mount(<PendingBox p={p} />, "anno") : undefined;
@@ -1011,7 +1006,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
         let entry = v.byItem.get(fd.name);
         if (!entry || entry.sig !== String(collapsed)) {
           const version = ++v.gen;
-          entry = { sig: String(collapsed), version, viewer: { file: viewerFile(fd.name), annotations: [{ lineNumber: 1, metadata: { kind: viewer, path: fd.name, version } }] } };
+          entry = { sig: String(collapsed), version, viewer: { file: viewerFile(fd.name), annotations: [{ lineNumber: 1, metadata: { kind: "viewer", viewer, path: fd.name, version } }] } };
           v.byItem.set(fd.name, entry);
         }
         return { id: fd.name, type: "file", file: entry.viewer!.file, annotations: entry.viewer!.annotations, version: entry.version, collapsed };
@@ -1058,7 +1053,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
         requestAnimationFrame(() => latest.current.scrollToThread(id) && spotThread(id));
       }
     }
-  }, [files, visible, byPath, pending, fileOpen.value, viewed.value, diffStyle.value, wrap.value, fileView.value, markdownView.value]);
+  }, [files, visible, byPath, pending, fileOpen.value, viewed.value, diffStyle.value, wrap.value, fileView.value, markdownView.value, webModules.value]);
 
   useEffect(() => {
     if ((isSha(from) || isSha(to)) && !commits.peek()) void loadCommits();

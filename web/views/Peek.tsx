@@ -1,14 +1,13 @@
 import { useMemo } from "preact/hooks";
 import { Kbd } from "../components/Bits.tsx";
 import { FileView } from "../components/Code.tsx";
-import { ImagePane } from "../components/ImageView.tsx";
-import { isPixelImage } from "../../modules/images/core.ts";
 import { hi, lo, NewHereBox, useNewThread } from "../components/NewThread.tsx";
 import { ThreadMini } from "../components/ThreadMini.tsx";
 import { useBlob } from "../components/useBlob.ts";
 import { usePlacements } from "../components/usePlacements.ts";
 import { currentGrepHit, grepHits, hoverThread, onThreadPage, peek, type Peek } from "../compare.ts";
-import { threads, wrap } from "../state.ts";
+import { wrap } from "../state.ts";
+import { peekView } from "../modules.tsx";
 
 function PeekBody({ p }: { p: Peek }) {
   const blob = useBlob(p.sha, p.path);
@@ -38,17 +37,8 @@ function PeekBody({ p }: { p: Peek }) {
   const selected = useMemo(() => (mine ? { start: mine.start, end: mine.end } : null), [mine?.start, mine?.end]);
   const file = useMemo(() => (blob && blob !== "loading" && blob.contents !== null ? { name: p.path, contents: blob.contents } : null), [blob]);
   const focus = useMemo(() => ({ line: p.line }), [p.line, p.path]);
-  if (isPixelImage(p.path)) {
-    const frames = placed.flatMap((x) => {
-      const t = threads.value.find((y) => y.id === x.threadId);
-      return t?.region ? [{ id: t.id, region: t.region, tone: "thread" as const }] : [];
-    });
-    return (
-      <div class="image-anno">
-        <ImagePane sha={p.sha} path={p.path} label={p.label} frames={frames} />
-      </div>
-    );
-  }
+  const own = peekView(p, placed);
+  if (own) return own;
   if (blob === "loading") return <div class="note">loading…</div>;
   if (!file) return <div class="note">{p.path} is not a text file at {p.label}.</div>;
   return (

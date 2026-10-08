@@ -1,5 +1,4 @@
 import type { ComponentChild } from "preact";
-import { isPixelImage } from "../../modules/images/core.ts";
 import { useEffect, useRef } from "preact/hooks";
 import { Kbd } from "../components/Bits.tsx";
 import { FileGitMarks } from "../components/GitState.tsx";
@@ -44,6 +43,7 @@ import type { GrepLineDto } from "../../src/core/types.ts";
 import type { Route } from "../lib/route.ts";
 import { canQuote, quoteLines } from "../quote.ts";
 import { clampStep } from "../lib/timeline.ts";
+import { fileTag } from "../modules.tsx";
 import { detail, link, route, selectedStep } from "../state.ts";
 import { transition } from "../transition.ts";
 import { ThreadTree } from "./ThreadTree.tsx";
@@ -93,7 +93,7 @@ function FileLine({ row, active }: { row: FileRow; active: boolean }) {
   }, [active]);
   const { dir, name } = split(row.fd.name);
   const { add, del } = stat(row);
-  const image = row.fd.hunks.length === 0 && isPixelImage(row.fd.name);
+  const tag = fileTag(row.fd);
   const seen = isViewed(row.fd);
   const target = compareRoute({ file: row.fd.name });
   return (
@@ -115,7 +115,7 @@ function FileLine({ row, active }: { row: FileRow; active: boolean }) {
       <FileGitMarks path={row.fd.name} />
       {row.threads ? <span class="file-threads" title="threads on this diff">{row.threads} 💬</span> : null}
       <span class="stat">
-        {image ? <span class="img-tag">image</span> : null}
+        {tag ? <span class="file-tag">{tag}</span> : null}
         {add ? <span class="add">+{add}</span> : null} {del ? <span class="del">−{del}</span> : null}
       </span>
     </li>

@@ -1,5 +1,8 @@
-import { expect, test } from "bun:test";
-import { imageAt, wheelZoom, zoomScroll, zoomStep, zoomText } from "../../web/lib/zoom.ts";
+import { expect } from "bun:test";
+import { forModule } from "../../test/helpers/modules.ts";
+import { imageAt, wheelZoom, zoomScroll, zoomStep, zoomText } from "./zoom.ts";
+
+const { test } = forModule("images");
 
 test("+ and - go to the next level, from a level or from wherever fit put the picture", () => {
   expect(zoomStep(1, 1)).toBe(1.5);

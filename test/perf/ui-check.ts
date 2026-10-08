@@ -1106,27 +1106,27 @@ try {
     const imgV = JSON.parse(run(repo, ["bun", CLI, "status", "--json"])).versions as number;
     await b.viewport(1400, 900);
     await b.eval(`location.hash = "#/compare/${imgV - 1}..${imgV}"; true`);
-    await waitFor(`[...document.querySelectorAll(".imgdiff img")].length >= 5 && [...document.querySelectorAll(".imgdiff img")].every(i => i.complete && i.naturalWidth > 0)`, 10000);
+    await waitFor(`[...document.querySelectorAll(".img-diff img")].length >= 5 && [...document.querySelectorAll(".img-diff img")].every(i => i.complete && i.naturalWidth > 0)`, 10000);
     await sleep(500);
-    const imgShown = await b.eval(`({ files: [...document.querySelectorAll(".imgdiff")].map(d => d.dataset.file), caption: document.querySelector('.imgdiff[data-file="res/card.png"] .imgdiff-caption')?.textContent, icon: (() => { const i = document.querySelector('.imgdiff[data-file="res/icon.png"] img'); return i ? [i.naturalWidth, Math.round(i.getBoundingClientRect().width)] : null; })(), emptyRow: [...document.querySelectorAll(".codeview-host diffs-container[data-stet-viewer]")].length })`);
+    const imgShown = await b.eval(`({ files: [...document.querySelectorAll(".img-diff")].map(d => d.dataset.file), caption: document.querySelector('.img-diff[data-file="res/card.png"] .img-diff-caption')?.textContent, icon: (() => { const i = document.querySelector('.img-diff[data-file="res/icon.png"] img'); return i ? [i.naturalWidth, Math.round(i.getBoundingClientRect().width)] : null; })(), emptyRow: [...document.querySelectorAll(".codeview-host diffs-container[data-stet-viewer]")].length })`);
     check(
       "an image in the diff shows as pictures with its size and bytes; an icon is enlarged; old and new side by side",
       imgShown.files.join(",") === "res/card.png,res/icon.png,res/logo.svg" && (imgShown.caption?.startsWith("PNG · 240×160 ·") ?? false) && imgShown.icon?.[0] === 24 && imgShown.icon[1] >= 96 && imgShown.emptyRow === 3,
       imgShown,
     );
     const modeOf = async (name: string, ready: string) => {
-      await b.eval(`[...document.querySelectorAll('.imgdiff[data-file="res/card.png"] .seg button')].find(x => x.textContent === ${JSON.stringify(name)}).click(); true`);
+      await b.eval(`[...document.querySelectorAll('.img-diff[data-file="res/card.png"] .seg button')].find(x => x.textContent === ${JSON.stringify(name)}).click(); true`);
       return waitFor(ready, 5000);
     };
-    const swipe = await modeOf("swipe", `document.querySelector(".imgstack.mode-swipe .imgstack-divider")`);
-    const onion = await modeOf("onion skin", `document.querySelector(".imgstack.mode-onion")`);
-    const diffText = await modeOf("difference", `(() => { const t = document.querySelector(".imgdiff-canvas .imgstack-labels")?.textContent ?? ""; return /px differ/.test(t) ? t : null; })()`);
-    await modeOf("side by side", `document.querySelectorAll('.imgdiff[data-file="res/card.png"] .imgpane').length === 2`);
+    const swipe = await modeOf("swipe", `document.querySelector(".img-stack.mode-swipe .img-stack-divider")`);
+    const onion = await modeOf("onion skin", `document.querySelector(".img-stack.mode-onion")`);
+    const diffText = await modeOf("difference", `(() => { const t = document.querySelector(".img-diff-canvas .img-stack-labels")?.textContent ?? ""; return /px differ/.test(t) ? t : null; })()`);
+    await modeOf("side by side", `document.querySelectorAll('.img-diff[data-file="res/card.png"] .img-pane').length === 2`);
     check("an image that changed can be compared side by side, by swipe, onion skin and pixel difference", !!swipe && !!onion && /all within/.test(diffText ?? ""), { swipe: !!swipe, onion: !!onion, diffText });
 
-    const svgToggle = (want: string) => b.eval(`(() => { const t = [...document.querySelectorAll(".svg-toggle")][0]; if (!t) return null; const before = t.textContent; t.click(); return before; })()`).then(async (before) => ({ before, ok: await waitFor(want, 5000) }));
-    const toCode = await svgToggle(`!document.querySelector('.imgdiff[data-file="res/logo.svg"]') && [...document.querySelectorAll(".codeview-host diffs-container")].some(h => h.shadowRoot?.querySelector("[data-title]")?.textContent === "res/logo.svg" && h.shadowRoot.querySelector("[data-line]")?.textContent.includes("circle"))`);
-    const toPicture = await svgToggle(`document.querySelector('.imgdiff[data-file="res/logo.svg"] img')?.getBoundingClientRect().width >= 96`);
+    const svgToggle = (want: string) => b.eval(`(() => { const t = [...document.querySelectorAll(".img-svg-toggle")][0]; if (!t) return null; const before = t.textContent; t.click(); return before; })()`).then(async (before) => ({ before, ok: await waitFor(want, 5000) }));
+    const toCode = await svgToggle(`!document.querySelector('.img-diff[data-file="res/logo.svg"]') && [...document.querySelectorAll(".codeview-host diffs-container")].some(h => h.shadowRoot?.querySelector("[data-title]")?.textContent === "res/logo.svg" && h.shadowRoot.querySelector("[data-line]")?.textContent.includes("circle"))`);
+    const toPicture = await svgToggle(`document.querySelector('.img-diff[data-file="res/logo.svg"] img')?.getBoundingClientRect().width >= 96`);
     check("an SVG (only a viewBox, no size) shows as a picture, enlarged, and the button on its header switches it to its code and back", toCode.before?.includes("code") && !!toCode.ok && toPicture.before?.includes("picture") && !!toPicture.ok, { toCode, toPicture });
     await b.eval(`document.activeElement?.blur(); true`);
     await keys("g", "g");
@@ -1138,13 +1138,13 @@ try {
     await keys("g", "g");
     await sleep(500);
 
-    const pane = await b.eval(`(() => { const r = document.querySelectorAll('.imgdiff[data-file="res/card.png"] .imgbox')[1].getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) }; })()`);
+    const pane = await b.eval(`(() => { const r = document.querySelectorAll('.img-diff[data-file="res/card.png"] .img-box')[1].getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) }; })()`);
     await pointer([{ type: "pointerMove", x: pane.x + 10, y: pane.y + 5 }, { type: "pointerDown", button: 0 }, { type: "pointerMove", x: pane.x + Math.round(pane.w / 2), y: pane.y + 40 }, { type: "pointerMove", x: pane.x + Math.round(pane.w / 2) + 5, y: pane.y + 45 }, { type: "pointerUp", button: 0 }]);
-    await waitFor(`document.querySelector(".imgdiff .new-thread textarea")`, 3000);
-    await b.eval(`(() => { const t = document.querySelector(".imgdiff .new-thread textarea"); t.focus(); return true; })()`);
+    await waitFor(`document.querySelector(".img-diff .new-thread textarea")`, 3000);
+    await b.eval(`(() => { const t = document.querySelector(".img-diff .new-thread textarea"); t.focus(); return true; })()`);
     await keys(..."why red?");
-    await b.eval(`[...document.querySelectorAll(".imgdiff .new-thread button")].find(x => x.textContent.includes("Save draft")).click(); true`);
-    const framed = await waitFor(`document.querySelector('.imgdiff[data-file="res/card.png"] a.img-frame[data-thread]')?.dataset.thread`, 8000);
+    await b.eval(`[...document.querySelectorAll(".img-diff .new-thread button")].find(x => x.textContent.includes("Save draft")).click(); true`);
+    const framed = await waitFor(`document.querySelector('.img-diff[data-file="res/card.png"] a.img-frame[data-thread]')?.dataset.thread`, 8000);
     const imgThread = framed ? JSON.parse(run(repo, ["bun", CLI, "thread", "show", String(framed), "--as", "reviewer", "--json"])) : null;
     check(
       "a drag on an image starts a thread on that area; it is drawn as a frame, and the agent gets the image with the area framed and a crop",
@@ -1153,10 +1153,10 @@ try {
     );
 
     await b.eval(`location.hash = "#/thread/${framed}"; true`);
-    await waitFor(`document.querySelector(".image-area .region-crop img")?.complete && document.querySelector(".timeline .step-thumb")`, 8000);
+    await waitFor(`document.querySelector(".img-area .img-crop img")?.complete && document.querySelector(".timeline .img-step-thumb")`, 8000);
     await b.eval(`[...document.querySelectorAll(".side-tabs button")].find(x => x.textContent.startsWith("Threads")).click(); true`);
     await waitFor(`document.querySelector('.thread-row a[href="#/thread/${framed}"]')`, 3000);
-    const page = await b.eval(`({ head: document.querySelector(".detail-head h2")?.textContent, crop: !!document.querySelector(".image-area .region-crop .img-frame"), tree: document.querySelector('.thread-row a[href="#/thread/${framed}"] .line')?.textContent, csp: window.__csp.length })`);
+    const page = await b.eval(`({ head: document.querySelector(".detail-head h2")?.textContent, crop: !!document.querySelector(".img-area .img-crop .img-frame"), tree: document.querySelector('.thread-row a[href="#/thread/${framed}"] .line')?.textContent, csp: window.__csp.length })`);
     await b.screenshot(join(OUT, "shots", "ui-check-image-thread.png"));
     check(
       "a thread on an image shows the area on its page and in each timeline step; lists say “area W×H” instead of lines",
@@ -1167,16 +1167,16 @@ try {
     const zoomOf = (sel: string) => b.eval(`[...document.querySelectorAll(${JSON.stringify(sel)})].map(v => ({ zoomed: v.classList.contains("zoomed"), w: Math.round(v.firstElementChild.getBoundingClientRect().width), x: Math.round(v.scrollLeft), y: Math.round(v.scrollTop) }))`) as Promise<{ zoomed: boolean; w: number; x: number; y: number }[]>;
     const centre = (sel: string) => b.eval(`(() => { const r = document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect(); return { x: Math.round(r.left + Math.min(r.width, 200) / 2), y: Math.round(r.top + Math.min(r.height, 200) / 2) }; })()`) as Promise<{ x: number; y: number }>;
     await b.eval(`[...document.querySelectorAll(".code-label .seg button")].find(x => x.textContent === "whole image").click(); true`);
-    await waitFor(`document.querySelector(".image-area .imgview img")?.complete && document.querySelector(".code-label .zoom-bar")`, 5000);
+    await waitFor(`document.querySelector(".img-area .img-view img")?.complete && document.querySelector(".code-label .img-zoom-bar")`, 5000);
     await b.eval(`document.activeElement?.blur(); true`);
-    await pointer([{ type: "pointerMove", ...(await centre(".image-area .imgview")) }]);
-    const wholeFit = await zoomOf(".image-area .imgview");
+    await pointer([{ type: "pointerMove", ...(await centre(".img-area .img-view")) }]);
+    const wholeFit = await zoomOf(".img-area .img-view");
     await keys("+");
     await sleep(200);
-    const wholeIn = { views: await zoomOf(".image-area .imgview"), level: await b.eval(`document.querySelector(".code-label .zoom-level")?.textContent`) };
+    const wholeIn = { views: await zoomOf(".img-area .img-view"), level: await b.eval(`document.querySelector(".code-label .img-zoom-level")?.textContent`) };
     await keys("0");
     await sleep(200);
-    const wholeBack = await zoomOf(".image-area .imgview");
+    const wholeBack = await zoomOf(".img-area .img-view");
     check(
       "on an image thread's page the whole image zooms: + over it zooms in, 0 fits it again",
       wholeFit[0]?.zoomed === false && wholeIn.views[0]?.zoomed === true && wholeIn.level === "150%" && wholeIn.views[0].w === Math.round(wholeFit[0].w * 1.5) && JSON.stringify(wholeBack) === JSON.stringify(wholeFit),
@@ -1184,20 +1184,20 @@ try {
     );
 
     await b.eval(`location.hash = "#/compare/${imgV - 1}..${imgV}"; true`);
-    const pair = `.imgdiff[data-file="res/card.png"] .imgview`;
+    const pair = `.img-diff[data-file="res/card.png"] .img-view`;
     await waitFor(`document.querySelectorAll('${pair} img').length === 2 && [...document.querySelectorAll('${pair} img')].every(i => i.complete)`, 10000);
     await b.eval(`document.activeElement?.blur(); true`);
     await keys("g", "g");
     await sleep(400);
     const pairFit = await zoomOf(pair);
-    const newView = `.imgdiff[data-file="res/card.png"] .imgpane:nth-child(2) .imgview`;
+    const newView = `.img-diff[data-file="res/card.png"] .img-pane:nth-child(2) .img-view`;
     await pointer([{ type: "pointerMove", ...(await centre(newView)) }]);
     await keys("+", "+", "+", "+");
     await sleep(300);
     const overNew = await centre(newView);
     await b.send("input.performActions", { context: b.context, actions: [{ type: "wheel", id: "wheel", actions: [{ type: "scroll", x: overNew.x, y: overNew.y, deltaX: 150, deltaY: 120 }] }] });
     await sleep(600);
-    const pairIn = { views: await zoomOf(pair), level: await b.eval(`document.querySelector('.imgdiff[data-file="res/card.png"] .zoom-level')?.textContent`) };
+    const pairIn = { views: await zoomOf(pair), level: await b.eval(`document.querySelector('.img-diff[data-file="res/card.png"] .img-zoom-level')?.textContent`) };
     await b.screenshot(join(OUT, "shots", "ui-check-image-zoom-pair.png"));
     check(
       "the two versions side by side zoom and scroll together: + four times is 400% on both, a wheel over one scrolls both",
@@ -1213,11 +1213,11 @@ try {
     await sleep(200);
     await b.screenshot(join(OUT, "shots", "ui-check-image-zoom-draw.png"));
     await pointer([{ type: "pointerUp", button: 0 }]);
-    await waitFor(`document.querySelector(".imgdiff .new-thread textarea")`, 3000);
-    await b.eval(`(() => { const t = document.querySelector(".imgdiff .new-thread textarea"); t.focus(); return true; })()`);
+    await waitFor(`document.querySelector(".img-diff .new-thread textarea")`, 3000);
+    await b.eval(`(() => { const t = document.querySelector(".img-diff .new-thread textarea"); t.focus(); return true; })()`);
     await keys(..."this corner");
-    await b.eval(`[...document.querySelectorAll(".imgdiff .new-thread button")].find(x => x.textContent.includes("Save draft")).click(); true`);
-    const zoomedId = await waitFor(`[...document.querySelectorAll('.imgdiff[data-file="res/card.png"] a.img-frame[data-thread]')].map(a => a.dataset.thread).find(id => id !== "${framed}")`, 8000);
+    await b.eval(`[...document.querySelectorAll(".img-diff .new-thread button")].find(x => x.textContent.includes("Save draft")).click(); true`);
+    const zoomedId = await waitFor(`[...document.querySelectorAll('.img-diff[data-file="res/card.png"] a.img-frame[data-thread]')].map(a => a.dataset.thread).find(id => id !== "${framed}")`, 8000);
     const zoomedRegion = zoomedId ? JSON.parse(run(repo, ["bun", CLI, "thread", "show", String(zoomedId), "--as", "reviewer", "--json"])).thread.region : null;
     const frameOnScreen = await b.eval(`(() => { const v = document.querySelector('${newView}'); const r = v.querySelector('a.img-frame[data-thread="${zoomedId}"]')?.getBoundingClientRect(); const o = v.getBoundingClientRect(); return r ? { x: (r.left - o.left + v.scrollLeft) / 4, y: (r.top - o.top + v.scrollTop) / 4 } : null; })()`);
     const near = (a: number, b: number) => Math.abs(a - b) <= 1;
@@ -1246,10 +1246,10 @@ try {
     await keys("0");
     await sleep(300);
     const pairBack = await zoomOf(pair);
-    await b.eval(`[...document.querySelectorAll('.imgdiff[data-file="res/card.png"] .zoom-bar button')].find(x => x.textContent === "100%").click(); true`);
+    await b.eval(`[...document.querySelectorAll('.img-diff[data-file="res/card.png"] .img-zoom-bar button')].find(x => x.textContent === "100%").click(); true`);
     await sleep(200);
     const pairFull = await zoomOf(pair);
-    await b.eval(`[...document.querySelectorAll('.imgdiff[data-file="res/card.png"] .zoom-bar button')].find(x => x.textContent === "fit").click(); true`);
+    await b.eval(`[...document.querySelectorAll('.img-diff[data-file="res/card.png"] .img-zoom-bar button')].find(x => x.textContent === "fit").click(); true`);
     await sleep(200);
     const pairFitAgain = await zoomOf(pair);
     check(
@@ -2738,7 +2738,7 @@ try {
     );
 
     await b.eval(`location.hash = "#/compare/${imgV - 1}..${imgV}"; true`);
-    await waitFor(`[...document.querySelectorAll(".imgdiff img")].length >= 5`, 10000);
+    await waitFor(`[...document.querySelectorAll(".img-diff img")].length >= 5`, 10000);
     await sleep(800);
     await b.eval(`location.hash = "#/compare/1..${imgV}?file=app/Long.kt"; true`);
     await waitFor(`document.querySelectorAll(".codeview-host diffs-container").length >= 2 && /v1/.test(document.querySelector(".range-title")?.textContent ?? "")`, 10000);

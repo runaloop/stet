@@ -6,7 +6,7 @@ import { api } from "../api.ts";
 import { useBlob } from "../components/useBlob.ts";
 import { ago, Badge, Kbd, rangeText, ThreadBadges, threadRefs, ThreadRef, StateBadge, whereText } from "../components/Bits.tsx";
 import { DiffView } from "../components/Code.tsx";
-import { ImageArea } from "../components/ImageView.tsx";
+import { ThreadArea } from "../modules.tsx";
 import { RenderedMarkdown, spansOf, type MdThread } from "../components/MarkdownView.tsx";
 import {
   codeFocus,
@@ -633,7 +633,7 @@ function CodeArea({ d }: { d: Detail }) {
           </>
         )}
       </div>
-      {d.thread.region ? <ImageArea key={`${from.index}-${to.index}`} d={d} from={from} to={to} /> : <CodeBlock key={`${from.index}-${to.index}`} d={d} from={from} to={to} />}
+      {d.thread.region ? <ThreadArea key={`${from.index}-${to.index}`} d={d} from={from} to={to} /> : <CodeBlock key={`${from.index}-${to.index}`} d={d} from={from} to={to} />}
     </div>
   );
 }

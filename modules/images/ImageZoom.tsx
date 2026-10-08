@@ -1,7 +1,7 @@
 import { signal } from "@preact/signals";
 import type { ComponentChildren } from "preact";
 import { useLayoutEffect, useMemo, useRef } from "preact/hooks";
-import { wheelZoom, zoomScroll, zoomStep, zoomText, type Point } from "../lib/zoom.ts";
+import { wheelZoom, zoomScroll, zoomStep, zoomText, type Point } from "./zoom.ts";
 
 interface View {
   el: HTMLElement;
@@ -125,7 +125,7 @@ export function ZoomView({ zoom, w, pan, children }: { zoom: Zoom; w: number | n
   return (
     <div
       ref={ref}
-      class={`imgview${scale !== null ? " zoomed" : ""}${pan ? " pan" : ""}`}
+      class={`img-view${scale !== null ? " zoomed" : ""}${pan ? " pan" : ""}`}
       onScroll={(e) => zoom.scrolled(e.currentTarget as HTMLElement)}
       onPointerEnter={() => hover(true)}
       onPointerLeave={() => hover(false)}
@@ -174,7 +174,7 @@ export function ZoomView({ zoom, w, pan, children }: { zoom: Zoom; w: number | n
 export function ZoomBar({ zoom }: { zoom: Zoom }) {
   const s = zoom.scale.value;
   return (
-    <span class="zoom-bar">
+    <span class="img-zoom-bar">
       <span class="seg small">
         <button class={s === null ? "on" : ""} title="fit the picture in its place (0)" onClick={() => zoom.set(null)}>
           fit
@@ -189,7 +189,7 @@ export function ZoomBar({ zoom }: { zoom: Zoom }) {
           +
         </button>
       </span>
-      {s !== null ? <span class="zoom-level">{zoomText(s)}</span> : null}
+      {s !== null ? <span class="img-zoom-level">{zoomText(s)}</span> : null}
     </span>
   );
 }

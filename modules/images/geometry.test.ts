@@ -1,5 +1,8 @@
-import { expect, test } from "bun:test";
-import { cropRect, dragRegion, framePercent, imageCaption, pixelDiff, scaleRegion, shotScale } from "../../web/lib/image.ts";
+import { expect } from "bun:test";
+import { forModule } from "../../test/helpers/modules.ts";
+import { cropRect, dragRegion, framePercent, imageCaption, pixelDiff, scaleRegion, shotScale } from "./geometry.ts";
+
+const { test } = forModule("images");
 
 test("a drag becomes a region in image pixels, either direction, clamped to the image", () => {
   expect(dragRegion({ fx: 0.1, fy: 0.2 }, { fx: 0.5, fy: 0.6 }, 200, 100)).toEqual({ x: 20, y: 20, w: 80, h: 40 });

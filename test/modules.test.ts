@@ -83,8 +83,10 @@ describe("the generated import lists", () => {
   test("list every module in modules/ by default, and leave out the ones asked", async () => {
     const all = await lists([]);
     expect(all.core).toContain('import images from "../modules/images/core.ts";');
+    expect(all.web).toContain('import images from "../modules/images/web.tsx";');
     const none = await lists(["images"]);
     expect(none.core).toContain("export const MODULES: ModuleSpec[] = [];");
+    expect(none.web).not.toContain("images");
     await expect(lists(["imgaes"])).rejects.toThrow("no module 'imgaes' in modules/");
   });
 
