@@ -7,7 +7,7 @@ const { render } = await import("preact");
 const state = await import("../../web/state.ts");
 const compare = await import("../../web/compare.ts");
 const registry = await import("../../web/modules.tsx");
-const { viewerOf } = await import("../../web/views/Compare.tsx");
+const { threadLanding, viewerOf } = await import("../../web/views/Compare.tsx");
 const before = state.status.value;
 const hosts: HTMLElement[] = [];
 
@@ -15,6 +15,7 @@ afterAll(async () => {
   for (const host of hosts) render(null, host);
   state.status.value = before;
   compare.fileView.value = new Map();
+  compare.drawnFiles.value = new Set();
   await GlobalRegistrator.unregister();
 });
 
@@ -54,6 +55,14 @@ describe("Markdown, a kind of file of the core, through the registry", () => {
     settings({});
     compare.setFileView(md.name, "code");
     expect(viewerOf(md, [])).toBeNull();
+  });
+
+  test("a jump to a thread on its lines lands on the block that holds them while it is drawn rendered", () => {
+    compare.drawnFiles.value = new Set([md.name]);
+    expect(threadLanding(md.name, false)).toBe("blocks");
+    compare.drawnFiles.value = new Set();
+    expect(threadLanding(md.name, false)).toBe("lines");
+    expect(threadLanding(code.name, false)).toBe("lines");
   });
 
   test("its file header has the switch between rendered and code; other files have none from it", () => {

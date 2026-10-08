@@ -207,6 +207,18 @@ function sharedExpansion(inst: Expandable, path: string): void {
     });
 }
 
+/** A file of rendered text drawn rendered: the places in it are its blocks, not its lines. */
+const inBlocks = (path: string): boolean => !!textViewer(path) && drawnFiles.peek().has(path);
+
+/**
+ * Where a jump to a thread lands: on the block that holds its lines in a file drawn in blocks, on the file for a thread
+ * on an area of it (it has no lines to go to, whether a module draws the picture or not), else on its lines.
+ */
+export function threadLanding(path: string, area: boolean): "blocks" | "file" | "lines" {
+  if (inBlocks(path)) return "blocks";
+  return area ? "file" : "lines";
+}
+
 function moved(before: string[], after: string[]): boolean {
   const at = new Map(after.map((id, i) => [id, i]));
   return before.some((id, i) => at.has(id) && at.get(id) !== i);
@@ -409,18 +421,16 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     if (isPicture(path) || drawnFiles.peek().has(path)) settle({ type: "item", id: path, align: "start" });
   };
 
-  // a file of rendered text drawn rendered: the places in it are its blocks, not its lines
-  const inBlocks = (path: string) => !!textViewer(path) && drawnFiles.peek().has(path);
-
   const scrollToThread = (id: number) => {
     const p = order.find((x) => x.threadId === id);
     if (!p || !view.current) return false;
-    if (inBlocks(p.path)) {
+    const lands = threadLanding(p.path, !!threads.peek().find((t) => t.id === id)?.region);
+    if (lands === "blocks") {
       whenLaidOut(p.path, () => {
         const block = cursorSpace.peek().locate(p.path, p.side, p.range.start);
         if (block) revealBlock(p.path, block.row, "center", p.side);
       });
-    } else if (threads.peek().find((t) => t.id === id)?.region) {
+    } else if (lands === "file") {
       view.current.scrollTo({ type: "item", id: p.path, align: "start" });
       settleOn(p.path);
     } else scrollOrQueue({ type: "line", id: p.path, lineNumber: p.range.end, side: p.side, align: "center" }, codeOf(p.path));

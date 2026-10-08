@@ -14,6 +14,7 @@ const { render } = await import("preact");
 const state = await import("../../web/state.ts");
 const { bindings } = await import("../../web/keys.ts");
 const registry = await import("../../web/modules.tsx");
+const { threadLanding } = await import("../../web/views/Compare.tsx");
 const before = state.status.value;
 const hosts: HTMLElement[] = [];
 
@@ -52,6 +53,7 @@ describe("the images module on the page", () => {
     expect(drawn(<registry.StepThumb sha="s1" path={png.name} region={region} />).querySelector(".img-step-thumb .img-crop")).not.toBeNull();
     expect(drawn(<registry.ThreadArea d={detail} from={step} to={step} />).querySelector(".img-area .img-crop")).not.toBeNull();
     expect(zoomKeys().map((b) => `${b.where} ${b.keys}`)).toEqual(["compare +", "compare =", "compare -", "compare 0", "thread +", "thread =", "thread -", "thread 0"]);
+    expect(threadLanding(png.name, true)).toBe("file");
   });
 
   test("off in the repository: lines instead of pictures, the core's fallbacks, no zoom keys", () => {
@@ -70,6 +72,9 @@ describe("the images module on the page", () => {
     expect(area.querySelector(".img-area")).toBeNull();
     expect(area.textContent).toContain("a thread on an area of res/card.png: 50×75 at 10,5 of 120×80");
     expect(zoomKeys()).toEqual([]);
+    // a thread on an area still lands on its file, which the diff shows without a picture
+    expect(threadLanding(png.name, true)).toBe("file");
+    expect(threadLanding(svg.name, false)).toBe("lines");
   });
 
   test("a thread on an area: its page has the module's hint while it is on, and none of it while it is off", async () => {
