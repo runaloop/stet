@@ -1,0 +1,2 @@
+# test/actions.test.ts once held a fake 32-hex server token as a literal; the test now builds it
+ca987f6e0a1f42053562d6ccae411f82fdb60ddf:test/actions.test.ts:generic-api-key:33
