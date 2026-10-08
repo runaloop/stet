@@ -62,3 +62,24 @@ test("lists a root commit, shown alone from the empty base with every file added
     f.cleanup();
   }
 });
+
+test("an abbreviated commit hash of digits alone is a commit, not a version number", async () => {
+  const f = new Fixture();
+  try {
+    f.write("a.kt", lines(3));
+    let sha = f.commit("first");
+    for (let i = 0; !/^\d{7}/.test(sha) && i < 400; i++) {
+      f.git(["commit", "-q", "--amend", "-m", `first ${i}`]);
+      sha = f.git(["rev-parse", "HEAD"]);
+    }
+    expect(sha).toMatch(/^\d{7}/);
+    const ctx = await openContext({ cwd: f.root, role: "agent", author: "claude" });
+    const review = await ensureReview(ctx);
+    const one = await compare(ctx, review, "empty", sha.slice(0, 7));
+    expect(one.files.map((x) => [x.path, x.status])).toEqual([["a.kt", "A"]]);
+    await expect(compare(ctx, review, "empty", "v1234567")).rejects.toThrow("version 1234567 not found");
+    await expect(compare(ctx, review, "empty", "42")).rejects.toThrow("version 42 not found");
+  } finally {
+    f.cleanup();
+  }
+});

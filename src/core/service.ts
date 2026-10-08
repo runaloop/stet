@@ -186,11 +186,6 @@ export async function resolveRef(
   opts: { pinnedNow?: string | null; baseFor?: string } = {},
 ): Promise<ResolvedRef> {
   const versions = versionRows(ctx, review.id);
-  const byNumber = (n: number) => {
-    const v = versions.find((x) => x.number === n);
-    if (!v) throw notFound(`version ${n}`);
-    return v;
-  };
   if (ref === "now") {
     const sha = opts.pinnedNow ?? (await takeNow(ctx, review, { keep: false })).sha;
     return { ref, sha, label: "now", version: null, isNow: true };
@@ -217,11 +212,13 @@ export async function resolveRef(
   }
   const m = /^v?(\d+)$/.exec(ref);
   if (m) {
-    const v = byNumber(Number(m[1]));
-    return { ref, sha: v.snapshot, label: `v${v.number}`, version: v, isNow: false };
+    const v = versions.find((x) => x.number === Number(m[1]));
+    if (v) return { ref, sha: v.snapshot, label: `v${v.number}`, version: v, isNow: false };
+    // an abbreviated commit hash can be all digits
+    if (ref.startsWith("v") || ref.length < 7) throw notFound(`version ${m[1]}`);
   }
   const sha = await resolveCommit(ctx.repo.cwd, ref);
-  if (!sha) throw notFound(`revision '${ref}'`);
+  if (!sha) throw notFound(m ? `version ${m[1]}` : `revision '${ref}'`);
   const v = versions.find((x) => x.snapshot === sha) ?? null;
   return { ref, sha, label: v ? `v${v.number}` : short(sha), version: v, isNow: false };
 }
