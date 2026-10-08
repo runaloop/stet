@@ -65,7 +65,7 @@ one and prints how to serve it.
 1. The agent finishes a task and hands over a version: `stet version create --label "…"`.
 2. You open the UI: `stet serve --open`. It starts the server in the background (it outlives the terminal)
    and opens the review of the current branch; `stet serve --stop` stops it. One server serves every
-   worktree of the repository.
+   worktree of the repository; a server left from another stet build (after an upgrade) is replaced.
 3. Press `v` for the changes since you last looked. Select lines or click `+`, and the comment box opens
    right under them. Comments stay drafts (saved on disk, invisible to the agent) until you submit.
 4. Press `S` to see all drafts, then `S` again to submit the review, whenever you get to it. Then tell the

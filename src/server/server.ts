@@ -3,9 +3,10 @@ import { timingSafeEqual } from "node:crypto";
 import diffsWorker from "@pierre/diffs/worker/worker-portable.js" with { type: "text" };
 import { basename } from "node:path";
 import { openerArgv } from "../core/actions.ts";
+import { BUILD } from "../core/build.ts";
 import { findReview, type Ctx } from "../core/context.ts";
 import { handleApi, type ServerState } from "./api.ts";
-import { readServerInfo, removeServerInfo, reviewUrl, savedPort, savePort, serverToken, writeServerInfo, type ServerInfo } from "./info.ts";
+import { alive, readServerInfo, removeServerInfo, reviewUrl, savedPort, savePort, serverToken, writeServerInfo, type ServerInfo } from "./info.ts";
 import { Watcher } from "./watch.ts";
 
 export interface ServeOptions {
@@ -56,6 +57,7 @@ function eventStream(state: ServerState, req: Request, reviewId: number | null, 
         unwatch = undefined;
       };
       send(`retry: 2000\n\n`);
+      send(`event: hello\ndata: ${JSON.stringify({ build: BUILD })}\n\n`);
       if (reviewId !== null && state.watcher) {
         unwatch = state.watcher.subscribe(reviewId, (event, data) => send(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
       }
@@ -101,7 +103,14 @@ function openBrowser(url: string): void {
 
 export async function serve(ctx: Ctx, opts: ServeOptions): Promise<number> {
   const existing = await readServerInfo(ctx.repo.commonDir);
-  if (existing) {
+  if (existing && existing.build !== BUILD) {
+    // Another build serves another API and another page: this one takes its place, on its port once it is gone.
+    if (!(await stopProcess(existing.pid))) {
+      console.error(`stet serve: the server of another build (pid ${existing.pid}) did not stop`);
+      return 1;
+    }
+    console.error(`stet serve: stopped the server of another build (${existing.build ?? "without a build id"}) on port ${existing.port}`);
+  } else if (existing) {
     const mine = await findReview(ctx, opts.branch).catch(() => null);
     const url = reviewUrl(existing, mine?.id);
     report({ ...existing, url }, opts, true);
@@ -228,9 +237,19 @@ async function waitForServer(ctx: Ctx, tries: number): Promise<ServerInfo | null
 export async function stopServer(ctx: Ctx): Promise<boolean> {
   const info = await readServerInfo(ctx.repo.commonDir);
   if (!info) return false;
-  process.kill(info.pid, "SIGTERM");
-  for (let i = 0; i < 50 && (await readServerInfo(ctx.repo.commonDir)); i++) await Bun.sleep(100);
+  await stopProcess(info.pid);
   return true;
+}
+
+/** Stops a server and waits for its process to end, so its port is free again. */
+async function stopProcess(pid: number): Promise<boolean> {
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    return !alive(pid);
+  }
+  for (let i = 0; i < 50 && alive(pid); i++) await Bun.sleep(100);
+  return !alive(pid);
 }
 
 function report(info: ServerInfo, opts: ServeOptions, reused: boolean): void {

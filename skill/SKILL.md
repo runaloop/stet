@@ -30,7 +30,7 @@ Tell the human the version number and give the `.server.url` from your own workt
 every worktree of the repository, and the URL names your branch's review (`?review=N`). A URL from
 another worktree, or one without `review=`, opens someone else's review. If `.server` is null, run
 `stet serve --open --json`: it starts the server on its own and returns at once (when a server already runs, it
-opens your review there). Never keep `stet serve` running in your shell or as a background task: those are
+opens your review there; a server of another stet build is replaced). Never keep `stet serve` running in your shell or as a background task: those are
 stopped after a time limit, and the review UI dies with them in the middle of the review.
 `version create` exits with code 3 when nothing changed since the last version: that is fine
 if you only answered questions.

@@ -9,6 +9,11 @@ export interface ServerInfo {
   startedAt: string;
 }
 
+export interface RunningServer extends ServerInfo {
+  /** The build the server answers ping with; null for a server from before builds had ids. */
+  build: string | null;
+}
+
 /**
  * One server serves every worktree of the repository, so the URL names the review: otherwise a tab opened
  * from another worktree would show the review of the worktree that started the server. The token stays last.
@@ -21,7 +26,7 @@ export function serverInfoPath(commonDir: string): string {
   return join(commonDir, "stet", "server.json");
 }
 
-function alive(pid: number): boolean {
+export function alive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;
@@ -30,7 +35,7 @@ function alive(pid: number): boolean {
   }
 }
 
-export async function readServerInfo(commonDir: string): Promise<ServerInfo | null> {
+export async function readServerInfo(commonDir: string): Promise<RunningServer | null> {
   const path = serverInfoPath(commonDir);
   if (!existsSync(path)) return null;
   try {
@@ -40,7 +45,9 @@ export async function readServerInfo(commonDir: string): Promise<ServerInfo | nu
       headers: { "x-stet-token": info.token },
       signal: AbortSignal.timeout(1000),
     }).catch(() => null);
-    return res?.ok ? info : null;
+    if (!res?.ok) return null;
+    const ping = (await res.json().catch(() => ({}))) as { build?: unknown };
+    return { ...info, build: typeof ping.build === "string" ? ping.build : null };
   } catch {
     return null;
   }

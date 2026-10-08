@@ -30,8 +30,9 @@ jobs:
       - name: Build
         run: |
           rm -rf dist
+          build="$(jq -r .version package.json)+${GITHUB_SHA::12}"
           for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64 windows-x64; do
-            bun build --compile --minify --splitting --target="bun-$target" src/cli.ts --outfile "dist/stet-$target"
+            bun build --compile --minify --splitting --target="bun-$target" --define "STET_BUILD=\"$build\"" src/cli.ts --outfile "dist/stet-$target"
           done
           test "$(dist/stet-linux-x64 --version)" = "stet $(jq -r .version package.json)"
           (cd dist && sha256sum stet-* > SHA256SUMS)

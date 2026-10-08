@@ -1,3 +1,4 @@
+import { BUILD } from "../core/build.ts";
 import { StetError, forbidden, notFound, reviewById, usage, type Ctx } from "../core/context.ts";
 import { configKey, configValue, uiConfig } from "../core/config.ts";
 import { unifiedPatch } from "../core/diff.ts";
@@ -86,7 +87,7 @@ const num = (v: string | undefined, name: string) => {
   return n;
 };
 
-route("GET", "/api/ping", async () => ({ ok: true }));
+route("GET", "/api/ping", async () => ({ ok: true, build: BUILD }));
 
 route("GET", "/api/reviews", async (s) => {
   const reviews = svc.listReviews(s.ctx);

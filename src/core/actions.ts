@@ -127,7 +127,7 @@ const browserOpen: ActionDef = {
     }
     const hash = routeHash(routeOf(t), review.id);
     const { readServerInfo } = await import("../server/info.ts");
-    let info = await readServerInfo(ctx.repo.commonDir);
+    let info: { port: number; token: string } | null = await readServerInfo(ctx.repo.commonDir);
     if (!info) {
       const { startDetached } = await import("../server/server.ts");
       info = await startDetached(ctx, { port: 0, open: false, printUrlOnly: false, json: false });
