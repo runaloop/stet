@@ -67,4 +67,11 @@ describe("the images module on the page", () => {
     expect(area.textContent).toContain("a thread on an area of res/card.png: 50×75 at 10,5 of 120×80");
     expect(zoomKeys()).toEqual([]);
   });
+
+  test("Esc and another range drop an area drawn for a comment, as they drop one on lines", async () => {
+    const { imagePending } = await import("./state.ts");
+    imagePending.value = { file: png.name, path: png.name, side: "new", sha: "s1", label: "v1", region };
+    registry.cancelModules();
+    expect(imagePending.value).toBeNull();
+  });
 });

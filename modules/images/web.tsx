@@ -6,6 +6,7 @@ import { threads } from "../../web/state.ts";
 import { isPixelImage, isSvg } from "./core.ts";
 import { ImageArea, ImageDiff, ImagePane, RegionThumb } from "./ImageView.tsx";
 import { zoomKey } from "./ImageZoom.tsx";
+import { imagePending } from "./state.ts";
 
 const zoom = (where: "compare" | "thread"): Binding[] => [
   { keys: "+", desc: "zoom in on the picture under the mouse (or the one in sight)", where, run: () => zoomKey(1) },
@@ -60,4 +61,5 @@ export default {
     "files.tag": (fd) => (fd.hunks.length === 0 && isPixelImage(fd.name) ? "image" : null),
   },
   bindings: [...zoom("compare"), ...zoom("thread")],
+  cancel: () => void (imagePending.value = null),
 } satisfies WebModule;

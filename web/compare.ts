@@ -1,6 +1,6 @@
 import { hydratePartialDiff, parsePatchFiles, type FileDiffMetadata, type SelectedLineRange } from "@pierre/diffs";
 import { batch, computed, effect, signal } from "@preact/signals";
-import type { CompareDto, GrepResultDto, Region } from "../src/core/types.ts";
+import type { CompareDto, GrepResultDto } from "../src/core/types.ts";
 import { DEFAULT_COLLAPSE_GLOBS, DEFAULT_SKIP_MARKERS, foldOf, parseList, type FoldDecision } from "../src/ui/fold.ts";
 import { landingTab } from "../src/ui/filters.ts";
 import { isViewedIn, unviewKeys, viewedIndex, viewedKey } from "../src/ui/viewed.ts";
@@ -180,21 +180,6 @@ export function spotThread(id: number): void {
 }
 export const groupsOpen = signal<{ tests: boolean; generated: boolean }>({ tests: false, generated: false });
 export const fileOpen = signal<Map<string, boolean>>(new Map());
-
-export type ImageMode = "2-up" | "swipe" | "onion" | "diff";
-export const imageMode = signal<ImageMode>(load("imageMode", "2-up") as ImageMode);
-effect(() => save("imageMode", imageMode.value));
-
-/** An area drawn on an image of the diff, waiting for its first message. `file` is the diff item it was drawn in. */
-export interface ImagePending {
-  file: string;
-  path: string;
-  side: "new" | "old";
-  sha: string;
-  label: string;
-  region: Region;
-}
-export const imagePending = signal<ImagePending | null>(null);
 
 export type FileView = "picture" | "rendered" | "code";
 

@@ -41,6 +41,8 @@ export interface WebModule {
   viewers?: FileViewer[];
   slots?: Partial<Slots>;
   bindings?: Binding[];
+  /** Drops what it began on the Changes page and has not sent yet: Esc and another range drop it as they drop a comment on lines. */
+  cancel?(): void;
 }
 
 /** The web parts of the modules on in the review's repository; every one built until the review says. */
@@ -65,6 +67,10 @@ export function headerControl(path: string): VNode | null {
     if (control) return control;
   }
   return null;
+}
+
+export function cancelModules(): void {
+  for (const m of WEB_MODULES) m.cancel?.();
 }
 
 /** The key bindings of the enabled modules, after the core's. */

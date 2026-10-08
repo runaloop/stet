@@ -4,7 +4,7 @@ import { render, type ComponentChild } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ComparePlacement } from "../../src/core/types.ts";
 import { api } from "../api.ts";
-import { headerControl, isPicture, isSwitchable, viewerByKind, viewerFor, webModules } from "../modules.tsx";
+import { cancelModules, headerControl, isPicture, isSwitchable, viewerByKind, viewerFor, webModules } from "../modules.tsx";
 import { Kbd } from "../components/Bits.tsx";
 import { mount, workerPool } from "../components/Code.tsx";
 import { FileGitMarks } from "../components/GitState.tsx";
@@ -26,7 +26,6 @@ import {
   activeFile,
   fileRows,
   groupsOpen,
-  imagePending,
   landings,
   isCollapsed,
   linkedLines,
@@ -341,7 +340,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
 
   const cancelPending = () => {
     setPending(null);
-    imagePending.value = null;
+    cancelModules();
     view.current?.clearSelectedLines();
   };
 
@@ -796,7 +795,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     // the first range of a review just switched to: the side panel's tab is the landing's
     const landed = firstRange.current.landing !== landings.peek();
     firstRange.current = { range: `${from}..${to}`, landing: landings.peek() };
-    imagePending.value = null;
+    cancelModules();
     linkedLines.value = null;
     if (!landed && sideTab.value === "threads") sideTab.value = "files";
   }, [from, to]);
