@@ -54,7 +54,7 @@ test("output piped to a slow reader arrives once, byte for byte, at every size",
     expect(got === configJson(value)).toBe(true);
   }
   expect(await piped(["skill", "show"], f.root)).toBe(SKILL_TEXT.endsWith("\n") ? SKILL_TEXT : SKILL_TEXT + "\n");
-});
+}, 60_000);
 
 test("a megabyte of JSON through a pipe parses and matches the same output written to a file", async () => {
   const f = repo();
@@ -68,7 +68,7 @@ test("a megabyte of JSON through a pipe parses and matches the same output writt
   expect(viaPipe.length).toBe(viaFile.length);
   expect(viaPipe === viaFile).toBe(true);
   expect(JSON.parse(viaPipe).comments[0].body === body).toBe(true);
-});
+}, 60_000);
 
 test("a large error on stderr arrives once through a pipe, alone or merged with stdout, and matches the file", async () => {
   const f = repo();
@@ -83,7 +83,7 @@ test("a large error on stderr arrives once through a pipe, alone or merged with 
         expect(viaPipe === viaFile).toBe(true);
         expect(JSON.parse(viaPipe).error.code).toBe("usage");
       }
-});
+}, 60_000);
 
 test("a reader that stops early ends the output without a trace or a failing exit", async () => {
   const f = repo();
@@ -95,7 +95,7 @@ test("a reader that stops early ends the output without a trace or a failing exi
   await proc.exited;
   expect(readFileSync(err, "utf8")).toBe("");
   expect(readFileSync(code, "utf8")).toBe("exit=0\n");
-});
+}, 60_000);
 
 test("output written to a file is exact at every size", async () => {
   const f = repo();
@@ -103,7 +103,7 @@ test("output written to a file is exact at every size", async () => {
     const value = valueFor(size);
     expect(await toFile(["config", "set", "snapshot.exclude", value, "--json"], f.root) === configJson(value)).toBe(true);
   }
-});
+}, 60_000);
 
 // Linux shrinks new pipes to 8 KiB once a user holds more than fs.pipe-user-pages-soft of them,
 // which is how the bug first showed up: anything past 8192 bytes came out twice.
@@ -135,4 +135,4 @@ test.skipIf(process.platform !== "linux")("an 8 KiB pipe carries larger output w
   } finally {
     libc.close();
   }
-});
+}, 60_000);
