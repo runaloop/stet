@@ -1,19 +1,21 @@
 import { hydratePartialDiff, parsePatchFiles, type FileDiffMetadata, type SelectedLineRange } from "@pierre/diffs";
 import { batch, computed, effect, signal } from "@preact/signals";
-import type { CompareDto, ComparePlacement, GrepResultDto, Region } from "../src/core/types.ts";
-import { DEFAULT_COLLAPSE_GLOBS, DEFAULT_SKIP_MARKERS, foldOf, isTestPath, parseList, type FoldDecision, type FoldGroup } from "../src/ui/fold.ts";
+import type { CompareDto, GrepResultDto, Region } from "../src/core/types.ts";
+import { DEFAULT_COLLAPSE_GLOBS, DEFAULT_SKIP_MARKERS, foldOf, parseList, type FoldDecision } from "../src/ui/fold.ts";
 import { landingTab } from "../src/ui/filters.ts";
-import { groupTitle } from "../src/ui/order.ts";
 import { isViewedIn, unviewKeys, viewedIndex, viewedKey } from "../src/ui/viewed.ts";
-import { threadMarks, type LineMark, type Spot } from "../src/ui/marks.ts";
+import type { LineMark, Spot } from "../src/ui/marks.ts";
 import { CursorSpace, rowPosition, type Cursor, type CursorFile, type LineRange, type NavBlock, type Seen } from "../src/ui/cursor.ts";
 import { isMarkdown } from "../src/ui/markdown.ts";
 import { NOTHING, revealedPatch, type Reveal } from "../src/ui/reveal.ts";
 import { api } from "./api.ts";
 import { compileQuery, diffRows, flatHits, matchRanges, searchDiff, type Hit, type Side } from "../src/ui/search.ts";
 import { clampStep } from "../src/ui/timeline.ts";
-import { routeHash } from "../src/ui/route.ts";
-import { compareFocus, detail, drafts, fileOrder, guard, loadedReview, markReviewed, noteJump, notify, reviewedCursor, reviewId, route, selectedStep, setting, showResolved, status, testGlobs, threads, versions, viewedKeys } from "./state.ts";
+import * as ui from "../src/ui/compare.ts";
+import type { FileRow, GrepHit } from "../src/ui/compare.ts";
+import { compareFocus, detail, drafts, fileOrder, guard, loadedReview, markReviewed, noteJump, notify, reviewedCursor, reviewId, route, selectedStep, setting, showResolved, testGlobs, threads, versions, viewedKeys } from "./state.ts";
+
+export type { FileRow, GrepHit };
 
 export type SideTab = "threads" | "files" | "search";
 
@@ -484,78 +486,27 @@ export function openSearch(): void {
 export const resolvedIds = computed(() => new Set(threads.value.filter((t) => t.status === "resolved").map((t) => t.id)));
 export const shownPlacements = computed(() => (compareData.value?.placements ?? []).filter((p) => showResolved.value || !resolvedIds.value.has(p.threadId)));
 
-export interface FileRow {
-  fd: FileDiffMetadata;
-  group: FoldGroup | null;
-  keptBecause: string | null;
-  hidden: boolean;
-  threads: number;
-  /** The compare.order group of a file that is not folded. */
-  kind: string;
-  /** Title of the section this file starts, when the diff has more than one section. */
-  section: string | null;
-}
-
-export function sectionTitle(r: FileRow): string {
-  return r.group === "tests" ? "Tests with only new code" : r.group === "generated" ? "Generated and lock files" : groupTitle(r.kind);
-}
-
-export const fileRows = computed<FileRow[]>(() => {
-  const files = compareFiles.value ?? [];
-  const f = folds.value;
-  const open = groupsOpen.value;
-  const count = new Map<string, number>();
-  for (const p of shownPlacements.value) count.set(p.path, (count.get(p.path) ?? 0) + 1);
-  const order = fileOrder.value;
-  const tests = foldConfig.value.tests;
-  const n = order.groups.length;
-  const rows = files.map((fd) => {
-    const d = f.get(fd.name) ?? { group: null, keptBecause: null };
-    const threadsHere = count.get(fd.name) ?? 0;
-    const group = threadsHere ? null : d.group;
-    const kind = order.rank(fd.name, isTestPath(fd.name, tests, fd.prevName));
-    const rank = group === null ? kind : group === "tests" ? n : n + 1;
-    return { row: { fd, group, keptBecause: d.keptBecause, hidden: group !== null && !open[group], threads: threadsHere, kind: order.name(kind), section: null } as FileRow, rank };
-  });
-  const sorted = rows.map((r, i) => [r, i] as const).sort(([a, i], [b, j]) => a.rank - b.rank || i - j).map(([r]) => r);
-  const several = sorted.length > 0 && sorted[0]!.rank !== sorted[sorted.length - 1]!.rank;
-  return sorted.map(({ row, rank }, i) => (several && (i === 0 || sorted[i - 1]!.rank !== rank) ? { ...row, section: sectionTitle(row) } : row));
-});
+export const fileRows = computed<FileRow[]>(() =>
+  ui.fileRows(compareFiles.value ?? [], { folds: folds.value, open: groupsOpen.value, placements: shownPlacements.value, order: fileOrder.value, tests: foldConfig.value.tests }),
+);
 
 export const visibleFiles = computed(() => fileRows.value.filter((r) => !r.hidden).map((r) => r.fd));
 
 /** The files the diff shows, and how many of them are viewed; files folded into a hidden group do not count. */
-export const viewedCount = computed(() => {
-  const shown = visibleFiles.value;
-  return { shown: shown.length, seen: shown.filter((fd) => isViewed(fd)).length, hidden: fileRows.value.length - shown.length };
-});
+export const viewedCount = computed(() => ui.viewedCount(fileRows.value, viewedIdx.value));
 
-export const marksByPath = computed(() => {
-  const m = new Map<string, LineMark[]>();
-  const push = (path: string, mark: LineMark) => {
-    const list = m.get(path);
-    if (list) list.push(mark);
-    else m.set(path, [mark]);
-  };
-  const linked = linkedLines.value;
-  if (linked) push(linked.path, { side: linked.side, start: linked.start, end: linked.end, tag: "linked" });
-  const byFile = new Map<string, ComparePlacement[]>();
-  for (const p of shownPlacements.value) byFile.set(p.path, [...(byFile.get(p.path) ?? []), p]);
-  for (const [path, placed] of byFile) for (const mark of threadMarks(placed, hoverThread.value ?? compareFocus.value, spotted.value)) push(path, mark);
-  const grepCur = currentGrepHit.value;
-  for (const h of grepHits.value) if (h.inDiff) push(h.path, { side: "additions", start: h.line, end: h.line, tag: "hit", ranges: h.ranges, current: h === grepCur });
-  const cur = currentHit.value;
-  for (const f of searchResult.value.files) {
-    const rows = f.rows;
-    for (const h of f.hits) {
-      const r = rows[h.row]!;
-      const current = h === cur;
-      push(f.path, { side: h.side, start: h.line, end: h.line, tag: "hit", ranges: h.ranges, current });
-      if (r.kind === "context") push(f.path, { side: "deletions", start: r.old!, end: r.old!, tag: "hit", ranges: h.ranges, current });
-    }
-  }
-  return m;
-});
+export const marksByPath = computed(() =>
+  ui.marksByPath({
+    linked: linkedLines.value,
+    placements: shownPlacements.value,
+    focus: hoverThread.value ?? compareFocus.value,
+    spot: spotted.value,
+    grepHits: grepHits.value,
+    grepCurrent: currentGrepHit.value,
+    search: searchResult.value,
+    current: currentHit.value,
+  }),
+);
 
 export const searchResult = computed(() =>
   scope.value === "files" ? searchDiff([], "") : searchDiff(fileRows.value.map((r) => r.fd), searchQuery.value, { regex: searchRegex.value }),
@@ -581,11 +532,7 @@ export const grepResult = signal<GrepResultDto | null>(null);
 /** Grep results in the order of the Changes page: code first, docs last. */
 export const grepSorted = computed<GrepResultDto | null>(() => {
   const r = grepResult.value;
-  if (!r) return null;
-  const order = fileOrder.value;
-  const tests = testGlobs.value;
-  const rank = new Map(r.files.map((f) => [f.path, order.rank(f.path, isTestPath(f.path, tests))]));
-  return { ...r, files: [...r.files].sort((a, b) => rank.get(a.path)! - rank.get(b.path)!) };
+  return r ? ui.grepSorted(r, fileOrder.value, testGlobs.value) : null;
 });
 export const grepLoading = signal(false);
 export const grepIndex = signal(-1);
@@ -617,14 +564,6 @@ effect(() => {
     },
   );
 });
-
-export interface GrepHit {
-  path: string;
-  line: number;
-  text: string;
-  ranges: [number, number][];
-  inDiff: boolean;
-}
 
 export const grepHits = computed<GrepHit[]>(() => {
   const r = grepSorted.value;
@@ -745,16 +684,7 @@ effect(() => {
 
 /** The address of lines on this Changes page, for another tab or another reader of the same browser. */
 export function linesUrl(lines: LineRange): string | null {
-  const r = route.peek();
-  const d = compareData.peek();
-  const t = r.name === "thread" ? threadCode.peek() : null;
-  const ends = t ? { from: t.old.ref, to: t.now.ref } : r.name === "compare" ? { from: d?.from.ref ?? r.from, to: d?.to.ref ?? r.to } : null;
-  if (!ends) return null;
-  const hash = routeHash(
-    { name: "compare", ...ends, file: lines.path, line: lines.start, end: lines.end, ...(lines.side === "deletions" ? { side: "old" as const } : {}) },
-    reviewId.peek(),
-  );
-  return `${location.origin}${location.pathname}${hash}`;
+  return ui.linesUrl(`${location.origin}${location.pathname}`, lines, { route: route.peek(), compare: compareData.peek(), thread: threadCode.peek() }, reviewId.peek());
 }
 
 export async function copyLinesUrl(lines: LineRange): Promise<void> {

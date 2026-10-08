@@ -1,6 +1,9 @@
 import { effect, signal } from "@preact/signals";
 import type { CommentDto, ThreadDetail } from "../src/core/types.ts";
 import { currentThreadId } from "./state.ts";
+import { foldedByDefault, isLong, readingOrder } from "../src/ui/msgs.ts";
+
+export { isLong };
 
 /** The message under the cursor. Null until you move it there (keys or a click on the message). */
 export const msgCursor = signal<number | null>(null);
@@ -18,26 +21,6 @@ effect(() => {
   replyTo.value = null;
 });
 
-const FOLD_LINES = 12;
-const FOLD_CHARS = 900;
-
-export function isLong(c: CommentDto): boolean {
-  return c.body.split("\n").length > FOLD_LINES || c.body.length > FOLD_CHARS;
-}
-
-/** Messages in the order they are shown: each first message by time, its replies under it. */
-export function readingOrder(d: ThreadDetail): CommentDto[] {
-  const kids = new Map<number | null, CommentDto[]>();
-  for (const c of d.comments) kids.set(c.parentId, [...(kids.get(c.parentId) ?? []), c]);
-  const out: CommentDto[] = [];
-  const walk = (c: CommentDto) => {
-    out.push(c);
-    for (const k of kids.get(c.id) ?? []) walk(k);
-  };
-  for (const c of [...(kids.get(null) ?? [])].sort((a, b) => a.createdAt.localeCompare(b.createdAt))) walk(c);
-  return out;
-}
-
 export function latchNew(d: ThreadDetail): void {
   if (newMark.peek()?.thread === d.thread.id) return;
   newMark.value = { thread: d.thread.id, ids: new Set(d.comments.filter((c) => c.unread).map((c) => c.id)) };
@@ -49,12 +32,11 @@ export function firstNew(d: ThreadDetail): number | null {
   return readingOrder(d).find((c) => m.ids.has(c.id))?.id ?? null;
 }
 
-/** Long messages you have read fold to a few lines, except the last one. */
+/** A message folded by hand, else as the fold rule says. */
 export function isFolded(c: CommentDto, d: ThreadDetail): boolean {
   const own = msgOpen.value.get(c.id);
   if (own !== undefined) return !own;
-  const order = readingOrder(d);
-  return isLong(c) && !c.draft && !c.unread && !newMark.value?.ids.has(c.id) && order[order.length - 1]?.id !== c.id;
+  return foldedByDefault(c, d, newMark.value?.ids);
 }
 
 const column = () => document.querySelector<HTMLElement>(".thread-msgs");

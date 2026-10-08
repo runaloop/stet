@@ -2,13 +2,14 @@ import { batch, computed, effect, signal, untracked } from "@preact/signals";
 import type { CommentDto, GitStateDto, NowStateDto, ReviewDto, ReviewedDto, ThreadDetail, ThreadSummary } from "../src/core/types.ts";
 import { api, ApiError, getToken, setToken, subscribe, type ReviewStatus } from "./api.ts";
 import { applyFilters, DEFAULT_FILTERS, type Filters } from "../src/ui/filters.ts";
-import { DEFAULT_TEST_GLOBS, isTestPath, parseList } from "../src/ui/fold.ts";
+import { DEFAULT_TEST_GLOBS, parseList } from "../src/ui/fold.ts";
 import { FileOrder, parseOrder } from "../src/ui/order.ts";
 import { parseHash, routeHash as formatHash, type Route } from "../src/ui/route.ts";
 import { plainClick } from "./lib/route.ts";
 import type { DiffBase } from "../src/ui/timeline.ts";
 import { rounds } from "../src/ui/versions.ts";
-import { flatten, groupByFile } from "../src/ui/tree.ts";
+import { flatten } from "../src/ui/tree.ts";
+import * as ui from "../src/ui/state.ts";
 
 export type { Route };
 export { parseHash };
@@ -58,11 +59,7 @@ export const visibleThreads = computed(() => {
 export const setting = (key: string): string | null => status.value?.ui?.config[key] ?? null;
 export const testGlobs = computed(() => parseList(setting("compare.tests"), DEFAULT_TEST_GLOBS));
 export const fileOrder = computed(() => new FileOrder(parseOrder(setting("compare.order"))));
-export const groups = computed(() => {
-  const order = fileOrder.value;
-  const tests = testGlobs.value;
-  return groupByFile(visibleThreads.value, (p) => order.rank(p, isTestPath(p, tests)));
-});
+export const groups = computed(() => ui.groups(visibleThreads.value, fileOrder.value, testGlobs.value));
 export const ordered = computed(() => flatten(groups.value));
 export const versions = computed(() => status.value?.versionsList ?? []);
 export const versionRounds = computed(() => rounds(versions.value, status.value?.submissions ?? []));
@@ -232,11 +229,7 @@ export async function reloadAll(): Promise<void> {
 }
 
 /** The worktree moved away from the "now" this page shows: files that differ, or 0 when only the pin moved. */
-export const nowMoved = computed(() => {
-  const n = nowState.value;
-  const shown = status.value?.pinnedNow;
-  return n && shown && n.sha !== shown ? (n.pinned === shown ? (n.files ?? 0) : 0) : null;
-});
+export const nowMoved = computed(() => ui.nowMoved(nowState.value, status.value?.pinnedNow));
 
 export async function refreshNow(): Promise<void> {
   const id = reviewId.value;
@@ -358,70 +351,32 @@ export function setFilters(patch: Partial<Filters>): void {
   filters.value = { ...filters.value, ...patch };
 }
 
+const refs = (): ui.Refs => ({ versions: versions.value, now: status.value?.now });
+
 export function refOptions(): { value: string; label: string }[] {
-  return [
-    { value: "base", label: "base" },
-    ...versions.value.map((v) => ({ value: String(v.number), label: `v${v.number}${v.label ? ` · ${v.label}` : ""}` })),
-    { value: "now", label: status.value?.now?.changedSinceLatest === false ? "now (= latest)" : "now" },
-  ];
+  return ui.refOptions(refs());
 }
 
-export const nowDirty = computed(() => versions.value.length === 0 || !!status.value?.now?.changedSinceLatest);
+export const nowDirty = computed(() => ui.nowDirty(refs()));
 
 export function tipRef(): string {
-  const n = versions.value.length;
-  return nowDirty.value || n === 0 ? "now" : String(n);
+  return ui.tipRef(refs());
 }
 
 export function reviewedRef(): string | null {
-  const rv = reviewedCursor.value;
-  if (!rv) return null;
-  const n = versions.value.length;
-  if (rv.version !== null) {
-    if (rv.version > n || (rv.version === n && !nowDirty.value)) return null;
-    return String(rv.version);
-  }
-  if (rv.sha === status.value?.now?.sha) return null;
-  return rv.sha;
+  return ui.reviewedRef(refs(), reviewedCursor.value);
 }
 
-export interface Preset {
-  id: "since" | "after" | "round" | "branch";
-  label: string;
-  from: string;
-  to: string;
-}
-
-export function presets(): Preset[] {
-  const n = versions.value.length;
-  const tip = tipRef();
-  const out: Preset[] = [];
-  const seen = new Set<string>();
-  const add = (p: Preset) => {
-    const key = `${p.from}..${p.to}`;
-    if (p.from === p.to || seen.has(key)) return;
-    seen.add(key);
-    out.push(p);
-  };
-  const rv = reviewedRef();
-  if (rv) add({ id: "since", label: "since I last looked", from: rv, to: tip });
-  if (n >= 1 && nowDirty.value) add({ id: "after", label: `after v${n} (no version yet)`, from: String(n), to: "now" });
-  if (n >= 1) add({ id: "round", label: `what changed in v${n}`, from: n >= 2 ? String(n - 1) : "base", to: String(n) });
-  add({ id: "branch", label: "whole branch", from: "base", to: tip });
-  return out;
+export function presets(): ui.Preset[] {
+  return ui.presets(refs(), reviewedCursor.value);
 }
 
 export function defaultCompare(): { from: string; to: string } {
-  const p = presets();
-  const pick = p.find((x) => x.id === "since") ?? p.find((x) => x.id === "after") ?? p.find((x) => x.id === "round") ?? p[0];
-  return pick ? { from: pick.from, to: pick.to } : { from: "base", to: "now" };
+  return ui.defaultCompare(refs(), reviewedCursor.value);
 }
 
 export function shiftRef(ref: string, dir: 1 | -1): string {
-  const opts = refOptions().map((o) => o.value);
-  const i = opts.indexOf(ref);
-  const j = Math.max(0, Math.min(opts.length - 1, (i === -1 ? opts.length - 1 : i) + dir));
-  return opts[j]!;
+  return ui.shiftRef(refs(), ref, dir);
 }
 
 // The banner says a version arrived: it goes once a range that shows that version opens, whichever way.

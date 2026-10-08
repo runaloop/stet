@@ -2,6 +2,9 @@ import { effect, signal } from "@preact/signals";
 import type { CommitDto, CommitsDto } from "../src/core/types.ts";
 import { api } from "./api.ts";
 import { notify, reviewId, versions } from "./state.ts";
+import * as ui from "../src/ui/commits.ts";
+
+export { isSha } from "../src/ui/commits.ts";
 
 export const commits = signal<CommitsDto | null>(null);
 export const commitPicker = signal(false);
@@ -19,17 +22,13 @@ export async function loadCommits(): Promise<void> {
   }
 }
 
-export const isSha = (ref: string) => /^[0-9a-f]{7,64}$/.test(ref);
-
 export function commitOf(ref: string): CommitDto | null {
-  if (!isSha(ref)) return null;
-  return commits.value?.commits.find((c) => c.sha.startsWith(ref)) ?? null;
+  return ui.commitOf(commits.value, ref);
 }
 
 /** The ref to put in a compare link: the version number when the commit is one, else a short sha. */
 export function commitRef(sha: string): string {
-  const v = versions.value.find((x) => x.snapshot === sha);
-  return v ? String(v.number) : sha.slice(0, 12);
+  return ui.commitRef(versions.value, sha);
 }
 
 /** The listed commit a compare end points at: a sha, or a version taken at a commit. */
