@@ -697,7 +697,7 @@ export async function main(argv: string[], modules: readonly ModuleSpec[] = buil
   }
   const own = commandsOf(modules);
   const all: Record<string, Command> = { ...Object.fromEntries(own.map((c) => [c.command.name, c.command])), ...commands };
-  const groups = new Set([...GROUPS, ...own.map((c) => c.command.name.split(" ")[0]!).filter((g, i) => own[i]!.command.name !== g)]);
+  const groups = new Set([...GROUPS, ...own.map((c) => c.command.name.split(" ")).filter((w) => w.length === 2).map((w) => w[0]!)]);
   let name = first;
   let args = [second, ...rest].filter((x): x is string => x !== undefined);
   if (groups.has(first) && second && all[`${first} ${second}`]) {
