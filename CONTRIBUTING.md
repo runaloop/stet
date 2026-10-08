@@ -37,7 +37,12 @@ when semgrep is not installed.
 A module is a folder in `modules/<id>/`: `core.ts` declares it (`ModuleSpec` in `src/core/module.ts`: its file
 kinds, settings, commands), `web.tsx` and its CSS are its part of the page, and its tests live next to them.
 The core and the page reach a module only through the registries, `src/core/modules.ts` and `web/modules.tsx`,
-which read the import lists `src/modules.gen.ts` and `web/modules.gen.ts`.
+which read the import lists `src/modules.gen.ts` and `web/modules.gen.ts`. Markdown is a kind of file of the
+core, in every build: `src/core/kinds.ts` declares it and `web/markdown.tsx` is its viewer, which the page asks
+through the same registry as a module's.
+
+What a module writes outlives it: threads on an area of an image stay in the store, and `thread show`, `export`
+and the skill describe them in a build without the module or with it off.
 
 The committed lists have every module. `bun scripts/modules.ts` writes them again after you add a module; a
 repository switches one off with `stet config set modules.<id> off`. To build or test without one:
