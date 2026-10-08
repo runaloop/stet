@@ -32,6 +32,26 @@ repository rather than in `/tmp`, because a snap-packaged Firefox has a private 
 `bun run check` needs the network for `bun audit` and the semgrep rules; it runs semgrep through `uvx`
 when semgrep is not installed.
 
+## Modules
+
+A module is a folder in `modules/<id>/`: `core.ts` declares it (`ModuleSpec` in `src/core/module.ts`: its file
+kinds, settings, commands), `web.tsx` and its CSS are its part of the page, and its tests live next to them.
+The core and the page reach a module only through the registries, `src/core/modules.ts` and `web/modules.tsx`,
+which read the import lists `src/modules.gen.ts` and `web/modules.gen.ts`.
+
+The committed lists have every module. `bun scripts/modules.ts` writes them again after you add a module; a
+repository switches one off with `stet config set modules.<id> off`. To build or test without one:
+
+```bash
+bun run build -- --without images   # dist/stet without the module; the lists are put back afterwards
+bun scripts/modules.ts --without images && bun run typecheck && bun test   # the tree without it...
+bun scripts/modules.ts                                                     # ...and back
+```
+
+A module's tests take `describe` and `test` from `forModule(id)` (`test/helpers/modules.ts`): they are skipped
+in a build without the module. A module's CSS comes after the core's in the bundle, so its classes carry its own
+prefix and no rule relies on the order.
+
 ## Guide screenshots
 
 The screenshots in [docs/guide](docs/guide/README.md) are taken by scripts in `scripts/guide/` on demo
