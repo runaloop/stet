@@ -1,14 +1,15 @@
 import type { FileDiffMetadata } from "@pierre/diffs";
-import { computed } from "@preact/signals";
+import { computed, effect } from "@preact/signals";
 import type { VNode } from "preact";
 import { areaText, regionText } from "../src/core/media.ts";
 import type { ComparePlacement, Region, ThreadDetail, TimelineStepDto } from "../src/core/types.ts";
+import type { OrderPreset } from "../src/ui/order.ts";
 import type { FileView, Peek } from "./compare.ts";
 import type { RenderedProps } from "./components/MarkdownView.tsx";
 import type { Binding } from "./keys.ts";
 import { markdownViewer } from "./markdown.tsx";
 import { WEB_MODULES } from "./modules.gen.ts";
-import { status } from "./state.ts";
+import { modulePresets, status } from "./state.ts";
 
 /** A kind of file the Changes page draws instead of showing its lines: the core's Markdown, or a module's. */
 export interface FileViewer {
@@ -62,6 +63,8 @@ export interface WebModule {
   viewers?: FileViewer[];
   slots?: Partial<Slots>;
   bindings?: Binding[];
+  /** The order presets of its core part, for the page to sort files by them as the CLI and the terminal do. */
+  orderPresets?: readonly OrderPreset[];
   /** Drops what it began on the Changes page and has not sent yet: Esc and another range drop it as they drop a comment on lines. */
   cancel?(): void;
 }
@@ -77,6 +80,10 @@ export const webModules = computed(() => {
   const now = on ? WEB_MODULES.filter((m) => on.includes(m.id)) : WEB_MODULES;
   if (now.length !== lastOn.length || now.some((m, i) => m !== lastOn[i])) lastOn = now;
   return lastOn;
+});
+
+effect(() => {
+  modulePresets.value = webModules.value.flatMap((m) => m.orderPresets ?? []);
 });
 
 /** The viewers of the core's kinds of file, in every build: they come before the modules'. */

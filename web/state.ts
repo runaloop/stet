@@ -3,7 +3,7 @@ import type { CommentDto, GitStateDto, NowStateDto, ReviewDto, ReviewedDto, Thre
 import { api, ApiError, getToken, setToken, subscribe, type ReviewStatus } from "./api.ts";
 import { applyFilters, DEFAULT_FILTERS, type Filters } from "../src/ui/filters.ts";
 import { DEFAULT_TEST_GLOBS, parseList } from "../src/ui/fold.ts";
-import { FileOrder, parseOrder } from "../src/ui/order.ts";
+import { CORE_PRESETS, orderOf, type OrderPreset } from "../src/ui/order.ts";
 import { parseHash, routeHash as formatHash, type Route } from "../src/ui/route.ts";
 import { plainClick } from "./lib/route.ts";
 import type { DiffBase } from "../src/ui/timeline.ts";
@@ -58,7 +58,9 @@ export const visibleThreads = computed(() => {
 /** A setting of the repository the server shows the page (`ui` in its spec); null when unset. */
 export const setting = (key: string): string | null => status.value?.ui?.config[key] ?? null;
 export const testGlobs = computed(() => parseList(setting("compare.tests"), DEFAULT_TEST_GLOBS));
-export const fileOrder = computed(() => new FileOrder(parseOrder(setting("compare.order"))));
+/** The order presets the on modules' web parts bring; web/modules.tsx keeps it, as this file cannot import the modules. */
+export const modulePresets = signal<readonly OrderPreset[]>([]);
+export const fileOrder = computed(() => orderOf(setting("compare.order"), [...CORE_PRESETS, ...modulePresets.value]));
 export const groups = computed(() => ui.groups(visibleThreads.value, fileOrder.value, testGlobs.value));
 export const ordered = computed(() => flatten(groups.value));
 export const versions = computed(() => status.value?.versionsList ?? []);
