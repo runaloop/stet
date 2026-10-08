@@ -1,6 +1,7 @@
 import { signal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import { api } from "../api.ts";
+import { areaText } from "../../src/core/media.ts";
 import { Body, Kbd } from "../components/Bits.tsx";
 import { ask } from "../components/Choice.tsx";
 import { RestoreBlock } from "../components/Restore.tsx";
@@ -117,7 +118,7 @@ export function DraftsView() {
           <div class="draft" key={c.id}>
             <div class="draft-head">
               <a {...link({ name: "thread", id: c.threadId })}>
-                #{c.threadId} {t ? (t.region ? `${t.path} · area ${t.region.w}×${t.region.h}` : `${t.path}:${t.range.start}`) : ""}
+                #{c.threadId} {t ? (t.region ? `${t.path} · ${areaText(t.region)}` : `${t.path}:${t.range.start}`) : ""}
               </a>
               <span>{c.parentId === null ? "new thread" : "reply"}</span>
               {c.resolves ? (

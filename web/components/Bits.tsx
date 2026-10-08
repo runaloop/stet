@@ -1,6 +1,7 @@
 import type { ComponentChildren } from "preact";
 import type { AnchorState, Intent, ThreadSummary } from "../../src/core/types.ts";
 import { stateTone } from "../../src/ui/timeline.ts";
+import { areaText } from "../../src/core/media.ts";
 import type { Round } from "../../src/ui/versions.ts";
 import { link, threads } from "../state.ts";
 
@@ -52,7 +53,7 @@ export function rangeText(r: { start: number; end: number } | null): string {
 
 /** `L12–14`, or `area 50×75` for a thread on an image. */
 export function whereText(t: ThreadSummary): string {
-  return t.region ? `area ${t.region.w}×${t.region.h}` : `L${rangeText(t.anchor.range ?? t.range)}`;
+  return t.region ? areaText(t.region) : `L${rangeText(t.anchor.range ?? t.range)}`;
 }
 
 // "тред" is "thread" in Russian.

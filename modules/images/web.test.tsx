@@ -3,10 +3,13 @@ import type { FileDiffMetadata } from "@pierre/diffs";
 import { afterAll, expect } from "bun:test";
 import type { ThreadDetail, TimelineStepDto } from "../../src/core/types.ts";
 import { forModule } from "../../test/helpers/modules.ts";
+import { thread } from "../../test/helpers/threads.ts";
 
 const { describe, test } = forModule("images");
 
 GlobalRegistrator.register({ url: "http://127.0.0.1:4000/" });
+const realFetch = globalThis.fetch;
+globalThis.fetch = (async () => Response.json({ ok: true })) as unknown as typeof fetch;
 const { render } = await import("preact");
 const state = await import("../../web/state.ts");
 const { bindings } = await import("../../web/keys.ts");
@@ -18,6 +21,7 @@ afterAll(async () => {
   for (const host of hosts) render(null, host);
   state.status.value = before;
   await GlobalRegistrator.unregister();
+  globalThis.fetch = realFetch;
 });
 
 describe("the images module on the page", () => {
@@ -66,6 +70,25 @@ describe("the images module on the page", () => {
     expect(area.querySelector(".img-area")).toBeNull();
     expect(area.textContent).toContain("a thread on an area of res/card.png: 50×75 at 10,5 of 120×80");
     expect(zoomKeys()).toEqual([]);
+  });
+
+  test("a thread on an area: its page has the module's hint while it is on, and none of it while it is off", async () => {
+    const { ThreadDetailView } = await import("../../web/views/ThreadDetail.tsx");
+    const written = { ...step, kind: "anchor", version: 1, range: { start: 1, end: 1 }, excerpt: null, commentIds: [] };
+    const area = { thread: thread({ id: 1, path: png.name, region }), comments: [], events: [], timeline: [written], code: { then: null, now: null, interdiff: null } } as unknown as ThreadDetail;
+    state.route.value = { name: "thread", id: 1 };
+    state.detail.value = area;
+    const page = async () => {
+      const host = drawn(<ThreadDetailView id={1} />);
+      await new Promise((r) => setTimeout(r, 20));
+      return host.querySelector(".code-tabs")!.textContent!;
+    };
+    switched(true);
+    expect(drawn(<registry.AreaHint />).textContent).toContain("new areas are drawn on the Changes page");
+    expect(await page()).toContain("a thread on an area of an image");
+    switched(false);
+    expect(drawn(<registry.AreaHint />).textContent).toBe("");
+    expect(await page()).not.toContain("image");
   });
 
   test("Esc and another range drop an area drawn for a comment, as they drop one on lines", async () => {

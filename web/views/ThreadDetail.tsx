@@ -6,7 +6,7 @@ import { api } from "../api.ts";
 import { useBlob } from "../components/useBlob.ts";
 import { ago, Badge, Kbd, rangeText, ThreadBadges, threadRefs, ThreadRef, StateBadge, whereText } from "../components/Bits.tsx";
 import { DiffView } from "../components/Code.tsx";
-import { ThreadArea } from "../modules.tsx";
+import { AreaHint, ThreadArea } from "../modules.tsx";
 import { RenderedMarkdown, spansOf, type MdThread } from "../components/MarkdownView.tsx";
 import {
   codeFocus,
@@ -615,7 +615,7 @@ function CodeArea({ d }: { d: Detail }) {
           </div>
         ) : null}
         {d.thread.region ? (
-          <span class="hint">a thread on an area of an image: the frame marks it · new areas are drawn on the Changes page</span>
+          <AreaHint />
         ) : (
           <>
             <span class="hint keep-height">

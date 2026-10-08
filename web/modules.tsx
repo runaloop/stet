@@ -1,7 +1,7 @@
 import type { FileDiffMetadata } from "@pierre/diffs";
 import { computed } from "@preact/signals";
 import type { VNode } from "preact";
-import { regionText } from "../src/core/media.ts";
+import { areaText, regionText } from "../src/core/media.ts";
 import type { ComparePlacement, Region, ThreadDetail, TimelineStepDto } from "../src/core/types.ts";
 import type { FileView, Peek } from "./compare.ts";
 import type { Binding } from "./keys.ts";
@@ -27,6 +27,8 @@ export interface FileViewer {
 export interface Slots {
   /** A thread on an area of a file, on the thread's page in place of its code. */
   "thread.area": (p: { d: ThreadDetail; from: TimelineStepDto; to: TimelineStepDto }) => VNode;
+  /** The hint over a thread on an area, where a thread on lines has the keys of its code. */
+  "thread.areaHint": () => VNode;
   /** A step of the timeline of a thread on an area. */
   "timeline.thumb": (p: { sha: string; path: string; region: Region }) => VNode;
   /** The peek panel on a file the module draws; null leaves it to the core. */
@@ -94,9 +96,14 @@ export function ThreadArea(p: { d: ThreadDetail; from: TimelineStepDto; to: Time
   return <div class="note">a thread on an area of {p.d.thread.path}{r ? `: ${regionText(r)}` : ""} · no pictures here: the images module is off or not in this build</div>;
 }
 
+export function AreaHint() {
+  const own = slot("thread.areaHint");
+  return own ? own() : null;
+}
+
 export function StepThumb(p: { sha: string; path: string; region: Region }) {
   const own = slot("timeline.thumb");
-  return own ? own(p) : <span class="step-where">area {p.region.w}×{p.region.h}</span>;
+  return own ? own(p) : <span class="step-where">{areaText(p.region)}</span>;
 }
 
 export const peekView = (p: Peek, placed: readonly { threadId: number }[]): VNode | null => first("peek", p, placed);

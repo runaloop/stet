@@ -41,6 +41,7 @@ export default {
   ],
   slots: {
     "thread.area": (p) => <ImageArea {...p} />,
+    "thread.areaHint": () => <span class="hint">a thread on an area of an image: the frame marks it · new areas are drawn on the Changes page</span>,
     "timeline.thumb": (p) => (
       <span class="img-step-thumb">
         <RegionThumb {...p} />
