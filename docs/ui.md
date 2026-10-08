@@ -397,4 +397,6 @@ both and shows the folded ones on a click ([screenshots](guide/README.md#test-fi
 Files are ordered by kind, then by path: code; resources, build and config (JSON, YAML, TOML, properties,
 XML and Android `res/`, Gradle); tests that change or remove lines; docs; then the folded groups. The diff,
 the Files tab (a section per kind), search results, `]b` and `]t` follow this order, and so does the
-thread tree ([screenshot](guide/README.md#files-are-ordered-by-kind)).
+thread tree ([screenshot](guide/README.md#files-are-ordered-by-kind)). This is the `kinds` preset of
+`compare.order`; a module may add presets, and groups of your own work too
+([settings](../README.md#configuration)).
