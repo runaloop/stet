@@ -21,11 +21,13 @@ The header also says where the branch is in git (`pushed`, `↑2 not pushed`, `n
 and how many files are staged, not staged and new; in a review of the index, how many are not in the review
 because they are not staged. A click (or `Space g s`) lists them, and each file in the Files tab and on its
 header is marked (`not staged`, `partly staged`, `new`, `↑` for commits not pushed). The page keeps itself
-current: replies and versions arrive as they happen, and the server looks at the worktree every few seconds.
+current: replies and versions arrive as they happen, read marks, viewed files, your last pass and settings
+changed in another page or by the CLI show within a second, and the server looks at the worktree every few seconds.
 A new version from the agent shows a banner over the page until you open a range that shows it (a click on
 the banner, `Space r v`, or any other way). When the agent changed code without a new version, **↻ N files changed** appears next to "now"; nothing
 redraws under you until `R`. If the server stops, the header says **offline · retrying**, and a restarted
-server takes the same port, so the tab picks it up again ([guide](guide/README.md#git-state-and-fresh-data)).
+server takes the same port, so the tab picks it up again ([guide](guide/README.md#git-state-and-fresh-data)). When
+the server that comes back is of another stet build (after an upgrade), the page reloads itself.
 
 ## Commits
 
@@ -161,7 +163,7 @@ into the lines, `Esc` or `Space u g` back to the Diff. The agent reads it back w
 When the agent writes one: by default (`agent.guide` `on`) for the first version of a task and for a round that
 changed more than the threads asked; with guides off, only when you ask. The switch **Guides in this repository: on |
 off** on the Drafts page sets it for every review of the repository (`stet config set agent.guide off` does the same;
-another open page shows the change once it reloads the review, on its next change or a reload). To ask, tick **ask
+another open page shows the change within a second). To ask, tick **ask
 the agent for a guide to the next version** under the Drafts page's buttons (or `stet review submit --guide`): it
 goes with that review only, and the agent writes the guide whatever the size of the version. A version that
 brings a guide you asked for opens on the Guide tab the first time it is on the right; after that the tab stays as

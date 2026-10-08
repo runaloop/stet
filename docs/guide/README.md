@@ -187,11 +187,13 @@ In a review of the index (`stet init --staged`) every file of the review is stag
 instead the header counts the files that are **not in the review** because their changes are not staged, and
 the list says so.
 
-The page keeps itself up to date. Replies, resolves and versions arrive as they happen; the server also looks
-at the worktree every few seconds while a page is open. When the agent edits code without handing over a
+The page keeps itself up to date. Replies, resolves and versions arrive as they happen, and so do read marks,
+viewed files, your last pass and settings changed in another tab or by `stet read` and `stet config set`; the
+server also looks at the worktree every few seconds while a page is open. When the agent edits code without handing over a
 version, **↻ N files changed** appears next to "now": the page does not redraw under you, `R` (or a click)
 re-reads "now". When the server stops, the header says **offline · retrying**; the page catches up when the
-server is back. A restarted server takes the port it had, so open tabs keep working.
+server is back. A restarted server takes the port it had, so open tabs keep working; one of another stet build
+(after an upgrade) makes them reload.
 
 ![The header, the Files tab and the file header with the git state; the agent changed a file](live-1.png)
 
