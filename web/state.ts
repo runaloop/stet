@@ -1,5 +1,6 @@
 import { batch, computed, effect, signal, untracked } from "@preact/signals";
-import type { CommentDto, GitStateDto, NowStateDto, ReviewDto, ReviewedDto, ThreadDetail, ThreadSummary } from "../src/core/types.ts";
+import { BUILD } from "../src/core/build.ts";
+import type { ChangeKind, CommentDto, GitStateDto, NowStateDto, ReviewDto, ReviewedDto, ThreadDetail, ThreadSummary } from "../src/core/types.ts";
 import { api, ApiError, getToken, setToken, subscribe, type ReviewStatus } from "./api.ts";
 import { applyFilters, DEFAULT_FILTERS, type Filters } from "../src/ui/filters.ts";
 import { DEFAULT_TEST_GLOBS, parseList } from "../src/ui/fold.ts";
@@ -208,14 +209,14 @@ export async function loadDrafts(): Promise<void> {
   if (list) drafts.value = list;
 }
 
-export async function loadCursors(): Promise<void> {
+export async function loadCursors(only?: "reviewed" | "viewed"): Promise<void> {
   const id = reviewId.value;
   if (id === null) return;
   const c = await guard(api.cursors(id));
   if (!c) return;
   batch(() => {
-    reviewedCursor.value = c.reviewed;
-    viewedKeys.value = new Set(c.viewed);
+    if (only !== "viewed") reviewedCursor.value = c.reviewed;
+    if (only !== "reviewed") viewedKeys.value = new Set(c.viewed);
   });
 }
 
@@ -228,6 +229,31 @@ export async function loadGit(): Promise<void> {
 
 export async function reloadAll(): Promise<void> {
   await Promise.all([loadStatus(), loadThreads(), loadDetail(), loadDrafts(), loadCursors(), loadGit()]);
+}
+
+/** Fetches again only the parts the store says changed: read marks are in the threads, settings in the review. */
+export async function reloadStore(kinds: ChangeKind[]): Promise<void> {
+  const has = new Set(kinds);
+  const cursors = has.has("viewed") && has.has("cursors") ? loadCursors()
+    : has.has("viewed") ? loadCursors("viewed")
+    : has.has("cursors") ? loadCursors("reviewed")
+    : null;
+  await Promise.all([has.has("reads") ? loadThreads() : null, cursors, has.has("config") ? loadStatus() : null]);
+}
+
+/**
+ * The server was replaced by one of another build, whose API this page's code may not speak. Once per build: a page
+ * that comes back still older (a cached bundle) stays rather than reloading in a loop.
+ */
+function reloadForBuild(build: string): void {
+  let tried: string | null = null;
+  try {
+    tried = sessionStorage.getItem("stet.reloadedFor");
+    sessionStorage.setItem("stet.reloadedFor", build);
+  } catch {
+    tried = null;
+  }
+  if (tried !== build) location.reload();
 }
 
 /** The worktree moved away from the "now" this page shows: files that differ, or 0 when only the pin moved. */
@@ -264,6 +290,10 @@ export function startLive(): void {
     reloadTimer = setTimeout(() => void reloadAll(), 150);
   };
   unsubscribe = subscribe(id, status.value?.lastSeq ?? 0, {
+    hello(build) {
+      if (build !== BUILD) reloadForBuild(build);
+    },
+    store: (kinds) => void reloadStore(kinds),
     change(_seq, events) {
       const created = events.find((e) => e.type === "version.created" && e.role === "agent");
       if (created) {

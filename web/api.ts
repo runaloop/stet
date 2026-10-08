@@ -1,6 +1,7 @@
 import type {
   AnchorState,
   BlameDto,
+  ChangeKind,
   CommentDto,
   CommitsDto,
   CompareDto,
@@ -154,7 +155,11 @@ export const api = {
 };
 
 export interface Live {
+  /** The server's build, each time the stream opens. */
+  hello(build: string): void;
   change(seq: number, events: { type: string; role: string; thread_id: number | null }[]): void;
+  /** Read marks, viewed files, the last pass or settings changed, by this page or any other writer. */
+  store(kinds: ChangeKind[]): void;
   /** "now" as the worktree is, against the one the server pinned. */
   now(n: NowStateDto): void;
   git(g: GitStateDto): void;
@@ -197,11 +202,13 @@ export function subscribe(review: number, since: number, live: Live): () => void
         retryTimer = setTimeout(open, Math.min(10_000, 1000 * 2 ** retries++));
       }
     });
+    es.addEventListener("hello", (e) => live.hello(data(e).build));
     es.addEventListener("change", (e) => {
       const d = data(e);
       last = Math.max(last, d.seq);
       live.change(d.seq, d.events);
     });
+    es.addEventListener("store", (e) => live.store(data(e).kinds));
     es.addEventListener("now", (e) => live.now(data(e)));
     es.addEventListener("git", (e) => live.git(data(e)));
   };
