@@ -2,7 +2,7 @@ import { CodeView, parsePatchFiles, type CodeViewItem, type CodeViewScrollTarget
 import { effect } from "@preact/signals";
 import { render, type ComponentChild } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import { isPixelImage, isSvg } from "../../src/core/image.ts";
+import { isPixelImage, isSvg } from "../../modules/images/core.ts";
 import type { ComparePlacement } from "../../src/core/types.ts";
 import { api } from "../api.ts";
 import { Kbd } from "../components/Bits.tsx";

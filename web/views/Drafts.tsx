@@ -4,7 +4,7 @@ import { api } from "../api.ts";
 import { Body, Kbd } from "../components/Bits.tsx";
 import { ask } from "../components/Choice.tsx";
 import { RestoreBlock } from "../components/Restore.tsx";
-import { drafts, guard, lastCompare, link, loadDrafts, loadStatus, navigate, notify, reloadAll, reviewId, status, threads, versions } from "../state.ts";
+import { drafts, guard, lastCompare, link, loadDrafts, loadStatus, navigate, notify, reloadAll, reviewId, setting, threads, versions } from "../state.ts";
 
 /** The summary for the whole review: kept while you move around, so S sends it too. */
 const summary = signal("");
@@ -102,7 +102,7 @@ export function DraftsView() {
   const byId = new Map(threads.value.map((t) => [t.id, t]));
   const rid = reviewId.value;
   const latest = versions.value.length;
-  const guides = status.value?.ui?.guide === "off" ? "off" : "on";
+  const guides = setting("agent.guide") === "off" ? "off" : "on";
 
   return (
     <div class="drafts">

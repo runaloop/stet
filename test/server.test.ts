@@ -115,9 +115,9 @@ test("compare.markdown takes rendered or code, and the page gets it with the rev
   expect(bad.code).not.toBe(0);
   expect(bad.stderr + bad.stdout).toContain("compare.markdown takes rendered or code");
   await ok(stet(["config", "set", "compare.markdown", "code"], { cwd: f.root }));
-  expect((await (await api("/api/review")).json()).ui.markdown).toBe("code");
+  expect((await (await api("/api/review")).json()).ui.config["compare.markdown"]).toBe("code");
   await ok(stet(["config", "set", "compare.markdown", "--unset"], { cwd: f.root }));
-  expect((await (await api("/api/review")).json()).ui.markdown).toBeNull();
+  expect((await (await api("/api/review")).json()).ui.config["compare.markdown"]).toBeNull();
 });
 
 test("the review lists how many files each version changed", async () => {
@@ -216,7 +216,7 @@ test("the page sets agent.guide, and only that setting, with the values the CLI 
   const set = (b: unknown, headers: Record<string, string> = {}) => api("/api/config", { method: "POST", body: JSON.stringify(b), headers });
   expect(await (await set({ key: "agent.guide", value: "off" })).json()).toEqual({ key: "agent.guide", value: "off" });
   const s = await (await api("/api/review")).json();
-  expect(s.ui.guide).toBe("off");
+  expect(s.ui.config["agent.guide"]).toBe("off");
   expect((await ok(stet(["config", "get", "agent.guide"], { cwd: f.root }))).value).toBe("off");
   expect(["off", "requested"]).toContain((await ok(stet(["status"], { cwd: f.root }))).guide);
   const bad = await set({ key: "agent.guide", value: "maybe" });
@@ -229,7 +229,7 @@ test("the page sets agent.guide, and only that setting, with the values the CLI 
   expect((await fetch(`${base}/api/config`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ key: "agent.guide", value: "on" }) })).status).toBe(401);
   expect((await ok(stet(["config", "get", "agent.guide"], { cwd: f.root }))).value).toBe("off");
   await set({ key: "agent.guide", value: "on" });
-  expect((await (await api("/api/review")).json()).ui.guide).toBe("on");
+  expect((await (await api("/api/review")).json()).ui.config["agent.guide"]).toBe("on");
 });
 
 test("resolve with a message through the API: a draft until submit, then resolved as go", async () => {

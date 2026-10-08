@@ -53,8 +53,10 @@ export const visibleThreads = computed(() => {
   const here = threads.value.find((t) => t.id === cur);
   return here ? [...list, here] : list;
 });
-export const testGlobs = computed(() => parseList(status.value?.ui?.tests, DEFAULT_TEST_GLOBS));
-export const fileOrder = computed(() => new FileOrder(parseOrder(status.value?.ui?.order)));
+/** A setting of the repository the server shows the page (`ui` in its spec); null when unset. */
+export const setting = (key: string): string | null => status.value?.ui?.config[key] ?? null;
+export const testGlobs = computed(() => parseList(setting("compare.tests"), DEFAULT_TEST_GLOBS));
+export const fileOrder = computed(() => new FileOrder(parseOrder(setting("compare.order"))));
 export const groups = computed(() => {
   const order = fileOrder.value;
   const tests = testGlobs.value;

@@ -15,20 +15,52 @@ import {
   type Ctx,
 } from "../core/context.ts";
 import { unifiedPatch } from "../core/diff.ts";
-import { configKey, configValue } from "../core/config.ts";
+import { builtConfig, configKey, configValue } from "../core/config.ts";
 import { guideMarkdown, parseGuide, requireGuide } from "../core/guide.ts";
+import type { HelpSection, ModuleSpec } from "../core/module.ts";
+import { built, commandsOf, enabled } from "../core/modules.ts";
 import * as svc from "../core/service.ts";
 import type { Intent, ResolveReason, Role } from "../core/store/db.ts";
 import type { SubmittedDto } from "../core/types.ts";
 import { bool, duration, int, list, parse, range, readBody, region, str, type Options, type Parsed } from "./args.ts";
 import { formatBlame, formatCompare, formatStatus, formatThreadDetail, formatThreadList, formatVersions, regionText } from "./format.ts";
 
-export const HELP = `stet — thread-first local code review between a human reviewer and a coding agent
+const HELP_HEAD = `stet — thread-first local code review between a human reviewer and a coding agent
 
 Usage: stet <command> [options]    (JSON output when piped or with --json)
 
-Review
-  init [--staged] [--base <ref>|empty] [--worktree <path>]
+`;
+
+const HELP_FOOT = `Global: -C/--repo <path>  -b/--branch <name>  --as reviewer|agent (default: $STET_ROLE or agent)
+        --author <name> (default: $STET_AUTHOR)  --json
+        --body-file <path> in place of --body wherever a body is taken
+
+Environment
+  STET_ROLE, STET_AUTHOR                          defaults for --as and --author
+  STET_BRANCH                                    the review's branch when HEAD is detached (or instead of -b)
+  STET_EDITOR                                    editor command for \`open\` and the UI's Editor button,
+                                                e.g. "zed {file}:{line}"; {root} and {path} work too
+  STET_WATCH_MS                                  how often \`serve\` checks the working tree (default 3000)
+`;
+
+const COLUMN = 48;
+const WIDTH = 60;
+
+/** `text` in the help's right column, wrapped to its width. */
+function column(text: string): string {
+  const lines: string[] = [];
+  for (const word of text.split(" ")) {
+    const last = lines.length - 1;
+    if (last >= 0 && lines[last]!.length + 1 + word.length <= WIDTH) lines[last] += ` ${word}`;
+    else lines.push(word);
+  }
+  return lines.map((l) => `${" ".repeat(COLUMN)}${l}\n`).join("");
+}
+
+function sections(modules: readonly ModuleSpec[]): Record<HelpSection, string> {
+  const keys = builtConfig(modules).map((k) => (k.help ? `${k.key} (${k.help})` : k.key));
+  return {
+    Review: `  init [--staged] [--base <ref>|empty] [--worktree <path>]
                                                 start a review for the current branch; --staged reviews
                                                 the index against HEAD instead of the whole working tree;
                                                 --base empty: every file is new, e.g. for the first commit
@@ -42,8 +74,8 @@ Review
                                                 --resolve-all (they are resolved first)
   review close | review move --to <branch>
 
-Versions
-  version create [--label <text>] [--allow-empty] [--at <commit>] [--guide <file>]
+`,
+    Versions: `  version create [--label <text>] [--allow-empty] [--at <commit>] [--guide <file>]
                                                 a version of the working tree (or the index), or of a commit;
                                                 --guide (experimental): a Markdown file that explains the
                                                 change in numbered steps, each ending in its lines, one per
@@ -58,8 +90,8 @@ Versions
                                                 names the file (named), else a fix in the same file (same
                                                 file); at the latest version by default
 
-Threads
-  threads list [--status open|resolved|all] [--state ok,moved,changed,outdated]
+`,
+    Threads: `  threads list [--status open|resolved|all] [--state ok,moved,changed,outdated]
                [--needs-reply] [--unread] [--new-since <N>] [--file <glob>] [--drafts] [--against <ref>]
                [--settled]                      --settled: threads the reviewer resolved with a message
                                                 since your latest version: do as it says
@@ -75,24 +107,16 @@ Threads
   drafts list | drafts discard <commentId> | drafts edit <commentId> --body <text>
   read <id> | read --all                        mark threads as read
 
-Agent loop
-  wait --for review|reply|version|any [--timeout 30m] [--since <seq>]
+`,
+    "Agent loop": `  wait --for review|reply|version|any [--timeout 30m] [--since <seq>]
   events [--since <seq>]
 
-Tools
-  serve [--port <n>] [--open] [--print-url]     local web UI; --open (or --detach) starts it on its own and
+`,
+    Tools: `  serve [--port <n>] [--open] [--print-url]     local web UI; --open (or --detach) starts it on its own and
         [--detach] [--foreground] [--stop]      returns, so it outlives the shell; --stop stops it
   open <id> [--print]                           jump to the editor at the thread
   config get <key> | config set <key> <value> | config set <key> --unset
-                                                keys: snapshot.exclude, snapshot.max_untracked_bytes,
-                                                compare.tests, compare.skip_markers, compare.collapse,
-                                                compare.order, compare.markdown (rendered or code: how
-                                                Markdown files open on the Changes page; default rendered),
-                                                agent.guide (on: the agent adds a guide to the first version
-                                                and to rounds that changed more than the threads asked; off:
-                                                only when a review asks with --guide; default on; also the
-                                                Drafts page's "Guides in this repository" switch)
-  prune [--dry-run]
+${column(`keys: ${keys.join(", ")}`)}  prune [--dry-run]
   export [--all] [--out <file> [--force]] [--review <id>]
                                                 the review as Markdown, also when piped (--json: the data):
                                                 its decisions, one line per thread, for a merge request;
@@ -103,17 +127,19 @@ Tools
                                                 OpenCode, Copilot) and ~/.claude/skills when Claude Code is there
   skill show                                    print it, e.g. for an AGENTS.md
 
-Global: -C/--repo <path>  -b/--branch <name>  --as reviewer|agent (default: $STET_ROLE or agent)
-        --author <name> (default: $STET_AUTHOR)  --json
-        --body-file <path> in place of --body wherever a body is taken
+`,
+  };
+}
 
-Environment
-  STET_ROLE, STET_AUTHOR                          defaults for --as and --author
-  STET_BRANCH                                    the review's branch when HEAD is detached (or instead of -b)
-  STET_EDITOR                                    editor command for \`open\` and the UI's Editor button,
-                                                e.g. "zed {file}:{line}"; {root} and {path} work too
-  STET_WATCH_MS                                  how often \`serve\` checks the working tree (default 3000)
-`;
+/** `stet --help`: the core's commands and settings, and those of the modules this build has. */
+export function help(modules: readonly ModuleSpec[] = built()): string {
+  const own = commandsOf(modules);
+  const body = Object.entries(sections(modules)).map(([name, text]) => {
+    const added = own.filter((c) => c.command.section === name).map((c) => c.command.usage.replace(/\n*$/, "\n"));
+    return `${name}\n${text.replace(/\n+$/, "\n")}${added.join("")}`;
+  });
+  return `${HELP_HEAD}${body.join("\n")}\n${HELP_FOOT}`;
+}
 
 async function context(p: Parsed, defaultRole?: Role): Promise<Ctx> {
   const as = str(p, "as");
@@ -163,7 +189,9 @@ function emit(p: Parsed, data: unknown, text?: () => string): void {
 const INTENTS = ["fixed", "answered", "disagree", "question"];
 const REASONS = ["fixed", "wontfix", "answered"];
 
-const commands: Record<string, { options: Options; run: (p: Parsed) => Promise<number | void> }> = {
+type Command = { options: Options; run: (p: Parsed) => Promise<number | void> };
+
+const commands: Record<string, Command> = {
   init: {
     options: { base: { type: "string" }, worktree: { type: "string" }, staged: { type: "boolean" } },
     async run(p) {
@@ -592,7 +620,7 @@ const commands: Record<string, { options: Options; run: (p: Parsed) => Promise<n
     options: {},
     async run(p) {
       const ctx = await context(p);
-      const key = configKey(p.positionals[0], "usage: stet config get <key>");
+      const { key } = configKey(ctx, p.positionals[0], "usage: stet config get <key>");
       const value = ctx.store.meta(key);
       emit(p, { key, value }, () => value ?? "");
     },
@@ -603,9 +631,10 @@ const commands: Record<string, { options: Options; run: (p: Parsed) => Promise<n
     async run(p) {
       const ctx = await context(p);
       const [rawKey, value] = p.positionals;
-      const key = configKey(rawKey, "usage: stet config set <key> <value> | --unset <key>");
+      const spec = configKey(ctx, rawKey, "usage: stet config set <key> <value> | --unset <key>");
+      const key = spec.key;
       if (value === undefined && !bool(p, "unset")) throw usage("usage: stet config set <key> <value> | --unset <key>");
-      ctx.store.setMeta(key, configValue(key, bool(p, "unset") ? null : value!));
+      ctx.store.setMeta(key, configValue(spec, bool(p, "unset") ? null : value!));
       emit(p, { key, value: bool(p, "unset") ? null : value }, () => `${key} = ${value ?? "(unset)"}`);
     },
   },
@@ -656,31 +685,38 @@ const commands: Record<string, { options: Options; run: (p: Parsed) => Promise<n
 
 const GROUPS = new Set(["version", "versions", "threads", "thread", "comment", "review", "drafts", "config", "skill"]);
 
-export async function main(argv: string[]): Promise<number> {
+export async function main(argv: string[], modules: readonly ModuleSpec[] = built()): Promise<number> {
   const [first, second, ...rest] = argv;
   if (!first || first === "help" || first === "--help" || first === "-h") {
-    out(HELP);
+    out(help(modules));
     return 0;
   }
   if (first === "--version" || (first === "version" && second === undefined)) {
     out(`stet ${pkg.version}`);
     return 0;
   }
+  const own = commandsOf(modules);
+  const all: Record<string, Command> = { ...Object.fromEntries(own.map((c) => [c.command.name, c.command])), ...commands };
+  const groups = new Set([...GROUPS, ...own.map((c) => c.command.name.split(" ")[0]!).filter((g, i) => own[i]!.command.name !== g)]);
   let name = first;
   let args = [second, ...rest].filter((x): x is string => x !== undefined);
-  if (GROUPS.has(first) && second && commands[`${first} ${second}`]) {
+  if (groups.has(first) && second && all[`${first} ${second}`]) {
     name = `${first} ${second}`;
     args = rest;
   }
-  const cmd = commands[name];
+  const cmd = all[name];
   if (!cmd) {
-    out(`unknown command: ${[first, GROUPS.has(first) ? second : undefined].filter(Boolean).join(" ")}\n\n${HELP}`, process.stderr);
+    out(`unknown command: ${[first, groups.has(first) ? second : undefined].filter(Boolean).join(" ")}\n\n${help(modules)}`, process.stderr);
     return 1;
   }
   const p = parse(args, cmd.options);
   if (bool(p, "help")) {
-    out(HELP);
+    out(help(modules));
     return 0;
+  }
+  const owner = commands[name] ? null : own.find((c) => c.command.name === name)!.module;
+  if (owner && !enabled(await context(p), modules).includes(owner)) {
+    throw usage(`stet ${name} belongs to the ${owner.id} module, which is off in this repository: stet config set modules.${owner.id} on`);
   }
   const code = await cmd.run(p);
   return typeof code === "number" ? code : 0;

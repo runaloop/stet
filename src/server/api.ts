@@ -1,5 +1,5 @@
 import { StetError, forbidden, notFound, reviewById, usage, type Ctx } from "../core/context.ts";
-import { configKey, configValue, UI_CONFIG_KEYS } from "../core/config.ts";
+import { configKey, configValue, uiConfig } from "../core/config.ts";
 import { unifiedPatch } from "../core/diff.ts";
 import { readBlobAt } from "../core/git.ts";
 import { imageType } from "../core/media.ts";
@@ -8,7 +8,8 @@ import * as svc from "../core/service.ts";
 import { takeNow } from "../core/snapshot.ts";
 import type { Intent, ResolveReason, ReviewRow, Verdict } from "../core/store/db.ts";
 import { gitState } from "../core/gitstate.ts";
-import { GUIDE_KEY, requireGuide } from "../core/guide.ts";
+import { requireGuide } from "../core/guide.ts";
+import { enabled } from "../core/modules.ts";
 import type { Watcher } from "./watch.ts";
 
 export interface ServerState {
@@ -93,8 +94,7 @@ route("GET", "/api/review", async (s, _req, url) => {
   const r = review(s, url);
   const now = await pinned(s, r);
   const status = await svc.status(s.ctx, r, { pinnedNow: now });
-  const meta = (k: string) => s.ctx.store.meta(k);
-  const ui = { tests: meta("compare.tests"), skipMarkers: meta("compare.skip_markers"), collapse: meta("compare.collapse"), order: meta("compare.order"), markdown: meta("compare.markdown"), guide: meta(GUIDE_KEY) };
+  const ui = { config: uiConfig(s.ctx), modules: enabled(s.ctx).map((m) => m.id) };
   const rows = svc.versionRows(s.ctx, r.id);
   const versionsList = await Promise.all(
     rows.map(async (v, i) => ({ ...svc.versionDto(v), files: await svc.filesBetween(s.ctx, i > 0 ? rows[i - 1]!.snapshot : await baseOf(s, r, v.snapshot), v.snapshot) })),
@@ -104,13 +104,14 @@ route("GET", "/api/review", async (s, _req, url) => {
   return { ...status, pinnedNow: now, versionsList, submissions: svc.submissionTimes(s.ctx, r.id), ui };
 });
 
-/** A setting of the repository the page may change: only those in `UI_CONFIG_KEYS`, with the values the CLI takes. */
+/** A setting of the repository the page may change: only those marked `ui: "write"`, with the values the CLI takes. */
 route("POST", "/api/config", async (s, req) => {
   const b = await body<{ key?: unknown; value?: unknown }>(req);
-  const key = configKey(typeof b.key === "string" ? b.key : undefined, "key must be a setting's name");
-  if (!UI_CONFIG_KEYS.has(key)) throw forbidden(`${key} is set with stet config set, not from the page`);
+  const spec = configKey(s.ctx, typeof b.key === "string" ? b.key : undefined, "key must be a setting's name");
+  const key = spec.key;
+  if (spec.ui !== "write") throw forbidden(`${key} is set with stet config set, not from the page`);
   if (typeof b.value !== "string") throw usage("value must be a string");
-  const value = configValue(key, b.value);
+  const value = configValue(spec, b.value);
   s.ctx.store.setMeta(key, value);
   return { key, value };
 });

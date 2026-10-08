@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { ensureReview, openContext, type Ctx } from "../src/core/context.ts";
 import { collectExport, exportMarkdown, gist } from "../src/core/export.ts";
 import { addReply, addThread, createVersion, resolveThread, submitReview } from "../src/core/service.ts";
+import { isBuilt } from "../src/core/modules.ts";
 import type { ReviewRow } from "../src/core/store/db.ts";
 import { ok, stet } from "./helpers/cli.ts";
 import { Fixture, lines } from "./helpers/fixture.ts";
@@ -39,6 +40,7 @@ describe("export", () => {
   let agent: Ctx;
   let review: ReviewRow;
   const ids: Record<string, number> = {};
+  const images = isBuilt("images");
 
   beforeAll(async () => {
     f.write("a.kt", lines(20));
@@ -60,7 +62,8 @@ describe("export", () => {
     await thread("answered", "a.kt", 10, 10, "Why not a sealed class?");
     await thread("wontfix", "b.kt", 4, 4, "Retry without backoff");
     await thread("outdated", "gone.kt", 2, 3, "Is this file still needed?");
-    await thread("image", "logo.png", 1, 1, "The red is too loud", { x: 5, y: 2, w: 10, h: 8 });
+    // a thread on an area is the images module's to make; a build without it exports the others
+    if (images) await thread("image", "logo.png", 1, 1, "The red is too loud", { x: 5, y: 2, w: 10, h: 8 });
     submitReview(reviewer, review, { body: "Первый проход: see the threads." });
 
     await addReply(agent, review, ids.fixed!, { body: "Сбрасываю кэш в logout().", intent: "fixed" });
@@ -77,7 +80,7 @@ describe("export", () => {
 
     await addThread(reviewer, review, { path: "a.kt", start: 5, end: 5, at: "2", body: "SECRET reviewer draft", draft: true });
     await addReply(reviewer, review, ids.outdated!, { body: "SECRET reviewer draft reply", draft: true });
-    await addReply(agent, review, ids.image!, { body: "SECRET agent draft reply", draft: true });
+    await addReply(agent, review, (ids.image ?? ids.outdated)!, { body: "SECRET agent draft reply", draft: true });
   }, 60_000);
 
   afterAll(() => f.cleanup());
@@ -95,7 +98,7 @@ describe("export", () => {
         "Open:",
         "",
         `- #${ids.outdated} Is this file still needed? (gone.kt:2-3 in v1) — outdated, waits for the agent`,
-        `- #${ids.image} The red is too loud (logo.png, 10×8 at 5,2 of 40×20) — waits for the agent`,
+        ...(images ? [`- #${ids.image} The red is too loud (logo.png, 10×8 at 5,2 of 40×20) — waits for the agent`] : []),
         "",
       ].join("\n"),
     );
@@ -117,14 +120,14 @@ describe("export", () => {
     expect(md).toMatch(/_Resolved by the reviewer · .* UTC_/);
     expect(md).toContain(`- v1: written, \`a.kt:2-3\` · comments #`);
     expect(md).toContain("- Now: outdated at v2 (file-deleted): the code it was on is gone");
-    expect(md).toContain("- Image: `logo.png` at v1, area 10×8 at 5,2 of 40×20 (pixels from the top left)");
+    if (images) expect(md).toContain("- Image: `logo.png` at v1, area 10×8 at 5,2 of 40×20 (pixels from the top left)");
     expect(md).not.toContain("SECRET");
   });
 
   test("drafts stay out whoever exports", async () => {
     for (const ctx of [reviewer, agent]) {
       const x = await collectExport(ctx, review);
-      expect(x.threads.map((d) => d.thread.id)).toEqual([ids.fixed!, ids.answered!, ids.wontfix!, ids.outdated!, ids.image!]);
+      expect(x.threads.map((d) => d.thread.id)).toEqual([ids.fixed!, ids.answered!, ids.wontfix!, ids.outdated!, ...(images ? [ids.image!] : [])]);
       expect(JSON.stringify(x)).not.toContain("SECRET");
       expect(x.threads.every((d) => d.comments.every((c) => !c.draft))).toBe(true);
     }

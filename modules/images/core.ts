@@ -1,6 +1,5 @@
-import { ext, imageType } from "./media.ts";
-
-export { imageType };
+import { ext, imageType } from "../../src/core/media.ts";
+import type { ModuleSpec } from "../../src/core/module.ts";
 
 /** Pixel images: shown as pictures in a diff. SVG stays a text diff. */
 export function isPixelImage(path: string): boolean {
@@ -103,3 +102,10 @@ export function svgSize(text: string): ImageSize | null {
 export function sizeOf(path: string, bytes: Uint8Array): ImageSize | null {
   return isSvg(path) ? svgSize(new TextDecoder().decode(bytes.subarray(0, 64 * 1024))) : imageSize(bytes);
 }
+
+export default {
+  id: "images",
+  label: "pictures in the diff, zoom, and threads on an area of an image",
+  default: "on",
+  fileKinds: [{ id: "image", match: (path) => imageType(path) !== null, size: sizeOf, acceptsShot: isPng }],
+} satisfies ModuleSpec;

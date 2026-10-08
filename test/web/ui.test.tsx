@@ -375,7 +375,7 @@ describe("request changes or approve", () => {
       if (url.startsWith("/api/config")) {
         const b = JSON.parse(String(init?.body));
         configs.push(b);
-        review.ui = { guide: b.value };
+        review.ui = { config: { [b.key]: b.value }, modules: [] };
         return Response.json(b);
       }
       if (url.startsWith("/api/review/submit")) {

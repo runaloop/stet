@@ -13,7 +13,7 @@ import { api } from "./api.ts";
 import { compileQuery, diffRows, flatHits, matchRanges, searchDiff, type Hit, type Side } from "./lib/search.ts";
 import { clampStep } from "./lib/timeline.ts";
 import { routeHash } from "./lib/route.ts";
-import { compareFocus, detail, drafts, fileOrder, guard, loadedReview, markReviewed, noteJump, notify, reviewedCursor, reviewId, route, selectedStep, showResolved, status, testGlobs, threads, versions, viewedKeys } from "./state.ts";
+import { compareFocus, detail, drafts, fileOrder, guard, loadedReview, markReviewed, noteJump, notify, reviewedCursor, reviewId, route, selectedStep, setting, showResolved, testGlobs, threads, versions, viewedKeys } from "./state.ts";
 
 export type SideTab = "threads" | "files" | "search";
 
@@ -203,7 +203,7 @@ export type FileView = "picture" | "rendered" | "code";
 export const fileView = signal<Map<string, FileView>>(new Map());
 
 /** How a Markdown file opens: rendered unless `stet config set compare.markdown code`. */
-export const markdownView = computed<FileView>(() => (status.value?.ui?.markdown === "code" ? "code" : "rendered"));
+export const markdownView = computed<FileView>(() => (setting("compare.markdown") === "code" ? "code" : "rendered"));
 
 export function setFileView(path: string, view: FileView): void {
   fileView.value = new Map(fileView.value).set(path, view);
@@ -352,11 +352,10 @@ effect(() => {
 });
 
 export const foldConfig = computed(() => {
-  const ui = status.value?.ui;
   return {
     tests: testGlobs.value,
-    skipMarkers: parseList(ui?.skipMarkers, DEFAULT_SKIP_MARKERS),
-    collapse: parseList(ui?.collapse, DEFAULT_COLLAPSE_GLOBS),
+    skipMarkers: parseList(setting("compare.skip_markers"), DEFAULT_SKIP_MARKERS),
+    collapse: parseList(setting("compare.collapse"), DEFAULT_COLLAPSE_GLOBS),
   };
 });
 

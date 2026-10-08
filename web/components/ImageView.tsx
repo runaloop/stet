@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { AnchorState, ImageInfo, Region, ThreadDetail, TimelineStepDto } from "../../src/core/types.ts";
-import { isSvg } from "../../src/core/image.ts";
+import { isSvg } from "../../modules/images/core.ts";
 import { api, rawUrl } from "../api.ts";
 import { compareData, hoverThread, imageMode, imagePending, shownPlacements, type ImageMode, type ImagePending } from "../compare.ts";
 import { cropRect, dragRegion, framePercent, imageCaption, pixelDiff, regionLabel, scaleRegion, shotScale, type PixelDiff } from "../lib/image.ts";

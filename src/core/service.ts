@@ -18,7 +18,8 @@ import {
 import { diffTreeRaw, NULL_BLOB, numstat, type Hunk } from "./diff.ts";
 import { blobIdAt, git, Lru, readBlobById } from "./git.ts";
 import { checkGuide, guideWanted, saveGuide, type ParsedGuide } from "./guide.ts";
-import { imageType, isPng, sizeOf } from "./image.ts";
+import type { FileKind } from "./module.ts";
+import { fileKinds, kindOf } from "./modules.ts";
 import { direct, fileChange, linesAt, trace, type TimelinePoint } from "./placement.ts";
 import { mapLine, specAt, type AnchorSpec, type AnchorState } from "./reanchor.ts";
 import { getSnapshot, promote, registerCommitSnapshot, takeNow } from "./snapshot.ts";
@@ -265,10 +266,11 @@ export async function captureImageAnchor(
   path: string,
   area: { x: number; y: number; w: number; h: number; iw?: number; ih?: number },
 ): Promise<{ spec: AnchorSpec; region: Region }> {
-  if (!imageType(path)) throw usage(`'${path}' is not an image (png, jpg, gif, webp, bmp, ico, avif, svg)`);
+  const kind = kindOf(ctx, path);
+  if (!kind?.size) throw usage(`'${path}' is not an image this build comments on (png, jpg, gif, webp, bmp, ico, avif or svg, with the images module on)`);
   const id = await blobIdAt(ctx.repo.cwd, sha, path);
   if (!id) throw notFound(`image '${path}' at ${short(sha)}`);
-  const size = sizeOf(path, (await readBlobById(ctx.repo.cwd, id)).bytes) ?? (area.iw && area.ih ? { w: area.iw, h: area.ih } : null);
+  const size = kind.size(path, (await readBlobById(ctx.repo.cwd, id)).bytes) ?? (area.iw && area.ih ? { w: area.iw, h: area.ih } : null);
   if (!size) throw usage(`cannot read the size of '${path}'`);
   const n = (v: number, name: string) => {
     if (!Number.isFinite(v)) throw usage(`bad region ${name}`);
@@ -356,7 +358,8 @@ export async function addThread(ctx: Ctx, review: ReviewRow, input: AddThreadInp
   const image = input.region ? await captureImageAnchor(ctx, at.sha, input.path, input.region) : null;
   const spec = image ? image.spec : await captureAnchor(ctx, at.sha, input.path, input.start, input.end);
   const shot = image && input.shot ? input.shot : null;
-  if (shot && (!isPng(shot.full) || (shot.crop && !isPng(shot.crop)))) throw usage("shot must be a PNG");
+  const accepts = shot ? kindOf(ctx, input.path)?.acceptsShot : undefined;
+  if (shot && (!accepts || !accepts(shot.full) || (shot.crop && !accepts(shot.crop)))) throw usage("shot must be a PNG");
   if (!latestVersion(ctx, review.id)) {
     await createVersion(ctx, review, { label: "initial", at: at.sha, allowEmpty: true });
   }
@@ -1274,12 +1277,12 @@ export async function placementsAt(
 
 const imageInfos = new Lru<ImageInfo>(1024);
 
-async function imageInfo(ctx: Ctx, blob: string, path: string): Promise<ImageInfo | null> {
+async function imageInfo(ctx: Ctx, kind: FileKind, blob: string, path: string): Promise<ImageInfo | null> {
   if (NULL_BLOB.test(blob)) return null;
   const hit = imageInfos.get(blob);
   if (hit) return hit;
   const { bytes } = await readBlobById(ctx.repo.cwd, blob);
-  const size = sizeOf(path, bytes);
+  const size = kind.size?.(path, bytes) ?? null;
   const info = { w: size?.w ?? null, h: size?.h ?? null, bytes: bytes.length };
   imageInfos.set(blob, info);
   return info;
@@ -1336,8 +1339,10 @@ export async function compare(
       binary: s ? s.additions === null : false,
     };
   });
+  const kinds = fileKinds(ctx).filter((k) => k.size);
   for (const [i, c] of raw.entries()) {
-    if (imageType(c.newPath)) files[i]!.image = { old: c.status === "A" ? null : await imageInfo(ctx, c.oldBlob, c.oldPath), new: c.status === "D" ? null : await imageInfo(ctx, c.newBlob, c.newPath) };
+    const kind = kinds.find((k) => k.match(c.newPath));
+    if (kind) files[i]!.image = { old: c.status === "A" ? null : await imageInfo(ctx, kind, c.oldBlob, c.oldPath), new: c.status === "D" ? null : await imageInfo(ctx, kind, c.newBlob, c.newPath) };
   }
   const newPaths = new Set(files.filter((f) => f.status !== "D").map((f) => f.path));
   const oldPaths = new Set(files.filter((f) => f.oldPath !== null).map((f) => f.oldPath!));

@@ -1,5 +1,5 @@
 import type { ComponentChild } from "preact";
-import { isPixelImage } from "../../src/core/image.ts";
+import { isPixelImage } from "../../modules/images/core.ts";
 import { useEffect, useRef } from "preact/hooks";
 import { Kbd } from "../components/Bits.tsx";
 import { FileGitMarks } from "../components/GitState.tsx";

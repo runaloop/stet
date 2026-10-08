@@ -11,7 +11,7 @@
     "dev": "bun --hot src/cli.ts serve",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "build": "rm -rf dist && bun build --compile --minify --splitting src/cli.ts --outfile dist/stet",
+    "build": "bun scripts/build.ts",
     "install:local": "bun run build && mkdir -p ~/.local/bin && cp dist/stet ~/.local/bin/stet",
     "perf": "bun test/perf/run.ts",
     "ui-check": "bun test/perf/ui-check.ts",

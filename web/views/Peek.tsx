@@ -2,7 +2,7 @@ import { useMemo } from "preact/hooks";
 import { Kbd } from "../components/Bits.tsx";
 import { FileView } from "../components/Code.tsx";
 import { ImagePane } from "../components/ImageView.tsx";
-import { isPixelImage } from "../../src/core/image.ts";
+import { isPixelImage } from "../../modules/images/core.ts";
 import { hi, lo, NewHereBox, useNewThread } from "../components/NewThread.tsx";
 import { ThreadMini } from "../components/ThreadMini.tsx";
 import { useBlob } from "../components/useBlob.ts";

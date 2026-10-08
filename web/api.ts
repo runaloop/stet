@@ -26,7 +26,8 @@ export type ReviewStatus = StatusDto & {
   pinnedNow: string | null;
   versionsList: VersionDto[];
   submissions?: SubmissionDto[];
-  ui?: { tests: string | null; skipMarkers: string | null; collapse: string | null; order: string | null; markdown: string | null; guide: string | null };
+  /** The settings marked `ui` by key, and the modules on in the repository. */
+  ui?: { config: Record<string, string | null>; modules: string[] };
 };
 
 export interface BlobDto {

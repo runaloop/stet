@@ -1,10 +1,14 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { imageSize, imageType, isPixelImage, svgSize } from "../src/core/image.ts";
-import { stet, ok } from "./helpers/cli.ts";
-import { Fixture, GIT_ENV } from "./helpers/fixture.ts";
-import { card, png } from "./helpers/png.ts";
+import { imageType } from "../../src/core/media.ts";
+import { stet, ok } from "../../test/helpers/cli.ts";
+import { Fixture, GIT_ENV } from "../../test/helpers/fixture.ts";
+import { forModule } from "../../test/helpers/modules.ts";
+import { card, png } from "../../test/helpers/png.ts";
+import { imageSize, isPixelImage, svgSize } from "./core.ts";
+
+const { describe, test } = forModule("images");
 
 describe("imageSize", () => {
   test("reads PNG, GIF, JPEG, WebP, BMP and AVIF headers", () => {
@@ -128,7 +132,7 @@ describe("threads on an area of an image", () => {
   });
 
   test("the server serves image bytes and keeps the browser's shots", async () => {
-    proc = Bun.spawn(["bun", join(import.meta.dir, "..", "src", "cli.ts"), "serve", "--json"], { cwd: f.root, env: { ...process.env, ...GIT_ENV }, stdout: "pipe", stderr: "pipe" });
+    proc = Bun.spawn(["bun", join(import.meta.dir, "..", "..", "src", "cli.ts"), "serve", "--json"], { cwd: f.root, env: { ...process.env, ...GIT_ENV }, stdout: "pipe", stderr: "pipe" });
     const reader = (proc.stdout as ReadableStream<Uint8Array>).getReader();
     const { value } = await reader.read();
     reader.releaseLock();
@@ -160,5 +164,28 @@ describe("threads on an area of an image", () => {
     expect(imageSize(readFileSync(d.image.crop))).toEqual({ w: 20, h: 20 });
     const bad = await api("/api/threads", { method: "POST", body: JSON.stringify({ path: "img/new.png", start: 1, end: 1, at: cmp.to.sha, body: "x", region: { x: 0, y: 0, w: 5, h: 5 }, shot: { full: Buffer.from("nope").toString("base64") } }) });
     expect(bad.status).toBe(400);
+  });
+
+  test("switched off in the repository: no pictures in the compare, no area comments, the area threads still print", async () => {
+    expect((await (await api("/api/review")).json()).ui.modules).toEqual(["images"]);
+    const area = (await ok(stet(["threads", "list", "--status", "all"], { cwd: f.root }))).find((x: { region: unknown }) => x.region) as { id: number };
+    const fromPage = await api("/api/config", { method: "POST", body: JSON.stringify({ key: "modules.images", value: "off" }) });
+    expect((await fromPage.json()).error.code).toBe("forbidden");
+
+    await ok(stet(["config", "set", "modules.images", "off"], { cwd: f.root }));
+    try {
+      expect((await stet(["config", "set", "modules.images", "maybe"], { cwd: f.root })).stderr).toContain("modules.images takes on or off");
+      const r = await stet(["comment", "add", "--file", "img/new.png", "--region", "0,0,5,5", "--body", "x"], reviewer);
+      expect(r.code).not.toBe(0);
+      expect(r.stderr + r.stdout).toContain("'img/new.png' is not an image this build comments on");
+      expect((await (await api("/api/review")).json()).ui.modules).toEqual([]);
+      const cmp = await (await api("/api/compare?from=base&to=1")).json();
+      expect(cmp.files.find((x: { path: string }) => x.path === "img/card.png").image).toBeUndefined();
+      const d = await ok(stet(["thread", "show", String(area.id)], { cwd: f.root }));
+      expect(d.thread.region).toMatchObject({ w: expect.any(Number), h: expect.any(Number) });
+    } finally {
+      await ok(stet(["config", "set", "modules.images", "--unset"], { cwd: f.root }));
+    }
+    expect((await (await api("/api/review")).json()).ui.modules).toEqual(["images"]);
   });
 });
