@@ -1,9 +1,8 @@
 import type { ChangeContent, FileDiffMetadata, Hunk } from "@pierre/diffs";
+import { MARKDOWN } from "../core/kinds.ts";
 import type { NavBlock, Span } from "./cursor.ts";
 
-export function isMarkdown(path: string): boolean {
-  return /\.(md|markdown)$/i.test(path);
-}
+export const isMarkdown = (path: string): boolean => MARKDOWN.match(path);
 
 /** Where a link or an image of a Markdown file points: a file of the repository (with a `#L12` line), or somewhere else. */
 export type Ref = { path: string; line: number | null } | { outside: string };

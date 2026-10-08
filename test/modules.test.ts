@@ -3,7 +3,7 @@ import { help, main } from "../src/cli/commands.ts";
 import { builtConfig, configKeys, configValue, switchOf } from "../src/core/config.ts";
 import { openContext, type Ctx } from "../src/core/context.ts";
 import type { ModuleSpec } from "../src/core/module.ts";
-import { commandsOf, enabled } from "../src/core/modules.ts";
+import { commandsOf, enabled, kindOf } from "../src/core/modules.ts";
 import { lists, withoutArg } from "../scripts/modules.ts";
 import { Fixture } from "./helpers/fixture.ts";
 
@@ -30,6 +30,15 @@ describe("which modules are on", () => {
   test("a module is on only while every module it needs is built and on", () => {
     expect(enabled(ctxWith({}), [notes, pins, orphan]).map((m) => m.id)).toEqual(["notes", "pins"]);
     expect(enabled(ctxWith({ "modules.notes": "off" }), [notes, pins]).map((m) => m.id)).toEqual([]);
+  });
+});
+
+describe("kinds of file", () => {
+  test("Markdown is the core's in every build; a module's kind is known while the module is on", () => {
+    expect(kindOf(ctxWith({}), "docs/README.md")?.id).toBe("markdown");
+    expect(kindOf(ctxWith({ "modules.images": "off" }), "notes.MARKDOWN")?.id).toBe("markdown");
+    expect(kindOf(ctxWith({ "modules.images": "off" }), "res/card.png")).toBeNull();
+    expect(kindOf(ctxWith({}), "src/a.ts")).toBeNull();
   });
 });
 

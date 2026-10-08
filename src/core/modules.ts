@@ -1,6 +1,7 @@
 import { MODULES } from "../modules.gen.ts";
 import { CORE_ACTIONS } from "./actions.ts";
 import { StetError, usage, type Ctx } from "./context.ts";
+import { CORE_KINDS } from "./kinds.ts";
 import type { ActionDef, CommandSpec, FileKind, ModuleSpec } from "./module.ts";
 
 /** The modules of this build, from the list `scripts/modules.ts` writes. */
@@ -26,9 +27,9 @@ export function enabled(ctx: Ctx, from: readonly ModuleSpec[] = MODULES): Module
   return from.filter(on);
 }
 
-/** The kinds of file the enabled modules know. */
+/** The kinds of file the core and the enabled modules know. */
 export function fileKinds(ctx: Ctx): FileKind[] {
-  return enabled(ctx).flatMap((m) => m.fileKinds ?? []);
+  return [...CORE_KINDS, ...enabled(ctx).flatMap((m) => m.fileKinds ?? [])];
 }
 
 export function kindOf(ctx: Ctx, path: string): FileKind | null {
