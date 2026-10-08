@@ -1,6 +1,6 @@
 import type { ChangeContent, FileDiffMetadata, Hunk } from "@pierre/diffs";
 import MarkdownIt, { type Env, type Token } from "markdown-it";
-import { imageType } from "../../src/core/image.ts";
+import { imageType } from "../../src/core/media.ts";
 import type { NavBlock, Span } from "./cursor.ts";
 
 export function isMarkdown(path: string): boolean {

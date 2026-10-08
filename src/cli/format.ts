@@ -1,4 +1,4 @@
-import { regionText } from "../core/image.ts";
+import { regionText } from "../core/media.ts";
 import type { BlameDto, CommentDto, CompareDto, StatusDto, ThreadDetail, ThreadSummary, VersionDto } from "../core/types.ts";
 
 export { regionText };

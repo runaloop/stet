@@ -1,5 +1,5 @@
 import type { Ctx } from "./context.ts";
-import { regionText } from "./image.ts";
+import { regionText } from "./media.ts";
 import { reviewDto, short, status, submissionTimes, threadDetail, threadSummaries, versionDto, versionRows } from "./service.ts";
 import { takeNow } from "./snapshot.ts";
 import type { ReviewRow } from "./store/db.ts";

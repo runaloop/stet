@@ -1,23 +1,6 @@
-import type { Region } from "./types.ts";
+import { ext, imageType } from "./media.ts";
 
-const TYPES: Record<string, string> = {
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  gif: "image/gif",
-  webp: "image/webp",
-  bmp: "image/bmp",
-  ico: "image/x-icon",
-  avif: "image/avif",
-  svg: "image/svg+xml",
-};
-
-const ext = (path: string) => /\.([a-z0-9]+)$/i.exec(path)?.[1]?.toLowerCase() ?? "";
-
-/** The media type of an image file, by its extension. */
-export function imageType(path: string): string | null {
-  return TYPES[ext(path)] ?? null;
-}
+export { imageType };
 
 /** Pixel images: shown as pictures in a diff. SVG stays a text diff. */
 export function isPixelImage(path: string): boolean {
@@ -120,6 +103,3 @@ export function svgSize(text: string): ImageSize | null {
 export function sizeOf(path: string, bytes: Uint8Array): ImageSize | null {
   return isSvg(path) ? svgSize(new TextDecoder().decode(bytes.subarray(0, 64 * 1024))) : imageSize(bytes);
 }
-
-/** `w×h at x,y of iw×ih`, in pixels. */
-export const regionText = (r: Region) => `${r.w}×${r.h} at ${r.x},${r.y} of ${r.iw}×${r.ih}`;

@@ -2,7 +2,7 @@ import { StetError, forbidden, notFound, reviewById, usage, type Ctx } from "../
 import { configKey, configValue, UI_CONFIG_KEYS } from "../core/config.ts";
 import { unifiedPatch } from "../core/diff.ts";
 import { readBlobAt } from "../core/git.ts";
-import { imageType } from "../core/image.ts";
+import { imageType } from "../core/media.ts";
 import { editorCommand, editorTemplate, renderTemplate } from "../core/jump.ts";
 import * as svc from "../core/service.ts";
 import { takeNow } from "../core/snapshot.ts";
