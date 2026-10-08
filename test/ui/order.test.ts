@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { parsePatchFiles } from "@pierre/diffs";
 import type { ThreadSummary } from "../../src/core/types.ts";
+import { fileRows, grepSorted } from "../../src/ui/compare.ts";
 import { DEFAULT_TEST_GLOBS, isTestPath } from "../../src/ui/fold.ts";
-import { FileOrder, groupTitle, parseOrder } from "../../src/ui/order.ts";
+import { CORE_PRESETS, FileOrder, fileComparator, groupTitle, orderOf, orderProblem, parseOrder, type OrderPreset } from "../../src/ui/order.ts";
+import { groups } from "../../src/ui/state.ts";
 import { groupByFile } from "../../src/ui/tree.ts";
 
 describe("file order by kind", () => {
@@ -57,5 +60,55 @@ describe("file order by kind", () => {
     const list = [t(1, "README.md"), t(2, "app/build.gradle.kts"), t(3, "app/src/main/Foo.kt"), t(4, "app/src/test/FooTest.kt"), t(5, "a/Bar.kt")];
     const tree = groupByFile(list, (p) => order.rank(p, isTestPath(p, DEFAULT_TEST_GLOBS)));
     expect(tree.map((g) => g.path)).toEqual(["a/Bar.kt", "app/src/main/Foo.kt", "app/build.gradle.kts", "app/src/test/FooTest.kt", "README.md"]);
+  });
+});
+
+describe("file order through a preset", () => {
+  const old = new FileOrder(parseOrder(null));
+  const paths = [
+    "app/src/main/java/com/x/Foo.kt", "web/views/Compare.tsx", "package.json", ".github/workflows/ci.yml", "app/src/main/AndroidManifest.xml",
+    "app/src/main/res/drawable/ic_star.png", "app/src/debug/res/values/strings.xml", "app/build.gradle.kts", "gradle/libs.versions.toml",
+    "gradle.properties", "app/src/test/java/com/x/FooTest.kt", "app/src/test/resources/fixture.json", "README.md", "docs/guide/tests-1.png",
+    "app/src/main/java/com/x/res/Loader.kt", "src/test/ATest.kt", "a/Bar.kt",
+  ];
+  const kinds = (o: FileOrder) => paths.map((p) => o.name(o.rank(p, isTestPath(p, DEFAULT_TEST_GLOBS))));
+  const t = (id: number, path: string) => ({ id, path, anchor: { path, range: { start: 1, end: 1 } }, range: { start: 1, end: 1 } }) as unknown as ThreadSummary;
+  const diff = (path: string) => parsePatchFiles(`diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -1 +1 @@\n-a\n+b\n`, path)[0]!.files[0]!;
+  const rows = (o: FileOrder) => fileRows(paths.map(diff), { folds: new Map(), open: { tests: false, generated: false }, placements: [], order: o, tests: DEFAULT_TEST_GLOBS }).map((r) => r.fd.name);
+  const grep = (o: FileOrder) => grepSorted({ files: paths.map((path) => ({ path, matches: 1, groups: [] })), total: 1, truncated: false, error: null }, o, DEFAULT_TEST_GLOBS).files.map((f) => f.path);
+  const tree = (o: FileOrder) => groups(paths.map((p, i) => t(i, p)), o, DEFAULT_TEST_GLOBS).map((g) => g.path);
+
+  test.each([["kinds"], [" kinds "], [null], [undefined]])("compare.order %p is the kinds preset, the same order as the default groups", (raw) => {
+    const o = orderOf(raw);
+    expect(o.groups).toEqual(old.groups);
+    expect(kinds(o)).toEqual(kinds(old));
+    expect(rows(o)).toEqual(rows(old));
+    expect(grep(o)).toEqual(grep(old));
+    expect(tree(o)).toEqual(tree(old));
+    expect(tree(o).slice(0, 3)).toEqual(["a/Bar.kt", "app/src/main/java/com/x/Foo.kt", "app/src/main/java/com/x/res/Loader.kt"]);
+  });
+
+  test("groups of one's own keep working, and an id no preset has falls back to the default", () => {
+    const raw = "docs: **/*.md\nmain; tests; build: **/*.gradle.kts, **/*.md";
+    expect(orderOf(raw).groups).toEqual(parseOrder(raw));
+    expect(orderOf("docs: **/*.md").groups.map((g) => g.name)).toEqual(["code", "docs"]);
+    expect(orderOf("code;").groups.map((g) => g.name)).toEqual(["code"]);
+    expect(kinds(orderOf("by-size"))).toEqual(kinds(old));
+  });
+
+  test("a preset's own order sorts the files of one group; the place that lists them breaks the ties left", () => {
+    const deepest: OrderPreset = { id: "deepest", label: "Deepest first", describe: "nested files first", compare: (a, b) => b.path.split("/").length - a.path.split("/").length };
+    const o = orderOf("deepest", [...CORE_PRESETS, deepest]);
+    expect(o.groups.map((g) => g.name)).toEqual(["code"]);
+    const list = ["b.ts", "x/y/a.ts", "a.ts", "x/b.ts"];
+    expect(list.map((path) => ({ path })).sort(fileComparator(o, [])).map((f) => f.path)).toEqual(["x/y/a.ts", "x/b.ts", "b.ts", "a.ts"]);
+    expect(groups(list.map((p, i) => t(i, p)), o, []).map((g) => g.path)).toEqual(["x/y/a.ts", "x/b.ts", "a.ts", "b.ts"]);
+  });
+
+  test("a value that names no preset is refused with the ones there are; groups are not a name", () => {
+    expect(orderProblem("kinds", CORE_PRESETS)).toBeNull();
+    expect(orderProblem("code; docs: **/*.md", CORE_PRESETS)).toBeNull();
+    expect(orderProblem("docs: **/*.md", CORE_PRESETS)).toBeNull();
+    expect(orderProblem("by-path", CORE_PRESETS)).toStartWith("no order preset 'by-path'; known: kinds;");
   });
 });

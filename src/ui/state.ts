@@ -1,6 +1,5 @@
 import type { NowStateDto, ReviewedDto, StatusDto, ThreadSummary, VersionDto } from "../core/types.ts";
-import { isTestPath } from "./fold.ts";
-import type { FileOrder } from "./order.ts";
+import { fileComparator, type FileOrder } from "./order.ts";
 import { groupByFile, type FileGroup } from "./tree.ts";
 
 /** What the ends of a compare are picked from: the review's versions and its "now". */
@@ -11,7 +10,7 @@ export interface Refs {
 
 /** Threads by file, the files in the order of compare.order and compare.tests. */
 export function groups(threads: ThreadSummary[], order: FileOrder, tests: string[]): FileGroup[] {
-  return groupByFile(threads, (p) => order.rank(p, isTestPath(p, tests)));
+  return groupByFile(threads).sort(fileComparator(order, tests));
 }
 
 /** The worktree moved away from the "now" `shown`: files that differ, or 0 when only the pin moved. */

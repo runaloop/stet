@@ -3,7 +3,7 @@ import type { CompareDto, ComparePlacement, GrepResultDto } from "../core/types.
 import type { LineRange } from "./cursor.ts";
 import { isTestPath, type FoldDecision, type FoldGroup } from "./fold.ts";
 import { threadMarks, type LineMark, type Spot } from "./marks.ts";
-import { groupTitle, type FileOrder } from "./order.ts";
+import { fileComparator, groupTitle, type FileOrder } from "./order.ts";
 import { routeHash, type Route } from "./route.ts";
 import type { Hit, SearchResult } from "./search.ts";
 import { isViewedIn, type ViewedIndex } from "./viewed.ts";
@@ -39,15 +39,22 @@ export function fileRows(files: readonly FileDiffMetadata[], o: FileRowsInput): 
   const count = new Map<string, number>();
   for (const p of o.placements) count.set(p.path, (count.get(p.path) ?? 0) + 1);
   const n = o.order.groups.length;
+  const byOrder = fileComparator(o.order, o.tests);
   const rows = files.map((fd) => {
     const d = o.folds.get(fd.name) ?? { group: null, keptBecause: null };
     const threadsHere = count.get(fd.name) ?? 0;
     const group = threadsHere ? null : d.group;
     const kind = o.order.rank(fd.name, isTestPath(fd.name, o.tests, fd.prevName));
     const rank = group === null ? kind : group === "tests" ? n : n + 1;
-    return { row: { fd, group, keptBecause: d.keptBecause, hidden: group !== null && !o.open[group], threads: threadsHere, kind: o.order.name(kind), section: null } as FileRow, rank };
+    const file = { path: fd.name, prevPath: fd.prevName };
+    return { row: { fd, group, keptBecause: d.keptBecause, hidden: group !== null && !o.open[group], threads: threadsHere, kind: o.order.name(kind), section: null } as FileRow, rank, file };
   });
-  const sorted = rows.map((r, i) => [r, i] as const).sort(([a, i], [b, j]) => a.rank - b.rank || i - j).map(([r]) => r);
+  // the folded groups come last, each in the order of the diff
+  const foldRank = (r: (typeof rows)[number]) => (r.row.group === null ? 0 : r.rank);
+  const sorted = rows
+    .map((r, i) => [r, i] as const)
+    .sort(([a, i], [b, j]) => foldRank(a) - foldRank(b) || (foldRank(a) ? 0 : byOrder(a.file, b.file)) || i - j)
+    .map(([r]) => r);
   const several = sorted.length > 0 && sorted[0]!.rank !== sorted[sorted.length - 1]!.rank;
   return sorted.map(({ row, rank }, i) => (several && (i === 0 || sorted[i - 1]!.rank !== rank) ? { ...row, section: sectionTitle(row) } : row));
 }
@@ -68,8 +75,7 @@ export interface GrepHit {
 
 /** Grep results in the order of the Changes page: code first, docs last. */
 export function grepSorted(r: GrepResultDto, order: FileOrder, tests: string[]): GrepResultDto {
-  const rank = new Map(r.files.map((f) => [f.path, order.rank(f.path, isTestPath(f.path, tests))]));
-  return { ...r, files: [...r.files].sort((a, b) => rank.get(a.path)! - rank.get(b.path)!) };
+  return { ...r, files: [...r.files].sort(fileComparator(order, tests)) };
 }
 
 export interface MarkSources {
