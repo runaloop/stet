@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { join } from "node:path";
+import { Store } from "../src/core/store/db.ts";
 import { stet, ok } from "./helpers/cli.ts";
 import { Fixture, GIT_ENV, lines } from "./helpers/fixture.ts";
 
@@ -107,6 +108,39 @@ test("the server tells the page when the worktree moves away from the pinned now
 
   const direct = (await (await api(`/api/git?review=${review}`)).json()) as Git;
   expect(direct.files).toHaveLength(3);
+  s.close();
+});
+
+test("the stream opens with the server's build, as ping tells it", async () => {
+  const s = new Stream(await api(`/api/events?review=${review}`));
+  const hello = await s.next<{ build: string }>("hello");
+  expect(hello.build).toBe("dev");
+  expect(await (await api("/api/ping")).json()).toEqual({ ok: true, build: hello.build });
+  s.close();
+});
+
+test("a read mark from another process reaches the stream as a store change; cache writes send nothing", async () => {
+  const thread = await ok(stet(["comment", "add", "--file", "a.kt", "--range", "3-4", "--body", "why?"], { cwd: f.root }));
+  const s = new Stream(await api(`/api/events?review=${review}`));
+  await s.next("hello");
+
+  const store = new Store(join(f.root, ".git", "stet", "review.db"));
+  store.db.run("INSERT OR REPLACE INTO anchor_cache(key, result) VALUES ('live-test', '{}')");
+  store.db.run("INSERT OR IGNORE INTO snapshots(sha, tree, created_at) VALUES ('live-test', 't', 't')");
+  store.db.run("DELETE FROM anchor_cache WHERE key = 'live-test'");
+  await expect(s.next("store", () => true, 1000)).rejects.toThrow("no store event");
+
+  const seq = store.maxSeq();
+  await ok(stet(["read", String(thread.id)], { cwd: f.root, role: "reviewer" }));
+  const t0 = Date.now();
+  expect(await s.next<{ kinds: string[] }>("store")).toEqual({ kinds: ["reads"] });
+  expect(Date.now() - t0).toBeLessThan(500);
+  // `stet wait` watches events alone, so a read mark must not wake it.
+  expect(store.maxSeq()).toBe(seq);
+  store.close();
+
+  await ok(stet(["config", "set", "compare.order", "kinds"], { cwd: f.root, role: "reviewer" }));
+  expect(await s.next<{ kinds: string[] }>("store")).toEqual({ kinds: ["config"] });
   s.close();
 });
 

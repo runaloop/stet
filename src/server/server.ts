@@ -41,6 +41,7 @@ function eventStream(state: ServerState, req: Request, reviewId: number | null, 
   let ping: ReturnType<typeof setInterval> | undefined;
   let unwatch: (() => void) | undefined;
   let last = since;
+  let counts = state.ctx.store.changeCounts(reviewId);
   const stream = new ReadableStream({
     start(controller) {
       const send = (chunk: string) => {
@@ -71,6 +72,10 @@ function eventStream(state: ServerState, req: Request, reviewId: number | null, 
           last = rows[rows.length - 1]!.seq;
           send(`id: ${last}\nevent: change\ndata: ${JSON.stringify({ seq: last, events: rows })}\n\n`);
         }
+        const now = state.ctx.store.changeCounts(reviewId);
+        const kinds = [...now].filter(([kind, n]) => n > (counts.get(kind) ?? 0)).map(([kind]) => kind);
+        counts = now;
+        if (kinds.length > 0) send(`event: store\ndata: ${JSON.stringify({ kinds })}\n\n`);
       }, 300);
       ping = setInterval(() => send(`: ping\n\n`), 15_000);
       req.signal.addEventListener("abort", () => {
