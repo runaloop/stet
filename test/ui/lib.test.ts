@@ -3,9 +3,9 @@ import type { ThreadDetail } from "../../src/core/types.ts";
 import { thread } from "../helpers/threads.ts";
 import { applyFilters, DEFAULT_FILTERS, landingTab, matchesFile } from "../../src/ui/filters.ts";
 import { compareOrder, stepFile, stepThread, stepUnread } from "../../src/ui/nav.ts";
-import { threadMarks } from "../../web/lib/marks.ts";
+import { threadMarks } from "../../src/ui/marks.ts";
 import { filePatch, regionDiff, regionPatch } from "../../src/ui/region.ts";
-import { parseHash, routeHash, sameView, takeToken, type Route } from "../../web/lib/route.ts";
+import { parseHash, routeHash, sameView, takeToken, type Route } from "../../src/ui/route.ts";
 import { diffPair } from "../../src/ui/timeline.ts";
 import { flatten, groupByFile } from "../../src/ui/tree.ts";
 

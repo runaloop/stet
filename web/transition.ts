@@ -1,7 +1,7 @@
 import { effect } from "@preact/signals";
 import { baseFiles, compareData, guideShown } from "./compare.ts";
 import { crossfade, pageSheet } from "./lib/fade.ts";
-import { sameView } from "./lib/route.ts";
+import { sameView } from "../src/ui/route.ts";
 import { detail, jumpHooks, route } from "./state.ts";
 
 /** The boxes that scroll on the pages: a view is in place once they keep their place and size. */

@@ -52,7 +52,8 @@ const { render } = await import("preact");
 const state = await import("../../web/state.ts");
 const compare = await import("../../web/compare.ts");
 const guide = await import("../../web/guide.ts");
-const lib = await import("../../web/lib/guide.ts");
+const lib = await import("../../src/ui/guide.ts");
+const { guideHtml } = await import("../../web/lib/guide.ts");
 const { GuideToggle, GuideView } = await import("../../web/components/Guide.tsx");
 const { handleKey } = await import("../../web/keys.ts");
 
@@ -157,7 +158,7 @@ describe("the guide's pieces", () => {
   });
 
   test("Markdown with raw HTML as text, links that stay on the page, and #N linking the threads there are", () => {
-    const html = lib.guideHtml("**Why** <script>x</script> [docs](https://example.com) for #5, `#5` and #6", (id) => (id === 5 ? "#/thread/5" : null));
+    const html = guideHtml("**Why** <script>x</script> [docs](https://example.com) for #5, `#5` and #6", (id) => (id === 5 ? "#/thread/5" : null));
     expect(html).toContain("<strong>Why</strong>");
     expect(html).toContain("&lt;script&gt;");
     expect(html).not.toContain("href=\"https://");

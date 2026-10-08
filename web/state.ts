@@ -4,7 +4,8 @@ import { api, ApiError, getToken, setToken, subscribe, type ReviewStatus } from 
 import { applyFilters, DEFAULT_FILTERS, type Filters } from "../src/ui/filters.ts";
 import { DEFAULT_TEST_GLOBS, isTestPath, parseList } from "../src/ui/fold.ts";
 import { FileOrder, parseOrder } from "../src/ui/order.ts";
-import { parseHash, plainClick, routeHash as formatHash, type Route } from "./lib/route.ts";
+import { parseHash, routeHash as formatHash, type Route } from "../src/ui/route.ts";
+import { plainClick } from "./lib/route.ts";
 import type { DiffBase } from "../src/ui/timeline.ts";
 import { rounds } from "../src/ui/versions.ts";
 import { flatten, groupByFile } from "../src/ui/tree.ts";

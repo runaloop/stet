@@ -60,7 +60,7 @@ import {
   spotThread,
 } from "../compare.ts";
 import { MARK_CSS, paintMarks } from "../lib/marks.ts";
-import { isMarkdown } from "../lib/markdown.ts";
+import { isMarkdown } from "../../src/ui/markdown.ts";
 import { CHUNK, expansionOf, newLineOf, textLines, withSpan, type Reveal } from "../../src/ui/reveal.ts";
 import { rowPosition, type Cursor, type LineRange, type Seen } from "../../src/ui/cursor.ts";
 import { compareOrder } from "../../src/ui/nav.ts";

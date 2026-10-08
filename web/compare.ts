@@ -5,15 +5,15 @@ import { DEFAULT_COLLAPSE_GLOBS, DEFAULT_SKIP_MARKERS, foldOf, isTestPath, parse
 import { landingTab } from "../src/ui/filters.ts";
 import { groupTitle } from "../src/ui/order.ts";
 import { isViewedIn, unviewKeys, viewedIndex, viewedKey } from "../src/ui/viewed.ts";
-import { threadMarks, type LineMark, type Spot } from "./lib/marks.ts";
+import { threadMarks, type LineMark, type Spot } from "../src/ui/marks.ts";
 import { CursorSpace, rowPosition, type Cursor, type CursorFile, type LineRange, type NavBlock, type Seen } from "../src/ui/cursor.ts";
-import { isMarkdown } from "./lib/markdown.ts";
+import { isMarkdown } from "../src/ui/markdown.ts";
 import { NOTHING, revealedPatch, type Reveal } from "../src/ui/reveal.ts";
 import { api } from "./api.ts";
 import { compileQuery, diffRows, flatHits, matchRanges, searchDiff, type Hit, type Side } from "../src/ui/search.ts";
 import { clampStep } from "../src/ui/timeline.ts";
-import { routeHash } from "./lib/route.ts";
-import { compareFocus, detail, drafts, fileOrder, guard, loadedReview, markReviewed, noteJump, notify, reviewedCursor, reviewId, route, selectedStep, setting, showResolved, testGlobs, threads, versions, viewedKeys } from "./state.ts";
+import { routeHash } from "../src/ui/route.ts";
+import { compareFocus, detail, drafts, fileOrder, guard, loadedReview, markReviewed, noteJump, notify, reviewedCursor, reviewId, route, selectedStep, setting, showResolved, status, testGlobs, threads, versions, viewedKeys } from "./state.ts";
 
 export type SideTab = "threads" | "files" | "search";
 

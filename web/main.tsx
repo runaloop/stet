@@ -10,7 +10,7 @@ import { Splitter, widthOf } from "./components/Splitter.tsx";
 import { refLabel } from "./components/VersionStrip.tsx";
 import { leftPage } from "./jumps.ts";
 import { layoutPage, swapped, toggleSwap } from "./layout.ts";
-import { takeToken } from "./lib/route.ts";
+import { takeToken } from "../src/ui/route.ts";
 import { installKeys, picker } from "./keys.ts";
 import "./transition.ts";
 import {

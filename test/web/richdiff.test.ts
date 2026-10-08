@@ -1,6 +1,6 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { afterAll, describe, expect, test } from "bun:test";
-import type { Pair } from "../../web/lib/markdown.ts";
+import type { Pair } from "../../src/ui/markdown.ts";
 
 const mine = !GlobalRegistrator.isRegistered;
 if (mine) GlobalRegistrator.register();

@@ -1,5 +1,5 @@
 import { diffWordsWithSpace, type ChangeObject } from "diff";
-import type { Pair } from "./markdown.ts";
+import type { Pair } from "../../src/ui/markdown.ts";
 
 /** A pair of blocks in which more than this share of the words changed is marked as a whole, not word by word. */
 export const REWRITTEN = 0.6;

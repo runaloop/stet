@@ -22,11 +22,13 @@ import {
   type FileView,
 } from "../compare.ts";
 import { fetchGuide, foldRef, guideAt, guideFolds, guideOpen, guideShown, guideStep, guideVersion, guideViews, isFolded, openInDiff, refKey } from "../guide.ts";
-import { guideHtml, notInGuide, refLabel, refPatch, refShown, threadsOn } from "../lib/guide.ts";
+import { notInGuide, refLabel, refPatch, refShown, threadsOn } from "../../src/ui/guide.ts";
+import { guideHtml } from "../lib/guide.ts";
 import { carry, type Cursor, type LineRange, type NavBlock, type Seen, type Span } from "../../src/ui/cursor.ts";
 import { snapshot, visibleBox, type Fade } from "../lib/fade.ts";
-import { isMarkdown } from "../lib/markdown.ts";
-import { drawnLines, type LineMark } from "../lib/marks.ts";
+import { isMarkdown } from "../../src/ui/markdown.ts";
+import { drawnLines } from "../lib/marks.ts";
+import type { LineMark } from "../../src/ui/marks.ts";
 import { CHUNK, expansionOf, hydrateSubset, textLines } from "../../src/ui/reveal.ts";
 import { plainClick } from "../lib/route.ts";
 import { diffRows, type Side } from "../../src/ui/search.ts";

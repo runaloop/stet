@@ -40,7 +40,7 @@ import {
 import { guideFile } from "../guide.ts";
 import { diffRows, groupHits, type DiffRow, type Hit, type HitGroup } from "../../src/ui/search.ts";
 import type { GrepLineDto } from "../../src/core/types.ts";
-import type { Route } from "../lib/route.ts";
+import type { Route } from "../../src/ui/route.ts";
 import { canQuote, quoteLines } from "../quote.ts";
 import { clampStep } from "../../src/ui/timeline.ts";
 import { fileTag } from "../modules.tsx";

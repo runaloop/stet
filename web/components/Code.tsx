@@ -15,7 +15,8 @@ import { getOrCreateWorkerPoolSingleton, type WorkerPoolManager } from "@pierre/
 import type { ComponentChild } from "preact";
 import { render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { MARK_CSS, paintMarks, type LineMark } from "../lib/marks.ts";
+import { MARK_CSS, paintMarks } from "../lib/marks.ts";
+import type { LineMark } from "../../src/ui/marks.ts";
 import { plusLines } from "../plus.ts";
 
 export interface SourceFile {

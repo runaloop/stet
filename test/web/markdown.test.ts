@@ -2,7 +2,8 @@ import { parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
 import { describe, expect, test } from "bun:test";
 import { createTwoFilesPatch } from "diff";
 import { CursorSpace } from "../../src/ui/cursor.ts";
-import { changedBlocks, changesOf, hitBlocks, isMarkdown, layoutOf, likeness, renderMarkdown, resolveRef, slotsOf, stopsOn, unnumbered, type Block, type SideChanges } from "../../web/lib/markdown.ts";
+import { changedBlocks, changesOf, hitBlocks, isMarkdown, layoutOf, likeness, resolveRef, slotsOf, stopsOn, unnumbered, type Block, type SideChanges } from "../../src/ui/markdown.ts";
+import { renderMarkdown } from "../../web/lib/markdown.ts";
 
 const imageUrl = (path: string) => `/raw/${path}`;
 const render = (text: string, more: Partial<Parameters<typeof renderMarkdown>[1]> = {}) => renderMarkdown(text, { path: "docs/guide.md", imageUrl, changes: null, ...more });
