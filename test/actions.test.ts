@@ -55,7 +55,7 @@ beforeAll(async () => {
     fetch: (req) => (req.headers.get("x-stet-token") === TOKEN ? Response.json({ ok: true }) : new Response("no", { status: 401 })),
   });
   writeServerInfo(ctx.repo.commonDir, { pid: process.pid, port: fake.port!, token: TOKEN, url: "", startedAt: new Date().toISOString() });
-  state = { ctx, defaultReview: review.id, pinnedNow: new Map() };
+  state = { ctx, defaultReview: review.id, pinnedNow: new Map(), pinning: new Map() };
 });
 
 afterAll(() => {

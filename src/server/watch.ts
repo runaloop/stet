@@ -3,6 +3,7 @@ import { gitState, worktreeStatus } from "../core/gitstate.ts";
 import { filesBetween } from "../core/service.ts";
 import { takeNow } from "../core/snapshot.ts";
 import type { GitStateDto, NowStateDto as NowState } from "../core/types.ts";
+import type { Pin } from "./api.ts";
 
 type Listener = (event: "now" | "git", data: NowState | GitStateDto) => void;
 
@@ -29,7 +30,7 @@ export class Watcher {
 
   constructor(
     private readonly ctx: Ctx,
-    private readonly pinnedOf: (reviewId: number) => { sha: string; at: string } | null,
+    private readonly pinnedOf: (reviewId: number) => Pin | null,
     every = Number(process.env.STET_WATCH_MS) || DEFAULT_MS,
   ) {
     this.every = every;

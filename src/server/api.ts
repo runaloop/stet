@@ -14,10 +14,18 @@ import type { ModuleSpec } from "../core/module.ts";
 import { actionOf, actionsOf, enabled } from "../core/modules.ts";
 import type { Watcher } from "./watch.ts";
 
+/** The "now" the server pinned for a review, and when it took it. */
+export interface Pin {
+  sha: string;
+  at: string;
+}
+
 export interface ServerState {
   ctx: Ctx;
   defaultReview: number | null;
-  pinnedNow: Map<number, { sha: string; at: string }>;
+  pinnedNow: Map<number, Pin>;
+  /** A pin being taken: requests that come meanwhile wait for it instead of taking their own "now". */
+  pinning: Map<number, Promise<Pin | null>>;
   watcher?: Watcher;
   /** The modules of the build; a test gives its own. */
   modules?: readonly ModuleSpec[];
@@ -56,19 +64,34 @@ function review(s: ServerState, url: URL): ReviewRow {
   return reviewById(s.ctx.store, first.id);
 }
 
-async function pinned(s: ServerState, r: ReviewRow, refresh = false): Promise<string | null> {
+async function pinOf(s: ServerState, r: ReviewRow, refresh = false): Promise<Pin | null> {
   const have = s.pinnedNow.get(r.id);
   const newest = svc.latestVersion(s.ctx, r.id);
   const stale = have !== undefined && newest !== null && newest.created_at > have.at;
-  if (have && !refresh && !stale) return have.sha;
+  if (have && !refresh && !stale) return have;
+  const taking = s.pinning.get(r.id);
+  if (taking && !refresh) return taking;
+  const pin = (async () => {
+    try {
+      const at = new Date().toISOString();
+      const snap = await takeNow(s.ctx, r, { keep: false, fresh: refresh || stale });
+      const taken = { sha: snap.sha, at };
+      s.pinnedNow.set(r.id, taken);
+      return taken;
+    } catch {
+      return null;
+    }
+  })();
+  s.pinning.set(r.id, pin);
   try {
-    const at = new Date().toISOString();
-    const snap = await takeNow(s.ctx, r, { keep: false, fresh: refresh || stale });
-    s.pinnedNow.set(r.id, { sha: snap.sha, at });
-    return snap.sha;
-  } catch {
-    return null;
+    return await pin;
+  } finally {
+    if (s.pinning.get(r.id) === pin) s.pinning.delete(r.id);
   }
+}
+
+async function pinned(s: ServerState, r: ReviewRow): Promise<string | null> {
+  return (await pinOf(s, r))?.sha ?? null;
 }
 
 async function baseOf(s: ServerState, r: ReviewRow, tip: string): Promise<string | null> {
@@ -96,8 +119,9 @@ route("GET", "/api/reviews", async (s) => {
 
 route("GET", "/api/review", async (s, _req, url) => {
   const r = review(s, url);
-  const now = await pinned(s, r);
-  const pinnedNowAt = s.pinnedNow.get(r.id)?.at ?? null;
+  const pin = await pinOf(s, r);
+  const now = pin?.sha ?? null;
+  const pinnedNowAt = pin?.at ?? null;
   const status = await svc.status(s.ctx, r, { pinnedNow: now });
   const actions = actionsOf(s.ctx, s.modules).map((a) => ({ id: a.id, label: a.label, command: a.command, where: a.where }));
   const ui = { config: uiConfig(s.ctx), modules: enabled(s.ctx, s.modules).map((m) => m.id), actions };
@@ -125,7 +149,7 @@ route("POST", "/api/config", async (s, req) => {
 route("POST", "/api/now/refresh", async (s, _req, url) => {
   const r = review(s, url);
   const before = s.pinnedNow.get(r.id)?.sha ?? null;
-  const now = await pinned(s, r, true);
+  const now = (await pinOf(s, r, true))?.sha ?? null;
   s.watcher?.poke(r.id);
   return { sha: now, changed: now !== before };
 });
