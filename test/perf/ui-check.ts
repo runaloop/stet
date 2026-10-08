@@ -91,7 +91,9 @@ try {
   const plus = () => b.eval(`(() => { const btn = ${shadow}.querySelector("button"); const r = btn?.getBoundingClientRect(); return r && r.width ? { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) } : null; })()`) as Promise<{ x: number; y: number } | null>;
   const composer = () => b.eval(`document.querySelector(".codeview-host .new-thread .note")?.textContent ?? null`) as Promise<string | null>;
   const rect = (sel: string) => b.eval(`(() => { const r = document.querySelector(${JSON.stringify(sel)})?.getBoundingClientRect(); return r ? { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), top: Math.round(r.top) } : null; })()`) as Promise<{ x: number; y: number; top: number } | null>;
+  // a click by where an element is: once a change of view has faded in, the page under it no longer moves
   const click = async (sel: string) => {
+    await waitFor(`!document.querySelector(".view-fade")`, 2000);
     const r = await rect(sel);
     if (!r) return false;
     await pointer([{ type: "pointerMove", x: r.x, y: r.y }, { type: "pointerDown", button: 0 }, { type: "pointerUp", button: 0 }]);
@@ -428,7 +430,8 @@ try {
     check("marking a file viewed collapses it and counts it", collapsed.lines === 0 && collapsed.head.includes("1/4 viewed"), collapsed);
 
     await b.eval(`location.hash = "#/compare/base..1"; true`);
-    await waitFor(`document.querySelector(".codeview-footer")?.textContent.includes("show 1 test file")`, 8000);
+    // the footer follows the new range before the diff does: wait for the diff of base..1 (v2's HUNDRED_V2 gone)
+    await waitFor(`document.querySelector(".codeview-footer")?.textContent.includes("show 1 test file") && !document.querySelector(".view-fade") && [...document.querySelectorAll(".codeview-host diffs-container")].every(c => !c.shadowRoot.textContent.includes("HUNDRED_V2"))`, 8000);
     const names = () => b.eval(`[...document.querySelectorAll(".codeview-host diffs-container")].map(c => c.shadowRoot.textContent.includes("CacheTest.kt"))`) as Promise<boolean[]>;
     const before = await names();
     await b.eval(`document.querySelector(".codeview-footer .btn").click(); true`);
@@ -1336,14 +1339,20 @@ try {
     await sleep(150);
     await keys("");
     const mdClosed = await waitFor(`!document.querySelector(".md-view .new-thread")`, 3000);
-    const before7 = await b.eval(`Math.round(${md}.querySelector('.md-cell[data-side="new"] p[data-start="7"]').getBoundingClientRect().top)`);
     const jumpAt = await rect(`.md-view[data-file="docs/guide.md"] .md-cell[data-side="new"] p[data-start="7"]`);
     await pointer([{ type: "pointerMove", x: jumpAt!.x, y: jumpAt!.y }]);
     await waitFor(`document.querySelector(".md-gutter .md-jump")`, 3000);
+    const before7 = await b.eval(`Math.round(${md}.querySelector('.md-cell[data-side="new"] p[data-start="7"]').getBoundingClientRect().top)`);
     await click(".md-gutter .md-jump");
     const jumped = await waitFor(`(() => { const c = [...document.querySelectorAll(".codeview-host diffs-container")].find(c => c.shadowRoot.textContent.includes("Run it, then open the card")); const rows = c ? [...c.shadowRoot.querySelectorAll('[data-content] > [data-stet-mark~="cursor"]')] : []; return rows.length ? { rows: rows.map(r => r.getAttribute("data-line-type") + ":" + r.getAttribute("data-line")), top: Math.round(rows.find(r => r.getAttribute("data-line") === "7")?.getBoundingClientRect().top ?? -1), toggle: ${toggleOf("docs/guide.md")}?.textContent } : null; })()`, 8000);
-    await sleep(600);
-    const jumpSettled = await b.eval(`(() => { const c = [...document.querySelectorAll(".codeview-host diffs-container")].find(c => c.shadowRoot.textContent.includes("Run it, then open the card")); const r = [...c.shadowRoot.querySelectorAll('[data-content] > [data-stet-mark~="cursor"]')].find(r => r.getAttribute("data-line") === "7"); return r ? Math.round(r.getBoundingClientRect().top) : null; })()`);
+    // where the line ends up once the switch is over: the copy gone and the line still for ten frames
+    await waitFor(`!document.querySelector(".view-fade")`, 3000);
+    const jumpSettled = await b.eval(`new Promise(done => {
+      const top = () => { const c = [...document.querySelectorAll(".codeview-host diffs-container")].find(c => c.shadowRoot.textContent.includes("Run it, then open the card")); const r = c && [...c.shadowRoot.querySelectorAll('[data-content] > [data-stet-mark~="cursor"]')].find(r => r.getAttribute("data-line") === "7"); return r ? Math.round(r.getBoundingClientRect().top) : null; };
+      let last = top(), still = 0, frames = 0;
+      const f = () => { const now = top(); still = now === last ? still + 1 : 0; last = now; if (still >= 10 || ++frames > 180) done(now); else requestAnimationFrame(f); };
+      requestAnimationFrame(f);
+    })`);
     check(
       "i comments on the block under the cursor, on its side (a removed block: the old lines); its ‹/› shows the block's lines in the code where the block was, with the cursor on them",
       (oldBox?.includes("removed lines") ?? false) && (oldBox?.includes("lines 5") ?? false) && !!mdClosed && !!jumped && jumped.rows.includes("change-addition:7") && jumped.toggle.includes("rendered") && Math.abs(jumpSettled - before7) <= 3,
@@ -2024,7 +2033,7 @@ try {
     const diffAfter = await b.eval(diffState);
     check("a bar above a step's lines shows more of them; Esc goes back to the diff, which kept its scroll, cursor and address", !!moreLines && diffAfter === diffBefore, { moreLines, diffBefore, diffAfter });
     await keys(" ", "u", "g");
-    await waitFor(`document.querySelector(".guide .guide-step")`, 3000);
+    await waitFor(`document.querySelectorAll(".guide .guide-ref diffs-container").length === 2 && !document.querySelector(".view-fade")`, 5000);
     await click(".guide .guide-step[data-step='1'] a.guide-open");
     const landed = await waitFor(`(() => { const c = [...document.querySelectorAll(".codeview-host diffs-container")].find(x => x.shadowRoot.querySelector("[data-title]")?.textContent === "src/Guide.kt"); const rows = (tag) => [...(c?.shadowRoot.querySelectorAll('code[data-additions] [data-content] > [data-stet-mark~="' + tag + '"]') ?? [])].map(r => r.getAttribute("data-line")).join(); return !document.querySelector(".guide") && rows("cursor") === "10" ? { hash: location.hash, linked: rows("linked") } : null; })()`, 5000);
     check(
@@ -2519,9 +2528,10 @@ try {
     const hlA = hlOn("src/Spot.kt", "40-43", "why these four?");
     const hlB = hlOn("src/Spot.kt", "42-45", "and these?");
     const hlCode = `document.querySelector(".code-area diffs-container")?.shadowRoot`;
-    const hlMarks = () =>
-      b.eval(`(() => { const r = ${hlCode}; if (!r) return null; const rows = (t) => [...r.querySelectorAll('[data-content] > [data-stet-mark~="' + t + '"]')].map(e => +e.getAttribute("data-line")); const l = r.querySelector("[data-stet-label]");
-        return { spot: rows("spot"), dim: rows("dim"), flash: rows("flash").length, label: l ? l.getAttribute("data-stet-label") + "@" + l.getAttribute("data-column-number") : null }; })()`) as Promise<{ spot: number[]; dim: number[]; flash: number; label: string | null } | null>;
+    const hlMarksNow = `(() => { const r = ${hlCode}; if (!r) return null; const rows = (t) => [...r.querySelectorAll('[data-content] > [data-stet-mark~="' + t + '"]')].map(e => +e.getAttribute("data-line")); const l = r.querySelector("[data-stet-label]");
+        return { spot: rows("spot"), dim: rows("dim"), flash: rows("flash").length, label: l ? l.getAttribute("data-stet-label") + "@" + l.getAttribute("data-column-number") : null }; })()`;
+    type HlMarks = { spot: number[]; dim: number[]; flash: number; label: string | null } | null;
+    const hlMarks = () => b.eval(hlMarksNow) as Promise<HlMarks>;
     // scrolls the box that scrolls the code (its column, or the page) to its end
     const hlAway = () => b.eval(`(() => { let box = document.querySelector(".code-area").parentElement; while (box && !(box.scrollHeight > box.clientHeight && /auto|scroll/.test(getComputedStyle(box).overflowY))) box = box.parentElement; (box ?? document.scrollingElement).scrollTop = 1e6; document.activeElement?.blur(); return box?.className ?? "page"; })()`);
     const hlScope = (name: string) => b.eval(`[...document.querySelectorAll(".code-label .seg button")].find(x => x.textContent === ${JSON.stringify(name)}).click(); true`);
@@ -2533,7 +2543,8 @@ try {
     await hlAway();
     const hlButton = await waitFor(`document.querySelector(".thread-place .to-code")?.textContent ?? null`, 3000);
     await keys("g", "t");
-    const hlBack = await hlMarks();
+    // the marks are drawn a frame or two after the key: read them once the spot and the dimmed thread are there, while the flash is on
+    const hlBack = ((await waitFor(`(() => { const m = ${hlMarksNow}; return m && m.spot.length && m.dim.length && m.flash ? m : null; })()`, 900)) ?? (await hlMarks())) as HlMarks;
     const hlInView = await b.eval(`(() => { const row = ${hlCode}.querySelector('[data-content] > [data-stet-mark~="spot"]'); const r = row.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; })()`);
     const hlCards = await waitFor(`(() => { const dim = [...document.querySelectorAll(".code-area .anno .thread-mini.dim")].map(e => +e.dataset.thread); return dim.length ? dim : null; })()`, 1000);
     await sleep(1300);
@@ -2574,8 +2585,9 @@ try {
     const hlMdA = hlOn("docs/spot.md", "7-9", "paragraphs 3 and 4?");
     const hlMdB = hlOn("docs/spot.md", "9-11", "paragraphs 4 and 5?");
     const hlMd = `document.querySelector(".code-area .md-view")`;
-    const hlBlocks = () =>
-      b.eval(`(() => { const v = ${hlMd}; if (!v) return null; const text = (s) => [...v.querySelectorAll(s)].map(e => e.textContent.trim()); return { spot: text(".md-thread-spot"), dim: text(".md-thread-dim"), flash: v.querySelectorAll(".md-thread-flash").length, label: [...v.querySelectorAll("[data-spot]")].map(e => e.dataset.spot + "@" + e.textContent.trim()) }; })()`) as Promise<{ spot: string[]; dim: string[]; flash: number; label: string[] } | null>;
+    const hlBlocksNow = `(() => { const v = ${hlMd}; if (!v) return null; const text = (s) => [...v.querySelectorAll(s)].map(e => e.textContent.trim()); return { spot: text(".md-thread-spot"), dim: text(".md-thread-dim"), flash: v.querySelectorAll(".md-thread-flash").length, label: [...v.querySelectorAll("[data-spot]")].map(e => e.dataset.spot + "@" + e.textContent.trim()) }; })()`;
+    type HlBlocks = { spot: string[]; dim: string[]; flash: number; label: string[] } | null;
+    const hlBlocks = () => b.eval(hlBlocksNow) as Promise<HlBlocks>;
     await b.eval(`location.hash = "#/thread/${hlMdA}"; true`);
     await waitFor(`${hlMd}?.querySelector(".md-thread-focus")`, 10000);
     await hlScope("whole file");
@@ -2585,7 +2597,7 @@ try {
     const hlMdButton = await waitFor(`!!document.querySelector(".thread-place .to-code")`, 3000);
     const hlMdAway = await b.eval(`({ tops: [...document.querySelectorAll('.code-body [data-threads~="${hlMdA}"]')].map(e => Math.round(e.getBoundingClientRect().top)), page: document.scrollingElement.scrollTop, h: document.scrollingElement.scrollHeight, view: !!document.querySelector(".code-area .md-view"), paras: document.querySelectorAll(".code-area .md-view p").length })`);
     await keys("g", "t");
-    const hlMdBack = await hlBlocks();
+    const hlMdBack = ((await waitFor(`(() => { const m = ${hlBlocksNow}; return m && m.spot.length && m.dim.length && m.flash ? m : null; })()`, 900)) ?? (await hlBlocks())) as HlBlocks;
     const hlMdInView = await b.eval(`(() => { const r = ${hlMd}.querySelector(".md-thread-spot").getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; })()`);
     await sleep(4300);
     await b.eval(`document.querySelector('.code-area .md-threads .thread-mini[data-thread="${hlMdB}"]').scrollIntoView({ block: "center" }); true`);
