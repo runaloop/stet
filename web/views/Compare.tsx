@@ -4,12 +4,11 @@ import { render, type ComponentChild } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ComparePlacement } from "../../src/core/types.ts";
 import { api } from "../api.ts";
-import { cancelModules, headerControl, isPicture, isSwitchable, viewerByKind, viewerFor, webModules } from "../modules.tsx";
+import { cancelModules, headerControl, isPicture, isSwitchable, textViewer, viewerByKind, viewerFor, webModules } from "../modules.tsx";
 import { Kbd } from "../components/Bits.tsx";
 import { mount, workerPool } from "../components/Code.tsx";
 import { FileGitMarks } from "../components/GitState.tsx";
 import { GuideToggle, GuideView } from "../components/Guide.tsx";
-import { MarkdownView } from "../components/MarkdownView.tsx";
 import { hi, lo, PendingBox } from "../components/NewThread.tsx";
 import { askRestore, restorable } from "../components/Restore.tsx";
 import { ThreadMini } from "../components/ThreadMini.tsx";
@@ -17,9 +16,9 @@ import { CommitPicker } from "../components/CommitPicker.tsx";
 import { commitPicker, commits, isSha, loadCommits } from "../commits.ts";
 import {
   compareData,
+  compareHandle,
   baseFiles,
   changeReveal,
-  isWhole,
   revealNow,
   compareFiles,
   compareNav,
@@ -59,7 +58,6 @@ import {
   spotThread,
 } from "../compare.ts";
 import { MARK_CSS, paintMarks } from "../lib/marks.ts";
-import { isMarkdown } from "../../src/ui/markdown.ts";
 import { CHUNK, expansionOf, newLineOf, textLines, withSpan, type Reveal } from "../../src/ui/reveal.ts";
 import { rowPosition, type Cursor, type LineRange, type Seen } from "../../src/ui/cursor.ts";
 import { compareOrder } from "../../src/ui/nav.ts";
@@ -102,20 +100,7 @@ function FileMeta({ path }: { path: string }) {
       ) : null}
       {row?.keptBecause ? <span class="kept" title="a test file that is shown on purpose: tests are hidden only when they only add code">⚠ {row.keptBecause}</span> : null}
       <FileGitMarks path={path} />
-      {headerControl(path) ?? (isMarkdown(path) ? (
-        <button class="btn ghost small md-toggle" title="Markdown: show it rendered or as code" onClick={() => (compareHandle.current?.switchView ?? setFileView)(path, drawnFiles.value.has(path) ? "code" : "rendered")}>
-          {drawnFiles.value.has(path) ? "‹/› code" : "¶ rendered"}
-        </button>
-      ) : null)}
-      {isMarkdown(path) && fd && fd.type !== "new" && fd.type !== "deleted" ? (
-        <button
-          class={`btn ghost small md-whole${isWhole(path) ? " on" : ""}`}
-          title={isWhole(path) ? "show only the changes and the lines opened around them, rendered and as code" : "show the whole file, rendered and as code"}
-          onClick={() => (compareHandle.current?.wholeFile ?? ((p: string, on: boolean) => void changeReveal(p, (r) => ({ ...r, full: on }))))(path, !isWhole(path))}
-        >
-          full file
-        </button>
-      ) : null}
+      {headerControl(path)}
       <label class="viewed" title="mark as viewed: the file collapses until its content changes">
         <input type="checkbox" checked={isViewed(fd)} onChange={(e) => setViewed(fd, (e.target as HTMLInputElement).checked)} /> viewed
       </label>
@@ -183,17 +168,13 @@ function FoldSummary() {
   );
 }
 
-/** `markdown`, or the kind of a module's viewer. */
+/** The kind of the viewer that draws a file. */
 type Viewer = string;
 type Anno = { kind: "thread"; placement: ComparePlacement } | { kind: "new" } | { kind: "viewer"; viewer: Viewer; path: string; version: number };
 type SelectionContext = { item: { id: string; fileDiff?: FileDiffMetadata } };
 
-/**
- * What a file is drawn as instead of its lines: rendered Markdown unless the reader or `compare.markdown` picked its
- * code, or what a module's viewer draws it as.
- */
-function viewerOf(fd: FileDiffMetadata, placed: ComparePlacement[] | undefined): Viewer | null {
-  if (isMarkdown(fd.name)) return (fileView.value.get(fd.name) ?? markdownView.value) === "rendered" ? "markdown" : null;
+/** What a file is drawn as instead of its lines, as the viewer of its kind wants: rendered Markdown, a picture. */
+export function viewerOf(fd: FileDiffMetadata, placed: readonly ComparePlacement[] | undefined): Viewer | null {
   return viewerFor(fd, placed, fileView.value.get(fd.name))?.kind ?? null;
 }
 
@@ -207,12 +188,12 @@ type Expandable = { expandHunk: (hunk: number, direction: "up" | "down" | "both"
 const ownExpand = new WeakMap<Expandable, Expandable["expandHunk"]>();
 
 /**
- * The "show more" bars of a Markdown file's code open lines in the model its rendered view shares (they come back as
- * context of the file's diff), not in pierre's own state, so both views show the same lines.
+ * The "show more" bars of the code of a file of rendered text (Markdown) open lines in the model its rendered view
+ * shares (they come back as context of the file's diff), not in pierre's own state, so both views show the same lines.
  */
 function sharedExpansion(inst: Expandable, path: string): void {
   if (!ownExpand.has(inst)) ownExpand.set(inst, inst.expandHunk);
-  if (!isMarkdown(path)) {
+  if (!textViewer(path)) {
     inst.expandHunk = ownExpand.get(inst)!;
     return;
   }
@@ -428,10 +409,13 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     if (isPicture(path) || drawnFiles.peek().has(path)) settle({ type: "item", id: path, align: "start" });
   };
 
+  // a file of rendered text drawn rendered: the places in it are its blocks, not its lines
+  const inBlocks = (path: string) => !!textViewer(path) && drawnFiles.peek().has(path);
+
   const scrollToThread = (id: number) => {
     const p = order.find((x) => x.threadId === id);
     if (!p || !view.current) return false;
-    if (isMarkdown(p.path) && drawnFiles.peek().has(p.path)) {
+    if (inBlocks(p.path)) {
       whenLaidOut(p.path, () => {
         const block = cursorSpace.peek().locate(p.path, p.side, p.range.start);
         if (block) revealBlock(p.path, block.row, "center", p.side);
@@ -448,14 +432,14 @@ export function CompareView({ from, to }: { from: string; to: string }) {
 
   // Lines of an SVG shown as a picture or of rendered Markdown: show its code first.
   const codeOf = (path: string): boolean => {
-    if (!(isSwitchable(path) || isMarkdown(path)) || !drawnFiles.peek().has(path)) return false;
+    if (!isSwitchable(path) || !drawnFiles.peek().has(path)) return false;
     setFileView(path, "code");
     return true;
   };
 
   const scrollToLine = (path: string, side: Side, line: number, align: "center" | "start" = "center") => {
     const h = host.current;
-    const fade = h && (isSwitchable(path) || isMarkdown(path)) && drawnFiles.peek().has(path) ? coverView(h) : null;
+    const fade = h && isSwitchable(path) && drawnFiles.peek().has(path) ? coverView(h) : null;
     const switched = codeOf(path);
     const target: CodeViewScrollTarget = { type: "line", id: path, lineNumber: line, side, align, offset: align === "start" ? 60 : 0 };
     scrollOrQueue(target, reveal(path, true) || switched);
@@ -467,7 +451,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
   // A search hit in a rendered Markdown file goes to its block when the rendered text has the match; a match only the
   // source has (a link address, a picture's path, markup) shows the file as code.
   const showHit = (path: string, side: Side, line: number) => {
-    if (!(isMarkdown(path) && drawnFiles.peek().has(path))) return scrollToLine(path, side, line);
+    if (!inBlocks(path)) return scrollToLine(path, side, line);
     whenLaidOut(path, () => {
       const at = cursorSpace.peek().locate(path, side, line);
       const nav = at ? cursorSpace.peek().block(at) : null;
@@ -743,7 +727,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     const shown = diffRows(fd)
       .flatMap((r) => (side === "deletions" ? (r.kind !== "add" ? [r.old] : []) : r.kind !== "del" ? [r.new] : []))
       .filter((n): n is number => n !== null && n >= lines.start && n <= lines.end);
-    if (new Set(shown).size <= lines.end - lines.start && isMarkdown(path) && !opened) {
+    if (new Set(shown).size <= lines.end - lines.start && textViewer(path) && !opened) {
       const toNew = (n: number) => (side === "additions" ? n : newLineOf(fd.hunks, n));
       void changeReveal(path, (r) => withSpan(r, { start: toNew(lines.start), end: toNew(lines.end) })).then(() => {
         const again = () => latest.current.openTarget(path, line, side, lines.end, true);
@@ -752,7 +736,7 @@ export function CompareView({ from, to }: { from: string; to: string }) {
       });
       return;
     }
-    if (isMarkdown(path) && drawnFiles.peek().has(path)) {
+    if (inBlocks(path)) {
       reveal(path, true);
       whenLaidOut(path, () => {
         const c = cursorSpace.peek().locate(path, side, line);
@@ -906,7 +890,6 @@ export function CompareView({ from, to }: { from: string; to: string }) {
       renderAnnotation: (a: DiffLineAnnotation<Anno>) => {
         if (a.metadata.kind === "viewer") {
           const { path, version } = a.metadata;
-          if (a.metadata.viewer === "markdown") return viewer(path, version, <MarkdownView file={path} />, "anno md-anno");
           const own = viewerByKind(a.metadata.viewer);
           return own ? viewer(path, version, own.render(path), `anno ${own.cssClass}`) : undefined;
         }
@@ -1144,7 +1127,3 @@ export function openFocusedCompareThread(): boolean {
   navigate({ name: "thread", id });
   return true;
 }
-
-export const compareHandle: {
-  current: { order: ComparePlacement[]; scrollToThread: (id: number) => boolean; switchView: (path: string, to: "code" | "rendered") => void; wholeFile: (path: string, on: boolean) => void; cancelPending: () => void } | null;
-} = { current: null };

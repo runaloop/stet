@@ -1,14 +1,14 @@
 import { hydratePartialDiff, parsePatchFiles, type FileDiffMetadata, type SelectedLineRange } from "@pierre/diffs";
 import { batch, computed, effect, signal } from "@preact/signals";
-import type { CompareDto, GrepResultDto } from "../src/core/types.ts";
+import type { CompareDto, ComparePlacement, GrepResultDto } from "../src/core/types.ts";
 import { DEFAULT_COLLAPSE_GLOBS, DEFAULT_SKIP_MARKERS, foldOf, parseList, type FoldDecision } from "../src/ui/fold.ts";
 import { landingTab } from "../src/ui/filters.ts";
 import { isViewedIn, unviewKeys, viewedIndex, viewedKey } from "../src/ui/viewed.ts";
 import type { LineMark, Spot } from "../src/ui/marks.ts";
 import { CursorSpace, rowPosition, type Cursor, type CursorFile, type LineRange, type NavBlock, type Seen } from "../src/ui/cursor.ts";
-import { isMarkdown } from "../src/ui/markdown.ts";
 import { NOTHING, revealedPatch, type Reveal } from "../src/ui/reveal.ts";
 import { api } from "./api.ts";
+import { textViewer } from "./modules.tsx";
 import { compileQuery, diffRows, flatHits, matchRanges, searchDiff, type Hit, type Side } from "../src/ui/search.ts";
 import { clampStep } from "../src/ui/timeline.ts";
 import * as ui from "../src/ui/compare.ts";
@@ -40,8 +40,9 @@ export const compareData = signal<CompareDto | null>(null);
 export const baseFiles = signal<FileDiffMetadata[] | null>(null);
 
 /**
- * Lines of Markdown files shown beyond their hunks, in the code and rendered alike: what the reader opened, and the
- * files shown whole. Opened lines last for the range shown; a file shown whole stays so while the page is open.
+ * Lines of files of rendered text (Markdown) shown beyond their hunks, in the code and rendered alike: what the reader
+ * opened, and the files shown whole. Opened lines last for the range shown; a file shown whole stays so while the page
+ * is open.
  */
 export const reveals = signal<ReadonlyMap<string, Reveal>>(new Map());
 
@@ -70,7 +71,7 @@ function withRevealed(fd: FileDiffMetadata, reveal: Reveal, d: CompareDto): File
   return out;
 }
 
-/** The files of the diff as the page shows them: a Markdown file with lines the reader opened has them as context. */
+/** The files of the diff as the page shows them: a file of rendered text with lines the reader opened has them as context. */
 export const compareFiles = computed<FileDiffMetadata[] | null>(() => {
   const base = baseFiles.value;
   const d = compareData.value;
@@ -78,7 +79,7 @@ export const compareFiles = computed<FileDiffMetadata[] | null>(() => {
   if (!base || !d || !r.size) return base;
   return base.map((fd) => {
     const reveal = r.get(fd.name);
-    return reveal && isMarkdown(fd.name) ? withRevealed(fd, reveal, d) : fd;
+    return reveal && textViewer(fd.name) ? withRevealed(fd, reveal, d) : fd;
   });
 });
 
@@ -94,13 +95,13 @@ effect(() => {
 export const isWhole = (path: string): boolean => reveals.value.get(path)?.full ?? false;
 
 /**
- * Changes what a Markdown file shows beyond its hunks, once both its texts are loaded. A cursor on its lines stays on
- * the same line; one on its rendered blocks follows its block when the blocks are laid out again.
+ * Changes what a file of rendered text (Markdown) shows beyond its hunks, once both its texts are loaded. A cursor on
+ * its lines stays on the same line; one on its rendered blocks follows its block when the blocks are laid out again.
  */
 export async function changeReveal(path: string, next: (r: Reveal) => Reveal): Promise<void> {
   const d = compareData.peek();
   const fd = baseFiles.peek()?.find((f) => f.name === path);
-  if (!d || !fd || !isMarkdown(path)) return;
+  if (!d || !fd || !textViewer(path)) return;
   if (!revealNow(path, next)) {
     await Promise.all([fd.type === "new" ? null : api.blob(d.from.sha, fd.prevName ?? path), fd.type === "deleted" ? null : api.blob(d.to.sha, path)]).catch(() => null);
     if (compareData.peek() === d) revealNow(path, next);
@@ -422,6 +423,11 @@ export interface CompareHandle {
 }
 
 export const compareNav: { current: CompareHandle | null } = { current: null };
+
+/** The Changes page's threads in its order, and what its file headers and keys ask of it. */
+export const compareHandle: {
+  current: { order: ComparePlacement[]; scrollToThread: (id: number) => boolean; switchView: (path: string, to: "code" | "rendered") => void; wholeFile: (path: string, on: boolean) => void; cancelPending: () => void } | null;
+} = { current: null };
 
 /** What a thread's code or the guide's does for the cursor and comments: the part of the Changes page's handle it has. */
 export type CodeHandle = Pick<CompareHandle, "revealCursor" | "cursorElement" | "inSight" | "startComment" | "submitComment" | "restoreLines" | "cancelComment" | "pageRows" | "pageFrom" | "showCode">;

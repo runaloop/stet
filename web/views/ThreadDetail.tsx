@@ -6,8 +6,8 @@ import { api } from "../api.ts";
 import { useBlob } from "../components/useBlob.ts";
 import { ago, Badge, Kbd, rangeText, ThreadBadges, threadRefs, ThreadRef, StateBadge, whereText } from "../components/Bits.tsx";
 import { DiffView } from "../components/Code.tsx";
-import { AreaHint, ThreadArea } from "../modules.tsx";
-import { RenderedMarkdown, spansOf, type MdThread } from "../components/MarkdownView.tsx";
+import { AreaHint, textViewer, ThreadArea } from "../modules.tsx";
+import { spansOf, type MdThread } from "../components/MarkdownView.tsx";
 import {
   codeFocus,
   cursor,
@@ -15,7 +15,6 @@ import {
   cursorSpace,
   hoverThread,
   leaveCode,
-  markdownView,
   pendingLines,
   setCursor,
   spotted,
@@ -41,7 +40,6 @@ import { swapped, toggleSwap } from "../layout.ts";
 import { transition } from "../transition.ts";
 import { latchNew, openAtNews } from "../msgs.ts";
 import { stepThread, stepUnread } from "../../src/ui/nav.ts";
-import { isMarkdown } from "../../src/ui/markdown.ts";
 import { contextPatch, filePatch, regionPatch } from "../../src/ui/region.ts";
 import { snapshot, visibleBox, type Fade } from "../lib/fade.ts";
 import { drawnLines } from "../lib/marks.ts";
@@ -184,8 +182,8 @@ function CodeBlock({ d, from, to }: { d: Detail; from: TimelineStepDto; to: Time
     return hydrated(patch, `file-${d.thread.id}-${from.sha}-${to.sha}`, oldFile, newFile);
   }, [scope, oldFile, newFile, to.range?.start, to.range?.end]);
 
-  const md = !!to.path && isMarkdown(to.path);
-  const rendered = md && (mdView.value ?? markdownView.value) === "rendered";
+  const md = to.path ? textViewer(to.path) : null;
+  const rendered = !!md && (mdView.value ?? md.text.view()) === "rendered";
   // a Markdown file: every change of it, and the lines its code and its rendered text show alike, the scope's and
   // those opened on the bars between them
   const [opened, setOpened] = useState<Reveal>(NOTHING);
@@ -537,29 +535,25 @@ function CodeBlock({ d, from, to }: { d: Detail; from: TimelineStepDto; to: Time
             <button class={scope === s ? "on" : ""} onClick={() => setScope(s)}>{text}</button>
           ))}
         </span>
-        {isMarkdown(to.path) ? (
-          <button class="btn ghost small md-toggle" title="Markdown: show it rendered or as code" onClick={toggle}>
-            {rendered ? "‹/› code" : "¶ rendered"}
-          </button>
-        ) : null}
+        {md ? md.text.toggle({ rendered, onClick: toggle }) : null}
       </div>
       <div class="code-body" ref={body}>
-      {rendered ? (
+      {rendered && md ? (
         whole && (scope === "file" || shared) ? (
-          <div class="md-anno" ref={mdHost}>
-            <RenderedMarkdown
-              file={to.path}
-              fd={whole}
-              old={single ? { sha: to.sha, path: to.path, label: to.label } : { sha: from.sha, path: from.path!, label: from.label }}
-              now={{ sha: to.sha, path: to.path, label: to.label }}
-              split={!single && diffStyle.value === "split"}
-              threads={mdThreads}
-              shown={shared ? spansOf(shared.hunks) : null}
-              onReveal={open}
-              cardOf={cardOf}
-              live
-              onStops={setStops}
-            />
+          <div class={md.cssClass} ref={mdHost}>
+            {md.text.draw({
+              file: to.path,
+              fd: whole,
+              old: single ? { sha: to.sha, path: to.path, label: to.label } : { sha: from.sha, path: from.path!, label: from.label },
+              now: { sha: to.sha, path: to.path, label: to.label },
+              split: !single && diffStyle.value === "split",
+              threads: mdThreads,
+              shown: shared ? spansOf(shared.hunks) : null,
+              onReveal: open,
+              cardOf,
+              live: true,
+              onStops: setStops,
+            })}
           </div>
         ) : (
           <div class="note">loading…</div>

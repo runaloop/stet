@@ -1,4 +1,5 @@
 import "./web.css";
+import { imageType } from "../../src/core/media.ts";
 import { drawnFiles, setFileView } from "../../web/compare.ts";
 import type { Binding } from "../../web/keys.ts";
 import type { WebModule } from "../../web/modules.tsx";
@@ -20,6 +21,7 @@ export default {
   viewers: [
     {
       kind: "image",
+      match: (path) => imageType(path) !== null,
       cssClass: "img-anno",
       // a picture for an image git calls binary, or for an SVG unless the reader picked its code or lines of it have threads
       wants(fd, placed, view) {

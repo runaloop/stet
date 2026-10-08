@@ -4,13 +4,17 @@ import type { VNode } from "preact";
 import { areaText, regionText } from "../src/core/media.ts";
 import type { ComparePlacement, Region, ThreadDetail, TimelineStepDto } from "../src/core/types.ts";
 import type { FileView, Peek } from "./compare.ts";
+import type { RenderedProps } from "./components/MarkdownView.tsx";
 import type { Binding } from "./keys.ts";
+import { markdownViewer } from "./markdown.tsx";
 import { WEB_MODULES } from "./modules.gen.ts";
 import { status } from "./state.ts";
 
-/** A file the Changes page draws instead of showing its lines. */
+/** A kind of file the Changes page draws instead of showing its lines: the core's Markdown, or a module's. */
 export interface FileViewer {
   kind: string;
+  /** The files of its kind, whether it draws them now or they show as code. */
+  match(path: string): boolean;
   /** Classes of the box it is drawn in, besides the core's `anno`. */
   cssClass: string;
   wants(fd: FileDiffMetadata, placed: readonly ComparePlacement[] | undefined, view: FileView | undefined): boolean;
@@ -21,6 +25,21 @@ export interface FileViewer {
   /** A control on the file's header, e.g. the switch between the drawing and the code. */
   header?(path: string): VNode | null;
   render(path: string): VNode;
+  /** For text it renders, as Markdown: how that is drawn wherever the file's lines are shown. */
+  text?: RenderedText;
+}
+
+/**
+ * Text drawn rendered, in blocks, on the Changes page, in a thread's code and in the guide. The cursor steps through the
+ * blocks, a jump to lines lands on the block that holds them, and the lines opened around the changes show in the
+ * rendered text and in the code alike.
+ */
+export interface RenderedText {
+  /** How such a file shows until the reader switches it. */
+  view(): FileView;
+  draw(p: RenderedProps): VNode;
+  /** The switch between the rendered text and the code. */
+  toggle(p: { rendered: boolean; onClick: () => void }): VNode;
 }
 
 /** Places in the core's views a module draws into; each has a core fallback. */
@@ -47,19 +66,38 @@ export interface WebModule {
   cancel?(): void;
 }
 
-/** The web parts of the modules on in the review's repository; every one built until the review says. */
+let lastOn = WEB_MODULES;
+
+/**
+ * The web parts of the modules on in the review's repository; every one built until the review says. It stays the same
+ * list while the same modules are on: the diff's files and items, which ask it, are not made again on every status.
+ */
 export const webModules = computed(() => {
   const on = status.value?.ui?.modules;
-  return on ? WEB_MODULES.filter((m) => on.includes(m.id)) : WEB_MODULES;
+  const now = on ? WEB_MODULES.filter((m) => on.includes(m.id)) : WEB_MODULES;
+  if (now.length !== lastOn.length || now.some((m, i) => m !== lastOn[i])) lastOn = now;
+  return lastOn;
 });
 
-const viewers = () => webModules.value.flatMap((m) => m.viewers ?? []);
+/** The viewers of the core's kinds of file, in every build: they come before the modules'. */
+const CORE_VIEWERS: readonly FileViewer[] = [markdownViewer];
+
+const viewers = () => [...CORE_VIEWERS, ...webModules.value.flatMap((m) => m.viewers ?? [])];
 
 export function viewerFor(fd: FileDiffMetadata, placed: readonly ComparePlacement[] | undefined, view: FileView | undefined): FileViewer | null {
   return viewers().find((v) => v.wants(fd, placed, view)) ?? null;
 }
 
 export const viewerByKind = (kind: string): FileViewer | null => viewers().find((v) => v.kind === kind) ?? null;
+
+/** The viewer of the kind of `path` when it renders the file's text, whether the file is drawn now or not. */
+export function textViewer(path: string): (FileViewer & { text: RenderedText }) | null {
+  const v = viewers().find((x) => x.match(path));
+  return v && renders(v) ? v : null;
+}
+
+const renders = (v: FileViewer): v is FileViewer & { text: RenderedText } => v.text !== undefined;
+
 export const isPicture = (path: string): boolean => viewers().some((v) => v.picture?.(path));
 export const isSwitchable = (path: string): boolean => viewers().some((v) => v.switchable?.(path));
 

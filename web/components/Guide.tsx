@@ -13,7 +13,6 @@ import {
   guideKeys,
   guideNav,
   leaveCode,
-  markdownView,
   pendingLines,
   setCursor,
   shownPlacements,
@@ -26,7 +25,6 @@ import { notInGuide, refLabel, refPatch, refShown, threadsOn } from "../../src/u
 import { guideHtml } from "../lib/guide.ts";
 import { carry, type Cursor, type LineRange, type NavBlock, type Seen, type Span } from "../../src/ui/cursor.ts";
 import { snapshot, visibleBox, type Fade } from "../lib/fade.ts";
-import { isMarkdown } from "../../src/ui/markdown.ts";
 import { drawnLines } from "../lib/marks.ts";
 import type { LineMark } from "../../src/ui/marks.ts";
 import { CHUNK, expansionOf, hydrateSubset, textLines } from "../../src/ui/reveal.ts";
@@ -35,12 +33,13 @@ import { diffRows, type Side } from "../../src/ui/search.ts";
 import { diffStyle, guard, navigate, notify, reloadAll, reviewId, routeHash, threads, wrap, type Route } from "../state.ts";
 import { Badge, Kbd, rangeText } from "./Bits.tsx";
 import { DiffView } from "./Code.tsx";
-import { RenderedMarkdown, spansOf } from "./MarkdownView.tsx";
+import { spansOf } from "./MarkdownView.tsx";
 import { hi, lo, PendingBox } from "./NewThread.tsx";
 import { askRestore, restorable } from "./Restore.tsx";
 import { ThreadMini } from "./ThreadMini.tsx";
 import { useBlob } from "./useBlob.ts";
 import { blocksInSight, linesInSight, stopElement } from "../views/anchor.ts";
+import { textViewer } from "../modules.tsx";
 
 export function GuideToggle() {
   const n = guideVersion.value;
@@ -121,8 +120,8 @@ function RefBlock({ d, from, to, r, k }: { d: CompareDto; from: string; to: stri
   const rows = useMemo(() => (diff ? diffRows(diff) : null), [diff]);
   const folded = !!rows && isFolded(k, rows.length);
   const path = fd?.name ?? r.path;
-  const md = isMarkdown(path);
-  const rendered = md && (guideViews.value.get(k) ?? markdownView.value) === "rendered";
+  const md = textViewer(path);
+  const rendered = !!md && (guideViews.value.get(k) ?? md.text.view()) === "rendered";
   const [stops, setStops] = useState<readonly NavBlock[] | null>(null);
   useEffect(() => {
     if (!rendered) setStops(null);
@@ -222,11 +221,7 @@ function RefBlock({ d, from, to, r, k }: { d: CompareDto; from: string; to: stri
           </span>
         ) : null}
         <span class="spacer" />
-        {md && !note ? (
-          <button class="btn ghost small md-toggle" title="Markdown: show it rendered or as code" onClick={() => switchView(k, rendered ? "code" : "rendered")}>
-            {rendered ? "‹/› code" : "¶ rendered"}
-          </button>
-        ) : null}
+        {md && !note ? md.text.toggle({ rendered, onClick: () => switchView(k, rendered ? "code" : "rendered") }) : null}
         <a class="guide-open" title="the normal diff at exactly these lines" {...diffLink(refRoute(d, from, to, r, fd))}>
           open in Diff
         </a>
@@ -237,24 +232,24 @@ function RefBlock({ d, from, to, r, k }: { d: CompareDto; from: string; to: stri
         <button class="guide-unfold" onClick={() => foldRef(k, false)}>
           ▸ show {rows!.length} line{rows!.length === 1 ? "" : "s"}
         </button>
-      ) : diff && rendered ? (
+      ) : diff && rendered && md ? (
         <div class="guide-code">
           {blocksShown ? (
-            <div class="md-anno">
-              <RenderedMarkdown
-                file={path}
-                id={k}
-                fd={fd ?? NO_CHANGE}
-                old={!fd ? { sha: d.to.sha, path, label: d.to.label } : fd.type === "new" ? null : { sha: d.from.sha, path: oldPath, label: d.from.label }}
-                now={deleted ? null : { sha: d.to.sha, path, label: d.to.label }}
-                split={diffStyle.value === "split"}
-                threads={on.map((x) => x.placement)}
-                shown={blocksShown}
-                onReveal={(span) => setMore((m) => [...m, span])}
-                live
-                linked={linked}
-                onStops={setStops}
-              />
+            <div class={md.cssClass}>
+              {md.text.draw({
+                file: path,
+                id: k,
+                fd: fd ?? NO_CHANGE,
+                old: !fd ? { sha: d.to.sha, path, label: d.to.label } : fd.type === "new" ? null : { sha: d.from.sha, path: oldPath, label: d.from.label },
+                now: deleted ? null : { sha: d.to.sha, path, label: d.to.label },
+                split: diffStyle.value === "split",
+                threads: on.map((x) => x.placement),
+                shown: blocksShown,
+                onReveal: (span) => setMore((m) => [...m, span]),
+                live: true,
+                linked,
+                onStops: setStops,
+              })}
             </div>
           ) : (
             <div class="note">loading…</div>

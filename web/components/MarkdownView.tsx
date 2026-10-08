@@ -331,7 +331,7 @@ export interface MdShown {
   new: readonly Span[];
 }
 
-interface RenderedProps {
+export interface RenderedProps {
   file: string;
   /** What the cursor calls the file when it is not its path (a guide's step): the view goes by it. */
   id?: string;

@@ -3,6 +3,7 @@ import {
   codeFocus,
   codeLines,
   compareData,
+  compareHandle,
   compareNav,
   copyLinesUrl,
   cursor,
@@ -62,7 +63,7 @@ import {
   status,
   wrap,
 } from "./state.ts";
-import { compareHandle, openFocusedCompareThread, stepCompareThread } from "./views/Compare.tsx";
+import { openFocusedCompareThread, stepCompareThread } from "./views/Compare.tsx";
 import { jumpBack, jumpForward } from "./jumps.ts";
 import { resetLayout, swapped, toggleSwap, type SwapPage } from "./layout.ts";
 import { findUsages } from "./usages.ts";
