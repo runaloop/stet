@@ -2,7 +2,8 @@ import type { Ctx } from "./context.ts";
 import { usage } from "./context.ts";
 import { GUIDE_KEY } from "./guide.ts";
 import type { ConfigKeySpec, ModuleSpec } from "./module.ts";
-import { built, enabled } from "./modules.ts";
+import { built, enabled, orderPresets } from "./modules.ts";
+import { orderProblem } from "../ui/order.ts";
 
 /** The repository's settings of the core, `stet config get/set`; enabled modules add their own. */
 export const CORE_CONFIG: ConfigKeySpec[] = [
@@ -11,7 +12,13 @@ export const CORE_CONFIG: ConfigKeySpec[] = [
   { key: "compare.tests", ui: "read", scope: "repo" },
   { key: "compare.skip_markers", ui: "read", scope: "repo" },
   { key: "compare.collapse", ui: "read", scope: "repo" },
-  { key: "compare.order", ui: "read", scope: "repo" },
+  {
+    key: "compare.order",
+    help: "kinds or a module's preset, or groups of your own; default kinds",
+    ui: "read",
+    scope: "repo",
+    check: (value, ctx, from) => orderProblem(value, orderPresets(ctx, from)),
+  },
   {
     key: "compare.markdown",
     values: ["rendered", "code"],
@@ -54,9 +61,11 @@ export function configKey(ctx: Ctx, key: string | undefined, usageText: string):
   return spec;
 }
 
-/** A value `spec` takes; null unsets it. */
-export function configValue(spec: ConfigKeySpec, value: string | null): string | null {
+/** A value `spec` takes in the repository of `ctx` with the modules `from`; null unsets it. Without `ctx`, only `spec.values` are checked. */
+export function configValue(spec: ConfigKeySpec, value: string | null, ctx?: Ctx, from: readonly ModuleSpec[] = built()): string | null {
   if (spec.values && value !== null && !spec.values.includes(value)) throw usage(`${spec.key} takes ${spec.values.join(" or ")}`);
+  const problem = ctx && value !== null ? spec.check?.(value, ctx, from) : null;
+  if (problem) throw usage(problem);
   return value;
 }
 

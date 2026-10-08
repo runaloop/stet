@@ -3,8 +3,9 @@ import { help, main } from "../src/cli/commands.ts";
 import { builtConfig, configKeys, configValue, switchOf } from "../src/core/config.ts";
 import { openContext, type Ctx } from "../src/core/context.ts";
 import type { ModuleSpec } from "../src/core/module.ts";
-import { commandsOf, enabled, kindOf } from "../src/core/modules.ts";
+import { commandsOf, enabled, kindOf, orderPresets } from "../src/core/modules.ts";
 import { lists, withoutArg } from "../scripts/modules.ts";
+import { ok, stet } from "./helpers/cli.ts";
 import { Fixture } from "./helpers/fixture.ts";
 
 const ctxWith = (meta: Record<string, string>) => ({ store: { meta: (k: string) => meta[k] ?? null } }) as unknown as Ctx;
@@ -39,6 +40,39 @@ describe("kinds of file", () => {
     expect(kindOf(ctxWith({ "modules.images": "off" }), "notes.MARKDOWN")?.id).toBe("markdown");
     expect(kindOf(ctxWith({ "modules.images": "off" }), "res/card.png")).toBeNull();
     expect(kindOf(ctxWith({}), "src/a.ts")).toBeNull();
+  });
+});
+
+describe("orders of files", () => {
+  const repo = new Fixture();
+  repo.write("a.txt", "x\n").commit("init");
+  afterAll(() => repo.cleanup());
+  const lanes: ModuleSpec = { id: "lanes", label: "lanes", default: "on", orderPresets: [{ id: "lanes", label: "By lane", describe: "a lane per folder", groups: "web: web/**; code" }] };
+  const order = builtConfig([]).find((k) => k.key === "compare.order")!;
+
+  test("a module's preset is listed while the module is on, and compare.order refuses it while it is off", () => {
+    const on = ctxWith({});
+    const off = ctxWith({ "modules.lanes": "off" });
+    expect(orderPresets(on, [lanes]).map((p) => p.id)).toEqual(["kinds", "lanes"]);
+    expect(orderPresets(off, [lanes]).map((p) => p.id)).toEqual(["kinds"]);
+    expect(configValue(order, "lanes", on, [lanes])).toBe("lanes");
+    expect(() => configValue(order, "lanes", off, [lanes])).toThrow("no order preset 'lanes'; known: kinds;");
+    expect(() => configValue(order, "lane", on, [lanes])).toThrow("no order preset 'lane'; known: kinds, lanes;");
+  });
+
+  test("compare.order takes the core's preset, groups of one's own, or no value", () => {
+    const ctx = ctxWith({});
+    expect(configValue(order, "kinds", ctx, [])).toBe("kinds");
+    expect(configValue(order, "docs: **/*.md; code", ctx, [])).toBe("docs: **/*.md; code");
+    expect(configValue(order, null, ctx, [])).toBeNull();
+  });
+
+  test("stet config set compare.order takes a preset of the build and refuses an id none has", async () => {
+    expect((await ok(stet(["config", "set", "compare.order", "kinds"], { cwd: repo.root }))).value).toBe("kinds");
+    const bad = await stet(["config", "set", "compare.order", "by-path"], { cwd: repo.root });
+    expect(bad.code).not.toBe(0);
+    expect(bad.stderr + bad.stdout).toContain("no order preset 'by-path'; known: kinds;");
+    expect((await ok(stet(["config", "get", "compare.order"], { cwd: repo.root }))).value).toBe("kinds");
   });
 });
 

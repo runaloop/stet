@@ -115,7 +115,7 @@ route("POST", "/api/config", async (s, req) => {
   const key = spec.key;
   if (spec.ui !== "write") throw forbidden(`${key} is set with stet config set, not from the page`);
   if (typeof b.value !== "string") throw usage("value must be a string");
-  const value = configValue(spec, b.value);
+  const value = configValue(spec, b.value, s.ctx, s.modules);
   s.ctx.store.setMeta(key, value);
   return { key, value };
 });

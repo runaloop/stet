@@ -1,4 +1,5 @@
 import { MODULES } from "../modules.gen.ts";
+import { CORE_PRESETS, type OrderPreset } from "../ui/order.ts";
 import { CORE_ACTIONS } from "./actions.ts";
 import { StetError, usage, type Ctx } from "./context.ts";
 import { CORE_KINDS } from "./kinds.ts";
@@ -34,6 +35,11 @@ export function fileKinds(ctx: Ctx): FileKind[] {
 
 export function kindOf(ctx: Ctx, path: string): FileKind | null {
   return fileKinds(ctx).find((k) => k.match(path)) ?? null;
+}
+
+/** The orders of files `compare.order` may name: the core's presets, then the enabled modules'. */
+export function orderPresets(ctx: Ctx, from: readonly ModuleSpec[] = MODULES): OrderPreset[] {
+  return [...CORE_PRESETS, ...enabled(ctx, from).flatMap((m) => m.orderPresets ?? [])];
 }
 
 /** The CLI commands modules bring, each with the module it belongs to. */

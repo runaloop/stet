@@ -1,4 +1,5 @@
 import type { Options, Parsed } from "../cli/args.ts";
+import type { OrderPreset } from "../ui/order.ts";
 import type { Ctx } from "./context.ts";
 import type { ReviewRow } from "./store/db.ts";
 
@@ -21,6 +22,8 @@ export interface ModuleSpec {
   cli?: CommandSpec[];
   config?: ConfigKeySpec[];
   fileKinds?: FileKind[];
+  /** Orders of files `compare.order` may name while the module is on; the page sorts by them through its web part. */
+  orderPresets?: OrderPreset[];
   actions?: ActionDef[];
 }
 
@@ -47,6 +50,8 @@ export interface ConfigKeySpec {
   ui: false | "read" | "write";
   /** Where the value lives. There is no user layer yet: every key is `repo`, stored in the repository's database. */
   scope: "repo" | "user";
+  /** Why the repository cannot take `value`, e.g. a name only a module that is off knows; null when it can. */
+  check?(value: string, ctx: Ctx, from: readonly ModuleSpec[]): string | null;
 }
 
 /** A kind of file the core treats as more than lines. */

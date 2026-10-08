@@ -641,7 +641,7 @@ const commands: Record<string, Command> = {
       const spec = configKey(ctx, rawKey, "usage: stet config set <key> <value> | --unset <key>");
       const key = spec.key;
       if (value === undefined && !bool(p, "unset")) throw usage("usage: stet config set <key> <value> | --unset <key>");
-      ctx.store.setMeta(key, configValue(spec, bool(p, "unset") ? null : value!));
+      ctx.store.setMeta(key, configValue(spec, bool(p, "unset") ? null : value!, ctx));
       emit(p, { key, value: bool(p, "unset") ? null : value }, () => `${key} = ${value ?? "(unset)"}`);
     },
   },
