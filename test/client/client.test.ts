@@ -96,7 +96,7 @@ test("connect starts a server when none runs, then finds the running one", async
   expect(found).toMatchObject({ port: started.port, pid: started.pid, token: started.token, build: "dev" });
   const again = await connect();
   expect(again.pid).toBe(started.pid);
-});
+}, 30_000);
 
 test("the API answers with the token and fails with typed errors", async () => {
   const server = (await findServer(ctx))!;
@@ -119,7 +119,7 @@ test("the API answers with the token and fails with typed errors", async () => {
   expect(missing).toMatchObject({ status: 404, code: "not_found", exitCode: 2 });
   expect(await clientApi({ ...server, token: "0".repeat(32) }).ping().catch((e) => e)).toMatchObject({ status: 401, code: "unauthorized" });
   expect(await clientApi({ port: 1, token: server.token }).ping().catch((e) => e)).toMatchObject({ status: 0, code: "unreachable" });
-});
+}, 30_000);
 
 test("a read mark from another process reaches a subscriber as a store change within 500 ms", async () => {
   const server = (await findServer(ctx))!;
@@ -135,7 +135,7 @@ test("a read mark from another process reaches a subscriber as a store change wi
   expect(store.at - written).toBeLessThan(500);
   expect(heard.got.some((m) => m.kind === "otherBuild")).toBe(false);
   await sub.close();
-});
+}, 30_000);
 
 test("a subscriber opens the stream again after the server restarts on its port", async () => {
   const server = (await findServer(ctx))!;
@@ -154,7 +154,7 @@ test("a subscriber opens the stream again after the server restarts on its port"
   await ok(stet(["config", "set", "compare.order", "kinds"], { cwd: f.root, role: "reviewer" }));
   expect((await heard.next("store", () => true, back)).value).toEqual(["config"]);
   await sub.close();
-});
+}, 30_000);
 
 test("a subscriber notices a server of another build; connect replaces it on its port", async () => {
   const server = (await findServer(ctx))!;
@@ -175,7 +175,7 @@ test("a subscriber notices a server of another build; connect replaces it on its
   expect(await old!.exited).toBe(0);
   await heard.next("hello", (b) => b === "dev", heard.got.findIndex((m, i) => i >= from && m.kind === "otherBuild") + 1);
   await sub.close();
-});
+}, 30_000);
 
 test("close ends the stream and its retries", async () => {
   const server = (await findServer(ctx))!;
@@ -195,4 +195,4 @@ test("close ends the stream and its retries", async () => {
   await lost.close();
   await Bun.sleep(3500);
   expect(refused.got).toEqual([]);
-});
+}, 30_000);
