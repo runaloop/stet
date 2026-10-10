@@ -10,6 +10,9 @@ const ACCEPTED_SEMGREP: { rule: string; path: string; why: string }[] = [
   { rule: "regex_dos", path: "src/ui/versions.ts", why: "/^\\d+$/ on a version ref: linear, no nested quantifiers" },
   { rule: "regex_dos", path: "src/ui/search.ts", why: "the reviewer's own search, run in their own review UI on their own machine; the flagged line is /[A-Z]/" },
   { rule: "regex_dos", path: "src/ui/markdown.ts", why: "anchored URL-scheme, ?query and #L<line> patterns on a link of the Markdown file: linear, no nested quantifiers" },
+  { rule: "regex_dos", path: "src/core/blame.ts", why: "NAME_EDGE tests one character and NAME_GOES_ON is anchored and looks at most two: constant patterns, no quantifiers, on a reply's text" },
+  { rule: "express_xss", path: "src/cli/commands.ts", why: "out() writes the CLI's own output to stdout or stderr of a terminal or pipe, not an HTTP response" },
+  { rule: "node_logic_bypass", path: "web/components/Blame.tsx", why: "picks which compare a blame link opens from the origin the server sent; navigation in the reviewer's own page, not an access decision" },
   { rule: "node_insecure_random_generator", path: "scripts/guide/lib.ts", why: "picks a debugging port for a local headless Firefox that takes the guide screenshots; not a secret" },
   { rule: "node_timing_attack", path: "web/state.ts", why: "compares location.hash, not a secret" },
 ];
