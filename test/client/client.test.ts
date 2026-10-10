@@ -4,7 +4,7 @@ import { ApiError, clientApi } from "../../src/client/api.ts";
 import { subscribe, type Live } from "../../src/client/live.ts";
 import { findServer, stop } from "../../src/client/server.ts";
 import { findReview, openContext, type Ctx } from "../../src/core/context.ts";
-import type { RunningServer } from "../../src/server/info.ts";
+import { alive, type RunningServer } from "../../src/server/info.ts";
 import { stet, ok } from "../helpers/cli.ts";
 import { Fixture, GIT_ENV, lines } from "../helpers/fixture.ts";
 
@@ -13,6 +13,8 @@ let ctx: Ctx;
 let review = 0;
 let thread = 0;
 let old: ReturnType<typeof Bun.spawn> | null = null;
+/** Servers `connect` started: a failed test may leave one that server.json no longer names. */
+const started = new Set<number>();
 
 beforeAll(async () => {
   f.write("a.kt", lines(20));
@@ -29,6 +31,7 @@ afterAll(async () => {
   old?.kill();
   await old?.exited;
   await stop(ctx);
+  for (const pid of started) if (alive(pid)) process.kill(pid, "SIGTERM");
   ctx.store.close();
   f.cleanup();
 });
@@ -43,7 +46,9 @@ async function connect(): Promise<RunningServer & { stderr: string }> {
   });
   const [stdout, stderr, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
   if (code !== 0) throw new Error(`connect failed (${code}): ${stderr}`);
-  return { ...JSON.parse(stdout), stderr };
+  const server = JSON.parse(stdout) as RunningServer;
+  started.add(server.pid);
+  return { ...server, stderr };
 }
 
 /** A server of another build in the foreground, on the port the repository's server last had. */
