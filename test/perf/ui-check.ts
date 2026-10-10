@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Bidi } from "./bidi.ts";
+import { Bidi, KEY } from "./bidi.ts";
 import { card as pngCard } from "../helpers/png.ts";
 import { Store } from "../../src/core/store/db.ts";
 
@@ -83,8 +83,6 @@ try {
   const pointer = (actions: unknown[]) => b.send("input.performActions", { context: b.context, actions: [{ type: "pointer", id: "mouse", parameters: { pointerType: "mouse" }, actions }] });
   const keys = (...ks: string[]) => b.send("input.performActions", { context: b.context, actions: [{ type: "key", id: "kbd", actions: ks.flatMap((k) => [{ type: "keyDown", value: k }, { type: "keyUp", value: k }]) }] });
   const chord = (mods: string[], key: string) => b.send("input.performActions", { context: b.context, actions: [{ type: "key", id: "kbd", actions: [...mods.map((m) => ({ type: "keyDown", value: m })), { type: "keyDown", value: key }, { type: "keyUp", value: key }, ...mods.map((m) => ({ type: "keyUp", value: m }))] }] });
-  const CTRL = "\uE009";
-  const SHIFT = "\uE008";
   const shadow = `document.querySelector(".codeview-host diffs-container").shadowRoot`;
   const lines = () => b.eval(`[...document.querySelector(".codeview-host diffs-container")?.shadowRoot?.querySelectorAll("[data-column-number]") ?? []].map(e => +e.getAttribute("data-column-number"))`) as Promise<number[]>;
   const cell = (n: number) => b.eval(`(() => { const el = [...${shadow}.querySelectorAll("[data-column-number='${n}']")].pop(); const r = el.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`) as Promise<{ x: number; y: number }>;
@@ -174,7 +172,7 @@ try {
     const restored = await waitFor(`document.querySelector(".codeview-host .new-thread textarea")?.value`, 8000);
     check("an unsent comment survives a reload", restored === "duplicate write", restored);
     const saved = await b.eval(`(() => { const ta = document.querySelector(".codeview-host .new-thread textarea"); ta?.focus(); return !!ta; })()`);
-    await chord([CTRL], "s");
+    await chord([KEY.Control], "s");
     await sleep(1000);
     const annotated = await b.eval(`document.querySelector(".codeview-host .thread-mini")?.textContent ?? null`);
     check("Ctrl+S in the comment box saves the draft, and it appears on the diff", saved && (annotated?.includes("duplicate write") ?? false), annotated);
@@ -191,7 +189,7 @@ try {
     await sleep(300);
     const second = await b.eval(`document.querySelector(".codeview-host .thread-mini.focused")?.dataset.thread ?? null`);
     check("]t steps through the threads on the diff", first === String(t10) && second === String(t100), { first, second });
-    await keys("");
+    await keys(KEY.Enter);
     await sleep(800);
     check("Enter opens the highlighted thread", (await b.eval("location.hash")) === `#/thread/${t100}`, await b.eval("location.hash"));
 
@@ -212,7 +210,7 @@ try {
     const hereBox = await b.eval(`document.querySelector(".code-area .new-thread .note")?.textContent ?? null`);
     check("in a thread's diff, + on another line opens a new-thread box there", hereBox?.includes("lines 12") ?? false, hereBox);
     await keys("o", "k");
-    await chord([CTRL], "s");
+    await chord([KEY.Control], "s");
     const savedHere = await waitFor(`document.querySelector(".toast")?.textContent.startsWith("draft #") ? document.querySelector(".toast").textContent : null`, 5000);
     const stillHere = await b.eval("location.hash");
     check("Ctrl+S saves it as a new draft thread and keeps you in the thread", !!savedHere && stillHere === `#/thread/${t10}`, { savedHere, stillHere });
@@ -242,9 +240,9 @@ try {
     await keys("V", "j", "i");
     const keyBox = (await waitFor(`document.querySelector(".code-area .new-thread .note")?.textContent ?? null`, 3000)) as string | null;
     check("a click outside the code (here the reply box) takes the keys off it; V takes them back from the cursor, j selects the next line too and i opens the box on both", offCode === true && !!keyBox?.includes("lines 14–15"), { offCode, keyBox });
-    await keys("", "");
+    await keys(KEY.Escape, KEY.Escape);
     const boxClosed = await waitFor(`!document.querySelector(".code-area .new-thread")`, 2000);
-    await keys("");
+    await keys(KEY.Escape);
     const codeLeft = await waitFor(`!document.querySelector(".code-area").classList.contains("code-focus")`, 2000);
     await keys("j");
     const nextThread = (await waitFor(`location.hash !== "#/thread/${t10}" ? location.hash : null`, 5000)) as string | null;
@@ -257,7 +255,7 @@ try {
     );
     await sleep(500);
 
-    await keys("");
+    await keys(KEY.Escape);
     await sleep(1200);
     const back = await b.eval("location.hash");
     const focusedBack = await b.eval(`document.querySelector(".codeview-host .thread-mini.focused")?.dataset.thread ?? null`);
@@ -279,12 +277,12 @@ try {
     await sleep(200);
     const offered = await b.eval(`({ options: [...document.querySelectorAll(".choice button")].map(x => x.textContent), focused: document.activeElement?.textContent ?? null })`);
     await b.screenshot(join(OUT, "shots", "ui-check-approve.png"));
-    await keys("");
+    await keys(KEY.Escape);
     const cancelled = await waitFor(`!document.querySelector(".choice") && !document.querySelector("header .verdict")`, 2000);
     await keys("S");
     await waitFor(`document.querySelector(".choice")`, 3000);
     await sleep(200);
-    await keys("");
+    await keys(KEY.Enter);
     const approved = await waitFor(`document.querySelector("header .verdict")?.textContent ?? null`, 5000);
     const approvedAt = await b.eval(`({ hash: location.hash, toast: document.querySelector(".toast")?.textContent ?? null })`);
     await b.screenshot(join(OUT, "shots", "ui-check-approved.png"));
@@ -304,7 +302,7 @@ try {
     await b.eval(`(() => { const s = document.querySelector(".head-actions select"); s.value = "wontfix"; s.dispatchEvent(new Event("change", { bubbles: true })); return true; })()`);
     const reason = await waitFor(`[...document.querySelectorAll(".head-badges .badge")].map(x => x.textContent).find(x => x === "✓ resolved: wontfix")`, 5000);
     check("a reason can be added afterwards", reason === "✓ resolved: wontfix", reason);
-    await keys("\uE00C");
+    await keys(KEY.Escape);
     await waitFor(`document.querySelectorAll(".codeview-host .thread-mini").length >= 1`, 8000);
     await sleep(500);
     const visible = await b.eval(`[...document.querySelectorAll(".codeview-host .thread-mini")].map(x => x.dataset.thread)`);
@@ -344,13 +342,13 @@ try {
     );
     await pointer([{ type: "pointerMove", x: 5, y: 5 }]);
 
-    await chord([CTRL], "f");
+    await chord([KEY.Control], "f");
     await sleep(400);
     const searchFocused = await b.eval(`document.activeElement?.id === "diff-search"`);
     check("Ctrl+F on the compare opens the diff search", searchFocused === true, await b.eval(`document.activeElement?.outerHTML?.slice(0, 80)`));
     await keys(..."HUNDRED".split(""));
     await waitFor(`document.querySelectorAll(".search .hit").length === 1`, 4000);
-    await keys("");
+    await keys(KEY.Enter);
     await sleep(800);
     await b.screenshot(join(OUT, "shots", "ui-check-search.png"));
     const hit = await b.eval(`({ lines: [...${zbig}.querySelectorAll('[data-content] > [data-stet-mark~="hit-current"]')].map(e => +e.getAttribute("data-line")), words: CSS.highlights?.get("stet-hit-current")?.size ?? -1, label: document.querySelector(".search .side-head.subtle")?.textContent ?? "", snippet: document.querySelector(".search .hit.current .snip.match mark")?.textContent ?? null })`);
@@ -358,9 +356,9 @@ try {
     await b.eval(`document.querySelector(".search-head .btn[title='regular expression']").click(); true`);
     await b.eval(`(() => { const i = document.getElementById("diff-search"); i.focus(); i.value = "HUNDRED|HashMap"; i.dispatchEvent(new Event("input", { bubbles: true })); return true; })()`);
     await waitFor(`document.querySelectorAll(".search .hit-file").length === 2`, 4000);
-    await keys("");
+    await keys(KEY.Enter);
     await sleep(600);
-    await chord([SHIFT], "");
+    await chord([KEY.Shift], KEY.Enter);
     await sleep(900);
     const wrapped = await b.eval(`(() => { const row = ${zbig}.querySelector('[data-content] > [data-stet-mark~="hit-current"]'); const host = document.querySelector(".codeview-host").getBoundingClientRect(); const r = row?.getBoundingClientRect(); return { line: row ? +row.getAttribute("data-line") : null, inView: !!r && r.top >= host.top && r.bottom <= host.bottom }; })()`);
     check("Shift+Enter wraps to the last match, in another file, and scrolls it into view", wrapped.line === 100 && wrapped.inView, wrapped);
@@ -384,18 +382,18 @@ try {
     await waitFor(`[...document.querySelectorAll(".search .snip.match .no")].some(x => x.textContent === "50")`, 6000);
     const fileHits = await b.eval(`[...document.querySelectorAll(".search .snip.match")].map(x => x.querySelector(".sign").textContent + x.querySelector(".no").textContent)`);
     check("search in all files finds unchanged lines too, and marks which are in the diff", fileHits.includes("↗50") && fileHits.includes("±100"), fileHits);
-    await keys("");
+    await keys(KEY.Enter);
     await sleep(1200);
     const peeked = await b.eval(`(() => { const p = document.querySelector(".compare .peek"); const c = p?.querySelector("diffs-container"); return { open: !!p, current: c ? [...c.shadowRoot.querySelectorAll('[data-content] > [data-stet-mark~="hit-current"]')].map(e => +e.getAttribute("data-line")) : [] }; })()`);
     check("a match outside the diff opens that file at the line", peeked.open && peeked.current.includes(50), peeked);
     await b.screenshot(join(OUT, "shots", "ui-check-peek.png"));
-    await keys("");
+    await keys(KEY.Enter);
     await sleep(1000);
     const inDiff = await b.eval(`({ peek: !!document.querySelector(".compare .peek"), lines: [...${zbig}.querySelectorAll('[data-content] > [data-stet-mark~="hit-current"]')].map(e => +e.getAttribute("data-line")) })`);
     check("a match inside the diff closes the preview and jumps into the diff", !inDiff.peek && inDiff.lines.includes(100), inDiff);
-    await chord([SHIFT], "");
+    await chord([KEY.Shift], KEY.Enter);
     await sleep(800);
-    await keys("");
+    await keys(KEY.Escape);
     await sleep(300);
     check("Esc closes the preview", (await b.eval(`!document.querySelector(".compare .peek")`)) === true, null);
 
@@ -478,7 +476,7 @@ try {
     await sleep(300);
     const afterJj = await b.eval(`({ value: document.querySelector(".codeview-host .new-thread textarea")?.value, focused: document.activeElement?.tagName })`);
     check("i opens the comment box on the selection; jj leaves it and keeps the text", (vimBox?.includes("lines 10–12") ?? false) && afterJj.value === "vim" && afterJj.focused !== "TEXTAREA", { vimBox, afterJj });
-    await keys("");
+    await keys(KEY.Escape);
     await sleep(500);
     check("Esc then closes the box", (await b.eval(`!document.querySelector(".codeview-host .new-thread")`)) === true, null);
     await keys("z", "c");
@@ -498,7 +496,7 @@ try {
     await keys("c", "a", "c", "h", "e", "t");
     await sleep(200);
     const picked = await b.eval(`document.querySelector(".picker li.on .file-name")?.textContent ?? null`);
-    await keys("");
+    await keys(KEY.Enter);
     await sleep(900);
     const afterPick = await cursorAt("CacheTest");
     check("Space shows what can follow; Space f f finds a file fuzzily and jumps there", which.some((x: string) => x.includes("find")) && pickerFocused && picked === "CacheTest.kt" && afterPick.length > 0, { which, pickerFocused, picked, afterPick });
@@ -506,7 +504,7 @@ try {
     await sleep(300);
     const helpText = await b.eval(`document.querySelector(".help")?.textContent ?? ""`);
     await b.screenshot(join(OUT, "shots", "ui-check-help.png"));
-    await keys("");
+    await keys(KEY.Escape);
     await sleep(200);
     check("? lists the keys by place, Esc closes it", helpText.includes("Changes (the diff)") && helpText.includes("next change") && (await b.eval(`!document.querySelector(".help")`)) === true, helpText.slice(0, 120));
     await b.screenshot(join(OUT, "shots", "ui-check-vim.png"));
@@ -517,7 +515,7 @@ try {
     await sleep(300);
     const keyRows = await b.eval(`[...document.querySelectorAll(".picker li .key-desc")].map(x => x.textContent).slice(0, 3)`);
     await b.screenshot(join(OUT, "shots", "ui-check-keys.png"));
-    await keys("");
+    await keys(KEY.Enter);
     await sleep(600);
     const ran = await cursorAt("Cache.kt");
     check("Space s k searches the keys and Enter runs the chosen one", keyRows[0] === "next change" && ran.some((x) => x.startsWith("change-")) && (await b.eval(`!document.querySelector(".picker")`)) === true, { keyRows, ran });
@@ -526,7 +524,7 @@ try {
     await keys(..."close the file".split(""));
     await sleep(200);
     const filtered = await b.eval(`[...document.querySelectorAll(".help td:last-child")].map(x => x.textContent)`);
-    await keys("");
+    await keys(KEY.Escape);
     await sleep(200);
     check("the ? help filters as you type", filtered.length > 0 && filtered.length <= 3 && filtered.every((x: string) => x.includes("close the file")), filtered);
 
@@ -558,7 +556,7 @@ try {
     await keys(" ");
     await sleep(400);
     const afterSpace = await b.eval(`({ which: !!document.querySelector(".which-key"), scroll: document.querySelector(".codeview-host").scrollTop, focus: document.activeElement?.tagName })`);
-    await keys("");
+    await keys(KEY.Escape);
     await sleep(200);
     if (boxAt) await b.eval(`document.querySelector(".file-row input[type=checkbox]").click(); true`);
     check("after a click on a “viewed” checkbox the keys still work: Space opens the menu, the diff does not scroll", afterSpace.which === true && afterSpace.scroll === scrollBefore, { afterSpace, scrollBefore });
@@ -678,7 +676,7 @@ try {
     await sleep(300);
     await keys(..."line50 = 50".split(""));
     await waitFor(`document.querySelector(".search .snip.match")`, 6000);
-    await keys("");
+    await keys(KEY.Enter);
     const peekHere = await waitFor(`document.querySelector(".thread-code .peek diffs-container") && document.querySelector(".thread-msgs textarea") ? document.querySelector(".thread-code .peek .peek-head").textContent : null`, 6000);
     await b.eval(`document.querySelector(".search .quote").click(); true`);
     const quoted = await waitFor(`document.querySelector(".thread-msgs > .composer textarea")?.value.includes("src/Zbig.kt:50") ? document.querySelector(".thread-msgs > .composer textarea").value : null`, 5000);
@@ -690,11 +688,11 @@ try {
     await waitFor(`document.querySelector(".thread-code .peek .new-thread textarea")`, 5000);
     await b.eval(`document.querySelector(".thread-code .peek .new-thread textarea").focus(); true`);
     await keys(..."peek note".split(""));
-    await chord([CTRL], "s");
+    await chord([KEY.Control], "s");
     const peekCard = await waitFor(`[...document.querySelectorAll(".thread-code .peek .thread-mini")].map(x => x.textContent).find(x => x.includes("peek note")) ?? null`, 8000);
     const toastLink = await b.eval(`document.querySelector(".toast a")?.getAttribute("href") ?? null`);
     check("a thread written in the file preview shows up on its line there, and the toast links to it", !!peekCard && !!toastLink?.startsWith("#/thread/"), { n50, peekCard, toastLink });
-    await keys("");
+    await keys(KEY.Escape);
     await sleep(300);
 
     const word = await b.eval(`(() => { const c = document.querySelector(".thread-code .code-area diffs-container"); const walker = document.createTreeWalker(c.shadowRoot, 4); for (let n = walker.nextNode(); n; n = walker.nextNode()) { const i = n.nodeValue.indexOf("HUNDRED_V2"); if (i >= 0) { const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + 10); const b = r.getBoundingClientRect(); return { x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) }; } } return null; })()`);
@@ -722,10 +720,10 @@ try {
     await keys("k");
     await sleep(700);
     const nextHash = await b.eval("location.hash");
-    await chord([CTRL], "o");
+    await chord([KEY.Control], "o");
     await sleep(700);
     const backHash = await b.eval("location.hash");
-    await chord([CTRL], "i");
+    await chord([KEY.Control], "i");
     await sleep(700);
     const fwdHash = await b.eval("location.hash");
     check("Ctrl+O jumps back to the thread you came from, Ctrl+I forward again", nextHash !== startHash && backHash === startHash && fwdHash === nextHash, { startHash, nextHash, backHash, fwdHash });
@@ -793,7 +791,7 @@ try {
     await keys("r");
     await sleep(400);
     const replyLeft = await b.eval(`document.activeElement?.tagName === "TEXTAREA" && !!document.activeElement.closest(".thread-msgs")`);
-    await keys("\uE00C");
+    await keys(KEY.Escape);
     await b.eval(`document.activeElement?.blur(); true`);
     const stepNow = `document.querySelector(".timeline .step.selected .step-label")?.textContent ?? null`;
     const step0 = await b.eval(stepNow);
@@ -907,7 +905,7 @@ try {
     const cpRoot = await waitFor(`/^Commit \\w{8}: base · 2 files$/.test(document.querySelector(".range-title")?.textContent) ? location.hash : null`, 8000);
     const cpRootIn = await b.eval(`[...document.querySelectorAll(".commit-row.in")].map(r => r.querySelector(".subject").textContent)`);
     check("the repository's first commit shows alone, from the empty tree", (cpRoot?.startsWith("#/compare/empty..") ?? false) && JSON.stringify(cpRootIn) === JSON.stringify(["base"]), { cpRoot, cpRootIn });
-    await keys("");
+    await keys(KEY.Escape);
     await sleep(300);
     const cpClosed = await b.eval(`!document.querySelector(".commit-picker")`);
     check("Space g c lists the branch's commits; a message shows one commit, first/last pick an inclusive range; Esc closes", (cpListed?.includes("ui: second commit") ?? false) && !!cpSingle && !!cpBoth && cpMarked === 2 && cpClosed, { cpListed, cpSingle, cpBoth, cpMarked, cpClosed });
@@ -977,7 +975,7 @@ try {
     await keys("r");
     await sleep(400);
     const replyingTo = await b.eval(`document.activeElement?.tagName === "TEXTAREA" ? document.activeElement.closest(".comment")?.querySelector(".msg")?.dataset.id ?? "?" : null`);
-    await keys("\uE00C");
+    await keys(KEY.Escape);
     await b.eval(`document.activeElement?.blur(); true`);
     check(
       "message keys: G the last message with the reply box, gg the first, } the next, za unfolds it, r replies to it",
@@ -1017,14 +1015,14 @@ try {
       await waitFor(`document.querySelector(".picker input")`, 3000);
       await b.eval(`(() => { const i = document.querySelector(".picker input"); i.value = ${JSON.stringify(query)}; i.dispatchEvent(new Event("input", { bubbles: true })); return true; })()`);
       await sleep(200);
-      await chord(mods, "");
+      await chord(mods, KEY.Enter);
       await sleep(400);
       return b.eval("location.hash") as Promise<string>;
     };
     const seven = latest - 4;
     const alone = await pickVersion("step 7", []);
-    const asFrom = await pickVersion(`v${latest - 8}`, [SHIFT]);
-    const asTo = await pickVersion(`v${latest}`, [CTRL]);
+    const asFrom = await pickVersion(`v${latest - 8}`, [KEY.Shift]);
+    const asTo = await pickVersion(`v${latest}`, [KEY.Control]);
     check(
       "Space f v finds a version by its label: Enter shows what changed in it, Shift+Enter makes it “from”, Ctrl+Enter “to”; a click on a folded step shows its versions",
       alone === `#/compare/${seven - 1}..${seven}` && asFrom === `#/compare/${latest - 8}..${seven}` && asTo === `#/compare/${latest - 8}..${latest}` && foldsAfterClick < many.folds,
@@ -1407,7 +1405,7 @@ try {
       if (await b.eval(`!!document.querySelector('.md-view .thread-mini.focused[data-thread="${mdCard}"]')`)) break;
     }
     const onThread = await stops();
-    await keys("");
+    await keys(KEY.Enter);
     const mdOpened = await waitFor(`location.hash === "#/thread/${mdCard}" ? location.hash : null`, 5000);
     check(
       "in the rendered view j/k step over the blocks and ]c/[c over the changed ones, both sides in reading order; ]t goes to the block of a thread, Enter opens it",
@@ -1423,9 +1421,9 @@ try {
     await clickIn(`.md-view[data-file="docs/guide.md"] .md-cell[data-side="old"] p[data-start="5"]`);
     await keys("i");
     const oldBox = await waitFor(`document.querySelector(".md-view .new-thread .note")?.textContent ?? null`, 3000);
-    await keys("");
+    await keys(KEY.Escape);
     await sleep(150);
-    await keys("");
+    await keys(KEY.Escape);
     const mdClosed = await waitFor(`!document.querySelector(".md-view .new-thread")`, 3000);
     const jumpAt = await rect(`.md-view[data-file="docs/guide.md"] .md-cell[data-side="new"] p[data-start="7"]`);
     await pointer([{ type: "pointerMove", x: jumpAt!.x, y: jumpAt!.y }]);
@@ -1728,7 +1726,7 @@ try {
     const docTop = (e: string) => `Math.round(${e}.getBoundingClientRect().top + document.querySelector(".codeview-host").scrollTop)`;
     const halfFrom = await b.eval(`(() => { const e = ${long}.querySelector(".md-cursor"); return e ? ${docTop("e")} : null; })()`);
     const halfStart = await b.eval(`+(${long}.querySelector(".md-cursor")?.dataset.start ?? 0)`);
-    await chord([CTRL], "d");
+    await chord([KEY.Control], "d");
     await sleep(600);
     const halfTo = await b.eval(`(() => { const e = ${long}.querySelector(".md-cursor"); return e ? { top: ${docTop("e")}, start: +e.dataset.start } : null; })()`);
     const screen = await b.eval(`document.querySelector(".codeview-host").clientHeight`);
@@ -1794,14 +1792,14 @@ try {
     await keys("i");
     const mdBox = (await waitFor(`document.querySelector(".code-area .md-view .new-thread .note")?.textContent ?? null`, 3000)) as string | null;
     await keys("m", "d");
-    await chord([CTRL], "s");
+    await chord([KEY.Control], "s");
     const mdSaved = (await waitFor(`/^draft #\\d+ saved on docs\\/long\\.md:/.test(document.querySelector(".toast")?.textContent ?? "") ? document.querySelector(".toast").textContent : null`, 5000)) as string | null;
     check(
       "rendered Markdown on a thread page takes comments like the Changes page: a click puts the cursor on a block, i opens the box under it, Ctrl+S saves a draft thread on its lines",
       mdCursorHere.includes("new:Paragraph 3") && !!mdBox?.startsWith("New thread on docs/long.md (v") && !!mdBox?.includes("Quote in reply") && !!mdSaved,
       { mdCursorHere, mdBox, mdSaved },
     );
-    await keys("");
+    await keys(KEY.Escape);
 
     // A long Markdown file with two small changes far apart. Rendered, it shows the changes with the lines around them
     // and folds the rest; the bars open it a piece at a time, and what one view opens the other shows too.
@@ -2005,13 +2003,13 @@ try {
     await sleep(600);
     await keys(" ", "g", "b");
     const onThreadPop = await waitFor(popExpr, 5000);
-    await keys("");
+    await keys(KEY.Escape);
     const threadClosed = await waitFor(`!document.querySelector(".blame-pop")`, 2000);
     await openKt();
     await click(".blame-pop a.blame-ver");
     const toVersion = await waitFor(`location.hash.startsWith("#/compare/${blameB - 1}..${blameB}?file=src%2FBlame.kt&line=5") ? location.hash : null`, 5000);
     await openKt();
-    await keys("");
+    await keys(KEY.Escape);
     const closedByEsc = await waitFor(`!document.querySelector(".blame-pop")`, 2000);
     await openKt();
     await keys("G");
@@ -2029,7 +2027,7 @@ try {
     await sleep(1200);
     await keys(" ", "g", "b");
     const onMd = await waitFor(popExpr, 5000);
-    await keys("");
+    await keys(KEY.Escape);
     check(
       "in rendered Markdown, Space g b blames the source lines of the block under the cursor",
       !!onMd && onMd.head === `docs/blame.md:5 at v${blameB}` && new RegExp(`^5v${blameB} · round \\d+$`).test(onMd.rows[0]),
@@ -2115,7 +2113,7 @@ try {
     await keys("j", "j", "}");
     await b.eval(`document.querySelector(".guide .guide-ref diffs-container").shadowRoot.querySelector("[data-expand-up], [data-expand-both], [data-expand-down]")?.click(); true`);
     const moreLines = await waitFor(`(() => { const n = document.querySelector(".guide .guide-ref diffs-container").shadowRoot.querySelectorAll("code[data-additions] [data-column-number]").length; return n > 9 ? n : null; })()`, 3000);
-    await keys("");
+    await keys(KEY.Escape);
     await waitFor(`!document.querySelector(".guide")`, 2000);
     await sleep(400);
     const diffAfter = await b.eval(diffState);
@@ -2174,7 +2172,7 @@ try {
     );
     const guideBox = await waitFor(`(() => { const n = document.querySelector(".guide .guide-ref[data-key='1.0'] .new-thread .note")?.textContent; return n && document.activeElement?.tagName === "TEXTAREA" ? { note: n, framed: document.querySelector(".guide").classList.contains("code-focus"), typing: document.activeElement.tagName } : null; })()`, 3000);
     await keys(..."why ten and eleven?".split(""));
-    await chord([CTRL], "s");
+    await chord([KEY.Control], "s");
     const guideCard = await waitFor(`(() => { const m = document.querySelector(".guide .guide-ref[data-key='1.0'] .thread-mini:not([data-thread='${guideThread}'])"); return m && !document.querySelector(".guide .new-thread") ? +m.getAttribute("data-thread") : null; })()`, 5000);
     const guideDraft = (JSON.parse(run(repo, ["bun", CLI, "threads", "list", "--drafts", "--as", "reviewer", "--json"])) as { id: number; path: string; range: { start: number; end: number }; draft: boolean }[]).find((t) => t.id === guideCard);
     check(
@@ -2183,13 +2181,13 @@ try {
         guideDraft?.path === "src/Guide.kt" && guideDraft.range.start === 10 && guideDraft.range.end === 11 && guideDraft.draft === true,
       { guideBox, guideCard, guideDraft },
     );
-    await keys("\uE00C");
+    await keys(KEY.Escape);
     const leftCode = await waitFor(`document.querySelector(".guide") && !document.querySelector(".guide.code-focus")`, 2000);
     await keys("i");
     const guideKeyBox = await waitFor(`document.querySelector(".guide .new-thread .note")?.textContent ?? null`, 3000);
     // the box's text first, then the box, the lines and the guide
     for (let n = 0; n < 4; n++) {
-      await keys("\uE00C");
+      await keys(KEY.Escape);
       await sleep(150);
     }
     const backToDiff = await waitFor(`!document.querySelector(".guide")`, 2000);
@@ -2220,13 +2218,13 @@ try {
     const guideTo = (sel: string) => `!${q(".guide")} && ${sel}`;
     const guideTrips: Record<string, Across> = {};
     guideTrips.spaceUG = await across(() => keys(" ", "u", "g"), q(".guide .guide-step"));
-    guideTrips.esc = await across(() => keys("\uE00C"), `!${q(".guide")}`);
+    guideTrips.esc = await across(() => keys(KEY.Escape), `!${q(".guide")}`);
     await keys("]", "b");
     await waitFor(`${cursorIn("src/Guide.kt")}.length === 0 && !document.querySelector(".view-fade")`, 3000);
     await keys(" ", "u", "g");
     await waitFor(q(".guide .guide-step"), 3000);
     await keys("{", "{", "{");
-    guideTrips.enter = await across(() => keys("\uE007"), guideTo(`${cursorIn("src/Guide.kt")}.join() === "10" && location.hash.endsWith("line=10-12")`));
+    guideTrips.enter = await across(() => keys(KEY.Enter), guideTo(`${cursorIn("src/Guide.kt")}.join() === "10" && location.hash.endsWith("line=10-12")`));
     await keys(" ", "u", "g");
     await waitFor(q(".guide .guide-step"), 3000);
     guideTrips.openInDiff = await across(() => b.eval(`document.querySelector(".guide .guide-step[data-step='2'] a.guide-open").click(); true`), guideTo(`location.hash.endsWith("file=src%2FGuideUtil.kt")`));
@@ -2235,8 +2233,8 @@ try {
     const pages: Record<string, Across> = {};
     await b.eval(`location.hash = "#/compare/${blameB}..${guideV}?file=src%2FGuide.kt&line=11"; true`);
     await waitFor(`${cursorIn("src/Guide.kt")}.join() === "11" && !document.querySelector(".view-fade")`, 4000);
-    pages.open = await across(() => keys("\uE007"), `location.hash.startsWith("#/thread/") && ${q(".detail .code-area diffs-container")}`);
-    pages.back = await across(() => keys("\uE00C"), `location.hash.startsWith("#/compare/${blameB}..${guideV}") && ${q(".codeview-host diffs-container")}`);
+    pages.open = await across(() => keys(KEY.Enter), `location.hash.startsWith("#/thread/") && ${q(".detail .code-area diffs-container")}`);
+    pages.back = await across(() => keys(KEY.Escape), `location.hash.startsWith("#/compare/${blameB}..${guideV}") && ${q(".codeview-host diffs-container")}`);
     await b.eval(`document.querySelector(".codeview-host").scrollTop = 1e6; true`);
     pages.gt = await across(() => keys("g", "t"), `["10", "11"].includes(${cursorIn("src/Guide.kt")}.join())`);
     check("a thread page and the Changes page fade into each other: opening a thread, Esc back to the changes, gt back to the thread", allFaded(pages), pages);
@@ -2246,11 +2244,11 @@ try {
     await b.eval(`[...document.querySelectorAll(".side-tabs button")].find(x => x.textContent.startsWith("Files")).click(); true`);
     jumpsHere.filesClick = await across(() => b.eval(`[...document.querySelectorAll(".file-row")].find(r => r.querySelector(".file-name")?.textContent === "GuideOther.kt").querySelector(".file-link").click(); true`), `[...document.querySelectorAll(".file-row.active .file-name")].map(x => x.textContent).join() === "GuideOther.kt"`);
     jumpsHere.lineLink = await across(() => b.eval(`location.hash = "#/compare/${blameB}..${guideV}?file=src%2FGuide.kt&line=10-11"; true`), `${cursorIn("src/Guide.kt")}.join() === "10"`);
-    await chord([CTRL], "f");
+    await chord([KEY.Control], "f");
     await waitFor(`document.activeElement?.id === "diff-search"`, 2000);
     await b.eval(`(() => { const i = document.getElementById("diff-search"); i.value = "util2"; i.dispatchEvent(new Event("input", { bubbles: true })); return true; })()`);
     await waitFor(`document.querySelectorAll(".search .hit").length === 1`, 4000);
-    jumpsHere.searchHit = await across(() => keys("\uE007"), `[...document.querySelectorAll(".codeview-host diffs-container")].some(c => c.shadowRoot.querySelector("[data-title]")?.textContent === "src/GuideUtil.kt" && c.shadowRoot.querySelector('[data-stet-mark~="hit-current"]'))`);
+    jumpsHere.searchHit = await across(() => keys(KEY.Enter), `[...document.querySelectorAll(".codeview-host diffs-container")].some(c => c.shadowRoot.querySelector("[data-title]")?.textContent === "src/GuideUtil.kt" && c.shadowRoot.querySelector('[data-stet-mark~="hit-current"]'))`);
     await b.eval(`document.activeElement?.blur(); true`);
     check("jumps on the Changes page fade over to where they go: ]b, a click in Files, a link to lines, a search match", allFaded(jumpsHere), jumpsHere);
 
@@ -2269,7 +2267,7 @@ try {
     await waitFor(`${cursorIn("src/Guide.kt")}.join() === "12" && !document.querySelector(".view-fade")`, 4000);
     await keys(" ", "u", "g");
     await waitFor(`${q(".guide .guide-step")} && !document.querySelector(".view-fade")`, 3000);
-    await keys("\uE00C");
+    await keys(KEY.Escape);
     const escCopy = await waitFor(`!!document.querySelector(".view-fade")`, 1000);
     await keys("j");
     const afterEscJ = await b.eval(`({ copy: !!document.querySelector(".view-fade"), guide: !!${q(".guide")}, cursor: ${cursorIn("src/Guide.kt")} })`);
@@ -2286,7 +2284,7 @@ try {
     await b.eval(`window.__matchMedia = window.matchMedia; window.matchMedia = (q) => /reduced-motion/.test(q) ? { matches: true, media: q, addEventListener() {}, removeEventListener() {} } : window.__matchMedia(q); true`);
     const still: Record<string, Across> = {};
     still.guide = await across(() => keys(" ", "u", "g"), q(".guide .guide-step"));
-    still.diff = await across(() => keys("\uE00C"), `!${q(".guide")}`);
+    still.diff = await across(() => keys(KEY.Escape), `!${q(".guide")}`);
     still.nextFile = await across(() => keys("]", "b"), "true");
     still.range = await across(() => keys("{"), `location.hash === "#/compare/${blameA}..${guideV}"`);
     await b.eval(`window.matchMedia = window.__matchMedia; true`);
@@ -2307,7 +2305,7 @@ try {
     const openedOnGuide = await waitFor(`(() => { const r = document.querySelector(".guide .guide-ref[data-key='2.0']"); return r?.querySelector(".guide-unfold") ? { title: document.querySelector(".guide-title")?.textContent, folded: r.classList.contains("folded"), bar: r.querySelector(".guide-unfold").textContent } : null; })()`, 10000);
     await waitFor(`document.querySelector(".guide .guide-ref[data-key='1.0'] diffs-container")?.shadowRoot?.querySelector("[data-column-number]")`, 5000);
     await b.screenshot(join(OUT, "shots", "ui-check-guide-asked.png"));
-    await keys("\uE00C");
+    await keys(KEY.Escape);
     await waitFor(`!document.querySelector(".guide")`, 2000);
     await b.eval(`location.hash = "#/compare/${blameB}..${guideV}"; true`);
     await waitFor(`document.querySelector(".guide-tabs")`, 5000);
@@ -2356,14 +2354,14 @@ try {
     await waitFor(`document.querySelector(".detail-head .tid")?.textContent === "#${settle}" && document.querySelector(".head-actions .resolve-msg")`, 8000);
     await click(".head-actions .resolve-msg");
     const boxByClick = await waitFor(`document.activeElement?.closest(".resolve-box") ? document.querySelector(".resolve-box-head")?.textContent : null`, 3000);
-    await keys("");
+    await keys(KEY.Escape);
     const resolveBoxClosed = await waitFor(`!document.querySelector(".resolve-box")`, 2000);
     await keys(" ", "r", "x");
     const boxByKey = await waitFor(`document.activeElement?.closest(".resolve-box") ? true : null`, 3000);
     await keys(..."yes, let's do it".split(""));
     await sleep(200);
     await plainShot("ui-check-resolve-message.png");
-    await chord([CTRL], "s");
+    await chord([KEY.Control], "s");
     const pending = await waitFor(`!document.querySelector(".resolve-box") && [...document.querySelectorAll(".comment .badge")].some(x => x.textContent === "✓ resolves the thread when sent") ? document.querySelector(".state-strip")?.textContent : null`, 5000);
     const stillOpen = await b.eval(`[...document.querySelectorAll(".head-actions button")].some(x => x.textContent === "Resolve")`);
     check(
@@ -2413,7 +2411,7 @@ try {
     await pointer([{ type: "pointerMove", x: oldCell.x, y: oldCell.y }, { type: "pointerDown", button: 0 }, { type: "pointerUp", button: 0 }]);
     const stepBox = await waitFor(`document.activeElement?.tagName === "TEXTAREA" ? (document.querySelector(".guide .guide-ref[data-key='1.0'] .new-thread .note")?.textContent ?? null) : null`, 3000);
     await keys(..."why was it old?".split(""));
-    await chord([CTRL], "s");
+    await chord([KEY.Control], "s");
     await waitFor(`!document.querySelector(".guide .new-thread")`, 5000);
     const oldDraft = (JSON.parse(run(repo, ["bun", CLI, "threads", "list", "--drafts", "--as", "reviewer", "--json"])) as { path: string; side: string; range: { start: number; end: number }; version: number | null; excerpt: string[]; title: string }[]).find((t) => t.title === "why was it old?");
     const drawErrors = await b.eval(`window.__drawErrors.filter(e => /mismatch|decoration|iterateOverDiff/.test(e))`);
@@ -2473,7 +2471,7 @@ try {
     const mdGuideBox = await waitFor(`(() => { const n = document.querySelector("${mdRef} .md-view .new-thread .note")?.textContent; return n && document.activeElement?.tagName === "TEXTAREA" ? { note: n, framed: document.querySelector(".guide").classList.contains("code-focus"), cursor: [...document.querySelectorAll("${mdRef} .md-cursor")].map(e => e.dataset.start) } : null; })()`, 3000);
     await b.screenshot(join(OUT, "shots", "ui-check-guide-markdown-comment.png"));
     await keys(..."why nine?".split(""));
-    await chord([CTRL], "s");
+    await chord([KEY.Control], "s");
     const mdGuideCard = await waitFor(`(() => { const m = document.querySelector("${mdRef} .md-view .md-threads .thread-mini"); return m && !document.querySelector(".guide .new-thread") ? +m.getAttribute("data-thread") : null; })()`, 5000);
     const mdGuideDraft = (JSON.parse(run(repo, ["bun", CLI, "threads", "list", "--drafts", "--as", "reviewer", "--json"])) as { id: number; path: string; side: string; range: { start: number; end: number } }[]).find((t) => t.id === mdGuideCard);
     check(
@@ -2804,7 +2802,7 @@ try {
     await click(".gitchip");
     const panel = await waitFor(`(() => { const p = document.querySelector(".git-panel"); return p ? [...p.querySelectorAll("h4")].map(h => h.textContent) : null; })()`, 3000);
     await b.screenshot(join(OUT, "shots", "ui-check-git-panel.png"));
-    await keys("\uE00C");
+    await keys(KEY.Escape);
     const panelClosed = await waitFor(`!document.querySelector(".git-panel")`, 2000);
     check("a click on it lists the files by state, and says which are not in the review; Esc closes it", !!panel?.some((h: string) => h.startsWith("Not staged: not in this review")) && !!panel?.some((h: string) => h.startsWith("New, not in git")) && !!panelClosed, { panel, panelClosed });
 

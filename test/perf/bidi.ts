@@ -1,3 +1,6 @@
+/** WebDriver's code points for the keys that type no character, for `input.performActions`. */
+export const KEY = { Enter: "\uE007", Escape: "\uE00C", Shift: "\uE008", Control: "\uE009" } as const;
+
 export class Bidi {
   private ws: WebSocket;
   private id = 0;
