@@ -1249,6 +1249,20 @@ try {
     await b.eval(`[...document.querySelectorAll('.img-diff[data-file="res/card.png"] .img-zoom-bar button')].find(x => x.textContent === "100%").click(); true`);
     await sleep(200);
     const pairFull = await zoomOf(pair);
+    await b.eval(`(() => { const v = document.querySelector('${newView}'); v.scrollTop = 0; v.scrollLeft = 0; return true; })()`);
+    await sleep(200);
+    const tagShown = await b.eval(`(() => {
+      const v = document.querySelector('${newView}');
+      const f = v.querySelector('a.img-frame[data-thread="${framed}"]');
+      const t = f?.querySelector(".img-frame-tag").getBoundingClientRect();
+      const o = v.getBoundingClientRect();
+      return t ? { frameTop: Math.round(f.getBoundingClientRect().top - o.top), room: [t.left - o.left, t.top - o.top, o.right - t.right, o.bottom - t.bottom].map(Math.round) } : null;
+    })()`);
+    check(
+      "the tag of a frame at the very top of a zoomed image stays inside the image's view, not cut off",
+      !!tagShown && tagShown.frameTop < 20 && tagShown.room.every((d: number) => d >= 0),
+      tagShown,
+    );
     await b.eval(`[...document.querySelectorAll('.img-diff[data-file="res/card.png"] .img-zoom-bar button')].find(x => x.textContent === "fit").click(); true`);
     await sleep(200);
     const pairFitAgain = await zoomOf(pair);

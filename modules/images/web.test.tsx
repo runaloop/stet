@@ -15,6 +15,7 @@ const state = await import("../../web/state.ts");
 const { bindings } = await import("../../web/keys.ts");
 const registry = await import("../../web/modules.tsx");
 const { threadLanding } = await import("../../web/views/Compare.tsx");
+const { ImagePane } = await import("./ImageView.tsx");
 const before = state.status.value;
 const hosts: HTMLElement[] = [];
 
@@ -54,6 +55,13 @@ describe("the images module on the page", () => {
     expect(drawn(<registry.ThreadArea d={detail} from={step} to={step} />).querySelector(".img-area .img-crop")).not.toBeNull();
     expect(zoomKeys().map((b) => `${b.where} ${b.keys}`)).toEqual(["compare +", "compare =", "compare -", "compare 0", "thread +", "thread =", "thread -", "thread 0"]);
     expect(threadLanding(png.name, true)).toBe("file");
+  });
+
+  test("a frame's tag knows the room above and left of its frame, to keep to the image", () => {
+    switched(true);
+    const pane = drawn(<ImagePane sha="s1" path={png.name} size={{ w: 120, h: 80, bytes: 1 }} frames={[{ id: 1, region: { ...region, y: 0 }, tone: "thread" }]} />);
+    const tag = pane.querySelector<HTMLElement>(".img-frame-tag")!;
+    expect([tag.style.getPropertyValue("--room-up"), tag.style.getPropertyValue("--room-left")]).toEqual(["0", "0.2"]);
   });
 
   test("off in the repository: lines instead of pictures, the core's fallbacks, no zoom keys", () => {

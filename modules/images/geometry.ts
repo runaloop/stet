@@ -24,6 +24,14 @@ export function framePercent(r: Region): { left: string; top: string; width: str
   return { left: p(r.x, r.iw), top: p(r.y, r.ih), width: p(r.w, r.iw), height: p(r.h, r.ih) };
 }
 
+/**
+ * The room above and left of a frame, in its own height and width: its tag (`.img-frame-tag`) moves down and right by at
+ * most that, so it stays on the image, where a zoomed view does not clip it, at any zoom.
+ */
+export function tagRoom(r: Region): { "--room-up": string; "--room-left": string } {
+  return { "--room-up": String(r.y / r.h), "--room-left": String(r.x / r.w) };
+}
+
 /** The region moved onto an image of another size. */
 export function scaleRegion(r: Region, iw: number, ih: number): Region {
   if (r.iw === iw && r.ih === ih) return r;

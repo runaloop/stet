@@ -41,7 +41,7 @@ a.img-frame:hover, a.img-frame.hover, a.img-frame.focused { border-width: 3px; b
 .img-frame.tone-pending { border-style: dashed; background: rgb(229 34 107 / 0.12); }
 .img-frame.tone-focus { border-color: #e5226b; }
 .img-frame.tone-change-box { border: 1px dashed #ff00aa; box-shadow: none; pointer-events: none; }
-.img-frame-tag { position: absolute; left: -2px; top: -20px; padding: 1px 5px; border-radius: 4px 4px 4px 0; background: #e5226b; color: #fff; font: 600 11px var(--sans); white-space: nowrap; }
+.img-frame-tag { position: absolute; left: max(-2px, calc(var(--room-left) * -100%)); top: max(-20px, calc(var(--room-up) * -100%)); padding: 1px 5px; border-radius: 4px 4px 4px 0; background: #e5226b; color: #fff; font: 600 11px var(--sans); white-space: nowrap; }
 .img-frame.tone-changed .img-frame-tag { background: var(--warn); }
 .img-frame.tone-outdated .img-frame-tag { background: var(--fg-soft); }
 .img-crop { display: block; overflow: hidden; }

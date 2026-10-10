@@ -4,7 +4,7 @@ import { isSvg } from "./core.ts";
 import { api, rawUrl } from "../../web/api.ts";
 import { compareData, hoverThread, shownPlacements } from "../../web/compare.ts";
 import { imageMode, imagePending, type ImageMode, type ImagePending } from "./state.ts";
-import { cropRect, dragRegion, framePercent, imageCaption, pixelDiff, regionLabel, scaleRegion, shotScale, type PixelDiff } from "./geometry.ts";
+import { cropRect, dragRegion, framePercent, imageCaption, pixelDiff, regionLabel, scaleRegion, shotScale, tagRoom, type PixelDiff } from "./geometry.ts";
 import { compareFocus, guard, link, notify, reloadAll, reviewId, threads } from "../../web/state.ts";
 import { imageAt } from "./zoom.ts";
 import { Composer } from "../../web/components/Composer.tsx";
@@ -36,7 +36,7 @@ function FrameBox({ f }: { f: Frame }) {
       onMouseLeave={() => hoverThread.value === id && (hoverThread.value = null)}
       {...link({ name: "thread", id })}
     >
-      <span class="img-frame-tag">#{id}</span>
+      <span class="img-frame-tag" style={tagRoom(f.region)}>#{id}</span>
     </a>
   );
 }
