@@ -6,7 +6,7 @@ import { openerArgv } from "../core/actions.ts";
 import { BUILD } from "../core/build.ts";
 import { StetError, findReview, type Ctx } from "../core/context.ts";
 import { handleApi, type ServerState } from "./api.ts";
-import { alive, readServerInfo, removeServerInfo, reviewUrl, savedPort, savePort, serverToken, writeServerInfo, type ServerInfo } from "./info.ts";
+import { alive, readServerInfo, removeServerInfo, reviewUrl, savedPort, savePort, serverToken, writeServerInfo, type RunningServer, type ServerInfo } from "./info.ts";
 import { Watcher } from "./watch.ts";
 
 export interface ServeOptions {
@@ -110,7 +110,7 @@ function openBrowser(url: string): void {
  * The repository's running server when it is of this build. Another build serves another API and another page, so it
  * is stopped, and the server this one starts takes its place on its port.
  */
-async function serverOfThisBuild(ctx: Ctx): Promise<ServerInfo | null> {
+async function serverOfThisBuild(ctx: Ctx): Promise<RunningServer | null> {
   const existing = await readServerInfo(ctx.repo.commonDir);
   if (!existing || existing.build === BUILD) return existing;
   if (!(await stopProcess(existing.pid))) {
@@ -121,7 +121,7 @@ async function serverOfThisBuild(ctx: Ctx): Promise<ServerInfo | null> {
 }
 
 /** The server a client is sent to: the running one of this build, or one started on its own. */
-export async function ensureServer(ctx: Ctx): Promise<ServerInfo | null> {
+export async function ensureServer(ctx: Ctx): Promise<RunningServer | null> {
   return (await serverOfThisBuild(ctx)) ?? startDetached(ctx, { port: 0, open: false, printUrlOnly: false, json: false });
 }
 
@@ -220,7 +220,7 @@ export async function serve(ctx: Ctx, opts: ServeOptions): Promise<number> {
 
 // A server started by an agent's shell dies with it: harnesses stop background commands after a time limit.
 // Detached, it runs in its own systemd unit, or its own session.
-async function startDetached(ctx: Ctx, opts: ServeOptions): Promise<ServerInfo | null> {
+async function startDetached(ctx: Ctx, opts: ServeOptions): Promise<RunningServer | null> {
   const compiled = Bun.main.startsWith("/$bunfs/") || /^[A-Z]:[\\/]~BUN[\\/]/i.test(Bun.main);
   const self = compiled ? [process.execPath] : [process.execPath, Bun.main];
   const args = [...self, "serve", "--port", String(opts.port || 0), ...(opts.branch ? ["--branch", opts.branch] : [])];
@@ -241,7 +241,7 @@ async function startDetached(ctx: Ctx, opts: ServeOptions): Promise<ServerInfo |
   return waitForServer(ctx, 100);
 }
 
-async function waitForServer(ctx: Ctx, tries: number): Promise<ServerInfo | null> {
+async function waitForServer(ctx: Ctx, tries: number): Promise<RunningServer | null> {
   for (let i = 0; i < tries; i++) {
     await Bun.sleep(100);
     const info = await readServerInfo(ctx.repo.commonDir);
