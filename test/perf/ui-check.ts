@@ -1017,12 +1017,21 @@ try {
     check("HTML in file names and comments renders as text, and the page breaks no CSP rule", injected.pwned === "none" && injected.imgs === 0 && injected.csp.length === 0, injected);
     await b.screenshot(join(OUT, "shots", "ui-check-files.png"));
 
+    const headerNow = `(document.querySelector("header.top .refresh")?.textContent.trim() ?? "") + " | " + (document.querySelector("header.top .now")?.textContent.trim() ?? "")`;
+    await b.eval(`window.__headerNow = new Set(); new MutationObserver(() => window.__headerNow.add(${headerNow})).observe(document.querySelector("header.top"), { subtree: true, childList: true, characterData: true }); true`);
     for (let i = 0; i < 12; i++) {
       writeFileSync(join(repo, "src/Many.kt"), `val many = ${i}\n`);
       run(repo, ["git", "add", "-A"]);
       run(repo, ["bun", CLI, "version", "create", "--label", `step ${i}`, "--json"]);
     }
     const latest = JSON.parse(run(repo, ["bun", CLI, "status", "--json"])).versions as number;
+    const headerSettled = await waitFor(`${headerNow} === "↻ | now = v${latest}" ? ${headerNow} : null`, 10000);
+    const headerSeen = (await b.eval(`[...window.__headerNow]`)) as string[];
+    check(
+      "versions handed over in a row: the header never says “now changed” next to now = the latest version, and settles there",
+      !!headerSettled && !headerSeen.some((h) => h.includes("changed") && h.endsWith(`now = v${latest}`)),
+      { headerSettled, headerSeen },
+    );
     await b.viewport(1280, 800);
     await b.eval(`location.hash = "#/compare/3..4"; true`);
     await waitFor(`document.querySelector("header.top button.older") && [...document.querySelectorAll("header.top a.ver")].some(a => a.textContent === "v${latest}")`, 10000);

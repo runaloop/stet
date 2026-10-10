@@ -78,27 +78,32 @@ class Stream {
   }
 }
 
-type Now = { sha: string; pinned: string; files: number | null };
+type Now = { sha: string; pinned: string; pinnedAt: string; files: number | null };
 type Git = { files: { path: string; staged: boolean; unstaged: boolean; untracked: boolean }[]; upstream: string | null; ahead: number };
 
 test("the server tells the page when the worktree moves away from the pinned now, and the git state", async () => {
   const status = await (await api(`/api/review?review=${review}`)).json();
   const pinned = status.pinnedNow as string;
+  const pinnedAt = status.pinnedNowAt as string;
+  expect(Date.parse(pinnedAt)).toBeGreaterThan(0);
   const s = new Stream(await api(`/api/events?review=${review}`));
   const git = await s.next<Git>("git");
   expect(git.files.map((x) => x.path)).toEqual(["a.kt"]);
   expect(git.upstream).toBeNull();
-  expect(await s.next<Now>("now")).toEqual({ sha: pinned, pinned, files: 0 });
+  expect(await s.next<Now>("now")).toEqual({ sha: pinned, pinned, pinnedAt, files: 0 });
 
   f.write("b.kt", lines(6)).write("c.kt", "new\n");
   const moved = await s.next<Now>("now", (d) => d.sha !== pinned);
-  expect(moved).toMatchObject({ pinned, files: 2 });
+  expect(moved).toMatchObject({ pinned, pinnedAt, files: 2 });
   const after = await s.next<Git>("git", (d) => d.files.length === 3);
   expect(after.files.find((x) => x.path === "c.kt")!.untracked).toBe(true);
 
   const again = await (await api(`/api/now/refresh?review=${review}`, { method: "POST", body: "{}" })).json();
   expect(again.sha).toBe(moved.sha);
-  expect(await s.next<Now>("now", (d) => d.pinned === moved.sha)).toEqual({ sha: moved.sha, pinned: moved.sha, files: 0 });
+  const repinned = await s.next<Now>("now", (d) => d.pinned === moved.sha);
+  expect(repinned).toMatchObject({ sha: moved.sha, pinned: moved.sha, files: 0 });
+  expect(repinned.pinnedAt > pinnedAt).toBe(true);
+  expect((await (await api(`/api/review?review=${review}`)).json()).pinnedNowAt).toBe(repinned.pinnedAt);
 
   const direct = (await (await api(`/api/git?review=${review}`)).json()) as Git;
   expect(direct.files).toHaveLength(3);

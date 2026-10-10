@@ -96,6 +96,7 @@ route("GET", "/api/reviews", async (s) => {
 route("GET", "/api/review", async (s, _req, url) => {
   const r = review(s, url);
   const now = await pinned(s, r);
+  const pinnedNowAt = s.pinnedNow.get(r.id)?.at ?? null;
   const status = await svc.status(s.ctx, r, { pinnedNow: now });
   const actions = actionsOf(s.ctx, s.modules).map((a) => ({ id: a.id, label: a.label, command: a.command, where: a.where }));
   const ui = { config: uiConfig(s.ctx), modules: enabled(s.ctx, s.modules).map((m) => m.id), actions };
@@ -105,7 +106,7 @@ route("GET", "/api/review", async (s, _req, url) => {
   );
   const last = rows[rows.length - 1];
   if (status.now) status.now.files = last && status.now.changedSinceLatest ? await svc.filesBetween(s.ctx, last.snapshot, status.now.sha) : 0;
-  return { ...status, pinnedNow: now, versionsList, submissions: svc.submissionTimes(s.ctx, r.id), ui };
+  return { ...status, pinnedNow: now, pinnedNowAt, versionsList, submissions: svc.submissionTimes(s.ctx, r.id), ui };
 });
 
 /** A setting of the repository the page may change: only those marked `ui: "write"`, with the values the CLI takes. */

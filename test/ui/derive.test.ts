@@ -55,10 +55,20 @@ describe("state", () => {
   });
 
   test("now moved: files that differ from the pin shown, 0 when only the pin moved", () => {
-    expect(nowMoved({ sha: "b", pinned: "a", files: 3 }, "a")).toBe(3);
-    expect(nowMoved({ sha: "b", pinned: "c", files: 3 }, "a")).toBe(0);
-    expect(nowMoved({ sha: "a", pinned: "a", files: 0 }, "a")).toBeNull();
-    expect(nowMoved(null, "a")).toBeNull();
+    const t1 = "2026-10-10T10:00:00.000Z";
+    const t2 = "2026-10-10T10:00:01.000Z";
+    expect(nowMoved({ sha: "b", pinned: "a", pinnedAt: t1, files: 3 }, "a", t1)).toBe(3);
+    expect(nowMoved({ sha: "b", pinned: "c", pinnedAt: t2, files: 3 }, "a", t1)).toBe(0);
+    expect(nowMoved({ sha: "a", pinned: "a", pinnedAt: t1, files: 0 }, "a", t1)).toBeNull();
+    expect(nowMoved(null, "a", t1)).toBeNull();
+  });
+
+  test("now moved: a report against an older pin than the page's says nothing, so a version just taken does not show as changed", () => {
+    const before = "2026-10-10T10:00:00.000Z";
+    const page = "2026-10-10T10:00:01.000Z";
+    expect(nowMoved({ sha: "b", pinned: "a", pinnedAt: before, files: 1 }, "c", page)).toBeNull();
+    expect(nowMoved({ sha: "c", pinned: "a", pinnedAt: before, files: 1 }, "c", page)).toBeNull();
+    expect(nowMoved({ sha: "b", pinned: "a", pinnedAt: before, files: 1 }, "c", null)).toBe(0);
   });
 
   test("threads by file, tests after code", () => {

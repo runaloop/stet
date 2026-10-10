@@ -122,7 +122,7 @@ export async function serve(ctx: Ctx, opts: ServeOptions): Promise<number> {
   }
   const review = await findReview(ctx, opts.branch);
   const state: ServerState = { ctx, defaultReview: review?.id ?? null, pinnedNow: new Map() };
-  state.watcher = new Watcher(ctx, (id) => state.pinnedNow.get(id)?.sha ?? null);
+  state.watcher = new Watcher(ctx, (id) => state.pinnedNow.get(id) ?? null);
   const token = serverToken(ctx.repo.commonDir);
   let port = 0;
 

@@ -231,7 +231,7 @@ export async function reloadAll(): Promise<void> {
 }
 
 /** The worktree moved away from the "now" this page shows: files that differ, or 0 when only the pin moved. */
-export const nowMoved = computed(() => ui.nowMoved(nowState.value, status.value?.pinnedNow));
+export const nowMoved = computed(() => ui.nowMoved(nowState.value, status.value?.pinnedNow, status.value?.pinnedNowAt));
 
 export async function refreshNow(): Promise<void> {
   const id = reviewId.value;

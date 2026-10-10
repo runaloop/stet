@@ -305,6 +305,8 @@ export interface NowStateDto {
   sha: string;
   /** "now" as the pages show it until someone re-reads it. */
   pinned: string;
+  /** When the server took that pin: a page that read a later one ignores this report. */
+  pinnedAt: string;
   /** Files that differ between the two. */
   files: number | null;
 }

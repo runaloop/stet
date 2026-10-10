@@ -29,7 +29,7 @@ export class Watcher {
 
   constructor(
     private readonly ctx: Ctx,
-    private readonly pinnedOf: (reviewId: number) => string | null,
+    private readonly pinnedOf: (reviewId: number) => { sha: string; at: string } | null,
     every = Number(process.env.STET_WATCH_MS) || DEFAULT_MS,
   ) {
     this.every = every;
@@ -92,12 +92,12 @@ export class Watcher {
       this.emit(w, "git", git);
     }
     const fingerprint = status?.fingerprint ?? git.tip ?? "";
-    const pinned = this.pinnedOf(reviewId);
-    if (!pinned || (fingerprint === w.fingerprint && pinned === w.pinned)) return;
+    const pin = this.pinnedOf(reviewId);
+    if (!pin || (fingerprint === w.fingerprint && pin.sha === w.pinned)) return;
     w.fingerprint = fingerprint;
-    w.pinned = pinned;
+    w.pinned = pin.sha;
     const snap = await takeNow(this.ctx, review, { keep: false, fresh: true });
-    const now: NowState = { sha: snap.sha, pinned, files: snap.sha === pinned ? 0 : await filesBetween(this.ctx, pinned, snap.sha) };
+    const now: NowState = { sha: snap.sha, pinned: pin.sha, pinnedAt: pin.at, files: snap.sha === pin.sha ? 0 : await filesBetween(this.ctx, pin.sha, snap.sha) };
     if (now.sha !== w.now?.sha || now.pinned !== w.now?.pinned || now.files !== w.now?.files) {
       w.now = now;
       this.emit(w, "now", now);

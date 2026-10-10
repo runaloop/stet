@@ -25,6 +25,8 @@ import type { ActionTarget, Launch } from "../src/core/module.ts";
 
 export type ReviewStatus = StatusDto & {
   pinnedNow: string | null;
+  /** When the server took that pin, to tell a report of the worktree against an older pin from one against a newer. */
+  pinnedNowAt: string | null;
   versionsList: VersionDto[];
   submissions?: SubmissionDto[];
   /** The settings marked `ui` by key, the modules on in the repository, and the actions the page may run. */

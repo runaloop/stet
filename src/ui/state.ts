@@ -13,9 +13,14 @@ export function groups(threads: ThreadSummary[], order: FileOrder, tests: string
   return groupByFile(threads).sort(fileComparator(order, tests));
 }
 
-/** The worktree moved away from the "now" `shown`: files that differ, or 0 when only the pin moved. */
-export function nowMoved(n: NowStateDto | null, shown: string | null | undefined): number | null {
-  return n && shown && n.sha !== shown ? (n.pinned === shown ? (n.files ?? 0) : 0) : null;
+/**
+ * The worktree moved away from the "now" `shown`, pinned at `shownAt`: files that differ, or 0 when the pin moved on
+ * after the page read it. A report against an older pin than the page's (a version came in between) says nothing yet.
+ */
+export function nowMoved(n: NowStateDto | null, shown: string | null | undefined, shownAt?: string | null): number | null {
+  if (!n || !shown || n.sha === shown) return null;
+  if (n.pinned === shown) return n.files ?? 0;
+  return shownAt && n.pinnedAt < shownAt ? null : 0;
 }
 
 export function refOptions(r: Refs): { value: string; label: string }[] {
