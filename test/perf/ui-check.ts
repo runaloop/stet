@@ -1,13 +1,16 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { constants, tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Subprocess } from "bun";
 import { Bidi, KEY } from "./bidi.ts";
+import { takeTurn } from "./queue.ts";
 import { card as pngCard } from "../helpers/png.ts";
 import { Store } from "../../src/core/store/db.ts";
 
 const ROOT = join(import.meta.dir, "..", "..");
 const CLI = join(ROOT, "src", "cli.ts");
 const OUT = join(ROOT, "perf-out");
+const LIMIT_MIN = 10;
 const env = { ...process.env, GIT_AUTHOR_NAME: "ui", GIT_AUTHOR_EMAIL: "ui@example.com", GIT_COMMITTER_NAME: "ui", GIT_COMMITTER_EMAIL: "ui@example.com" };
 
 function run(cwd: string, cmd: string[], extra: Record<string, string> = {}): string {
@@ -33,7 +36,37 @@ async function firstMatch(stream: ReadableStream<Uint8Array>, re: RegExp, ms: nu
   throw new Error(`no ${re} in: ${buf.slice(0, 300)}`);
 }
 
+// runs at once slow each other's pages past what the checks wait for: a second run waits for the first
+await takeTurn("stet-ui-check");
+mkdirSync(join(OUT, "shots"), { recursive: true });
+const runDir = mkdtempSync(join(OUT, "ui-check-"));
 const repo = realpathSync(mkdtempSync(join(tmpdir(), "stet-ui-")));
+let server: Subprocess<"ignore", "pipe", "ignore"> | undefined;
+let firefox: Subprocess<"ignore", "ignore", "pipe"> | undefined;
+process.on("exit", () => {
+  firefox?.kill();
+  server?.kill();
+  rmSync(repo, { recursive: true, force: true });
+  rmSync(runDir, { recursive: true, force: true });
+});
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.on(signal, () => process.exit(128 + constants.signals[signal]));
+
+const checks: [string, boolean, unknown][] = [];
+const check = (name: string, ok: boolean, detail: unknown) => checks.push([name, ok, detail]);
+const report = () => {
+  let failed = 0;
+  for (const [name, ok, detail] of checks) {
+    if (!ok) failed++;
+    console.log(`${ok ? "ok  " : "FAIL"} ${name}${ok ? "" : `: ${JSON.stringify(detail)}`}`);
+  }
+  return failed;
+};
+setTimeout(() => {
+  check(`the run ends within ${LIMIT_MIN} minutes`, false, { after: checks.at(-1)?.[0] ?? null });
+  report();
+  process.exit(1);
+}, LIMIT_MIN * 60_000).unref();
+
 mkdirSync(join(repo, "src"));
 const cache = (lines: string[]) => writeFileSync(join(repo, "src/Cache.kt"), lines.join("\n") + "\n");
 const big = (edits: Record<number, string>) =>
@@ -64,20 +97,16 @@ run(repo, ["git", "add", "-A"]);
 run(repo, ["bun", CLI, "version", "create", "--json"]);
 
 const serve = () => Bun.spawn(["bun", CLI, "serve", "--json"], { cwd: repo, env: { ...env, STET_WATCH_MS: "500" }, stdout: "pipe", stderr: "ignore" });
-let server = serve();
-const url = JSON.parse(await firstMatch(server.stdout as ReadableStream<Uint8Array>, /^(\{.*\})$/m, 20_000)).url as string;
-mkdirSync(join(OUT, "shots"), { recursive: true });
-rmSync(join(OUT, "ui-prof"), { recursive: true, force: true });
-mkdirSync(join(OUT, "ui-prof"), { recursive: true });
+server = serve();
+const url = JSON.parse(await firstMatch(server.stdout, /^(\{.*\})$/m, 20_000)).url as string;
+const prof = join(runDir, "prof");
+mkdirSync(prof);
 // lets the page read the clipboard without a paste prompt, to check what "Copy link" put there
-writeFileSync(join(OUT, "ui-prof", "user.js"), `user_pref("dom.events.testing.asyncClipboard", true);\n`);
-const firefox = Bun.spawn(["firefox", "--headless", "--no-remote", "--profile", join(OUT, "ui-prof"), `--remote-debugging-port=${9800 + Math.floor(Math.random() * 100)}`], { stdout: "ignore", stderr: "pipe" });
-
-const checks: [string, boolean, unknown][] = [];
-const check = (name: string, ok: boolean, detail: unknown) => checks.push([name, ok, detail]);
+writeFileSync(join(prof, "user.js"), `user_pref("dom.events.testing.asyncClipboard", true);\n`);
+firefox = Bun.spawn(["firefox", "--headless", "--no-remote", "--profile", prof, "--remote-debugging-port=0"], { stdout: "ignore", stderr: "pipe" });
 
 try {
-  const ws = await firstMatch(firefox.stderr as ReadableStream<Uint8Array>, /WebDriver BiDi listening on (ws:\/\/\S+)/, 30_000);
+  const ws = await firstMatch(firefox.stderr, /WebDriver BiDi listening on (ws:\/\/\S+)/, 30_000);
   const b = await Bidi.connect(`${ws}/session`);
   const sleep = (ms: number) => b.eval(`new Promise(r => setTimeout(r, ${ms}))`);
   const pointer = (actions: unknown[]) => b.send("input.performActions", { context: b.context, actions: [{ type: "pointer", id: "mouse", parameters: { pointerType: "mouse" }, actions }] });
@@ -2086,7 +2115,7 @@ try {
     writeFileSync(join(repo, "src/GuideUtil.kt"), "fun util() = 1\nfun util2() = 2\n");
     writeFileSync(join(repo, "src/GuideOther.kt"), "val other = 1\n");
     run(repo, ["git", "add", "-A"]);
-    const guideMd = join(OUT, "ui-check-guide.md");
+    const guideMd = join(runDir, "guide.md");
     writeFileSync(guideMd, "# Guide check\n\n1. The cache keeps its size.\n   src/Guide.kt:10-12\n2. A helper for it, as #1 asked.\n   src/GuideUtil.kt\n");
     const guideV = JSON.parse(run(repo, ["bun", CLI, "version", "create", "--label", "guide", "--guide", guideMd, "--json"])).version.number as number;
     const guideThread = JSON.parse(run(repo, ["bun", CLI, "comment", "add", "--file", "src/Guide.kt", "--range", "11-11", "--at", String(guideV), "--body", "why eleven?", "--as", "reviewer", "--json"])).id as number;
@@ -2889,12 +2918,6 @@ try {
 } finally {
   firefox.kill();
   server.kill();
-  rmSync(repo, { recursive: true, force: true });
 }
 
-let failed = 0;
-for (const [name, ok, detail] of checks) {
-  if (!ok) failed++;
-  console.log(`${ok ? "ok  " : "FAIL"} ${name}${ok ? "" : `: ${JSON.stringify(detail)}`}`);
-}
-process.exit(failed ? 1 : 0);
+process.exit(report() ? 1 : 0);

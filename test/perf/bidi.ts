@@ -12,6 +12,9 @@ export class Bidi {
       const m = JSON.parse(String(e.data));
       if (m.id !== undefined) this.waiters.get(m.id)?.(m);
     };
+    ws.onclose = () => {
+      for (const w of this.waiters.values()) w({ type: "error", error: "closed", message: "the browser closed the connection" });
+    };
   }
   static async connect(url: string): Promise<Bidi> {
     const ws = new WebSocket(url);
@@ -24,9 +27,16 @@ export class Bidi {
     return b;
   }
   send(method: string, params: any): Promise<any> {
+    if (this.ws.readyState !== WebSocket.OPEN) return Promise.reject(new Error("closed: the browser closed the connection"));
     const id = ++this.id;
     this.ws.send(JSON.stringify({ id, method, params }));
-    return new Promise((resolve, reject) => this.waiters.set(id, (m) => (m.type === "error" ? reject(new Error(`${m.error}: ${m.message}`)) : resolve(m.result))));
+    return new Promise((resolve, reject) =>
+      this.waiters.set(id, (m) => {
+        this.waiters.delete(id);
+        if (m.type === "error") reject(new Error(`${m.error}: ${m.message}`));
+        else resolve(m.result);
+      }),
+    );
   }
   async eval(expression: string): Promise<any> {
     const r = await this.send("script.evaluate", { expression, target: { context: this.context }, awaitPromise: true, resultOwnership: "none" });
