@@ -7,8 +7,8 @@ import { thread } from "../../test/helpers/threads.ts";
 
 const { describe, test } = forModule("images");
 
-GlobalRegistrator.register({ url: "http://127.0.0.1:4000/" });
 const realFetch = globalThis.fetch;
+GlobalRegistrator.register({ url: "http://127.0.0.1:4000/" });
 globalThis.fetch = (async () => Response.json({ ok: true })) as unknown as typeof fetch;
 const { render } = await import("preact");
 const state = await import("../../web/state.ts");
