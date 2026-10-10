@@ -2851,6 +2851,21 @@ try {
       await pick(mainReview);
       await landed("Threads");
       const backOnMain = await tabOn();
+      const mainRange = (await b.eval(`location.hash`)) as string;
+      await b.eval(`document.activeElement?.blur(); true`);
+      await keys("[", "v");
+      await waitFor(`location.hash !== ${JSON.stringify(mainRange)} && !!document.querySelector(".codeview-host diffs-container") && !document.querySelector(".view-fade")`, 10000);
+      const rangePicked = { from: mainRange, to: await b.eval(`location.hash`), tab: await tabOn(), kept: await b.eval(`localStorage.getItem("stet.sideTab")`) };
+      await b.navigate("about:blank");
+      await b.navigate(`${url.split("#")[0]}#/?review=${mainReview}`);
+      await waitFor(`document.querySelector("header.top select")`, 15000);
+      await landed("Threads");
+      const reloaded = await tabOn();
+      check(
+        "a change of the version range keeps the side panel on Threads and leaves the remembered tab alone, so a reload opens on Threads too",
+        rangePicked.to !== rangePicked.from && /^Threads/.test(rangePicked.tab ?? "") && rangePicked.kept === "threads" && /^Threads/.test(reloaded ?? ""),
+        { rangePicked, reloaded },
+      );
       await b.navigate("about:blank");
       await b.navigate(`${url.split("#")[0]}#/?review=${sideReview}`);
       await waitFor(`document.querySelector("header.top select")`, 15000);

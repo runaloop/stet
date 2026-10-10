@@ -1,5 +1,5 @@
 import { hydratePartialDiff, parsePatchFiles, type FileDiffMetadata, type SelectedLineRange } from "@pierre/diffs";
-import { batch, computed, effect, signal } from "@preact/signals";
+import { computed, effect, signal } from "@preact/signals";
 import type { CompareDto, ComparePlacement, GrepResultDto } from "../src/core/types.ts";
 import { DEFAULT_COLLAPSE_GLOBS, DEFAULT_SKIP_MARKERS, foldOf, parseList, type FoldDecision } from "../src/ui/fold.ts";
 import { landingTab } from "../src/ui/filters.ts";
@@ -143,8 +143,6 @@ export const sideTab = {
 };
 
 let autoTab = false;
-/** Counts the landings, so the Changes page can tell a review's first range from a range the reader picked. */
-export const landings = signal(0);
 
 /**
  * Once each time a review is shown: later thread changes leave the tab alone, so it never moves under the reader.
@@ -154,10 +152,7 @@ export function landTab(): void {
   const chosen = load("sideTab", "threads") as SideTab;
   const tab = landingTab(chosen, threads.peek(), drafts.peek().length);
   autoTab = tab !== chosen;
-  batch(() => {
-    sideTabs.value = { ...sideTabs.peek(), compare: tab };
-    landings.value = landings.peek() + 1;
-  });
+  sideTabs.value = { ...sideTabs.peek(), compare: tab };
 }
 
 effect(() => {

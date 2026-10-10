@@ -25,7 +25,6 @@ import {
   activeFile,
   fileRows,
   groupsOpen,
-  landings,
   isCollapsed,
   linkedLines,
   setFileView,
@@ -54,7 +53,6 @@ import {
   visualAnchor,
   fileOpen,
   peek,
-  sideTab,
   spotThread,
 } from "../compare.ts";
 import { MARK_CSS, paintMarks } from "../lib/marks.ts";
@@ -783,15 +781,12 @@ export function CompareView({ from, to }: { from: string; to: string }) {
   const latest = useRef({ data, pending, from, to, rid, order, visible, startThread, createThread, createRestore, cancelPending, scrollToThread, scrollToLine, showHit, scrollToFile, revealCursor, cursorElement, inSight, startComment, pageRows, pageFrom, openTarget, switchView, wholeFile });
   latest.current = { data, pending, from, to, rid, order, visible, startThread, createThread, createRestore, cancelPending, scrollToThread, scrollToLine, showHit, scrollToFile, revealCursor, cursorElement, inSight, startComment, pageRows, pageFrom, openTarget, switchView, wholeFile };
 
-  const firstRange = useRef({ range: `${from}..${to}`, landing: landings.peek() });
+  const firstRange = useRef(`${from}..${to}`);
   useEffect(() => {
-    if (firstRange.current.range === `${from}..${to}`) return;
-    // the first range of a review just switched to: the side panel's tab is the landing's
-    const landed = firstRange.current.landing !== landings.peek();
-    firstRange.current = { range: `${from}..${to}`, landing: landings.peek() };
+    if (firstRange.current === `${from}..${to}`) return;
+    firstRange.current = `${from}..${to}`;
     cancelModules();
     linkedLines.value = null;
-    if (!landed && sideTab.value === "threads") sideTab.value = "files";
   }, [from, to]);
   useEffect(() => () => void (linkedLines.value = null), []);
 
