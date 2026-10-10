@@ -118,7 +118,7 @@ ${areas ? "              --region <x,y,w,h> in place of --range: an area of an i
         [--detach] [--foreground] [--stop]      returns, so it outlives the shell; --stop stops it
   open <id> [--print]                           jump to the editor at the thread
   open [<id>] --browser [--print]               the thread, or without one the review, in the browser;
-                                                starts the server when none runs
+                                                starts the server when none of this build runs
   config get <key> | config set <key> <value> | config set <key> --unset
 ${column(`keys: ${keys.join(", ")}`)}  prune [--dry-run]
   export [--all] [--out <file> [--force]] [--review <id>]

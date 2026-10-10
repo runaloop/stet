@@ -4,7 +4,7 @@ import diffsWorker from "@pierre/diffs/worker/worker-portable.js" with { type: "
 import { basename } from "node:path";
 import { openerArgv } from "../core/actions.ts";
 import { BUILD } from "../core/build.ts";
-import { findReview, type Ctx } from "../core/context.ts";
+import { StetError, findReview, type Ctx } from "../core/context.ts";
 import { handleApi, type ServerState } from "./api.ts";
 import { alive, readServerInfo, removeServerInfo, reviewUrl, savedPort, savePort, serverToken, writeServerInfo, type ServerInfo } from "./info.ts";
 import { Watcher } from "./watch.ts";
@@ -106,16 +106,28 @@ function openBrowser(url: string): void {
   }
 }
 
-export async function serve(ctx: Ctx, opts: ServeOptions): Promise<number> {
+/**
+ * The repository's running server when it is of this build. Another build serves another API and another page, so it
+ * is stopped, and the server this one starts takes its place on its port.
+ */
+async function serverOfThisBuild(ctx: Ctx): Promise<ServerInfo | null> {
   const existing = await readServerInfo(ctx.repo.commonDir);
-  if (existing && existing.build !== BUILD) {
-    // Another build serves another API and another page: this one takes its place, on its port once it is gone.
-    if (!(await stopProcess(existing.pid))) {
-      console.error(`stet serve: the server of another build (pid ${existing.pid}) did not stop`);
-      return 1;
-    }
-    console.error(`stet serve: stopped the server of another build (${existing.build ?? "without a build id"}) on port ${existing.port}`);
-  } else if (existing) {
+  if (!existing || existing.build === BUILD) return existing;
+  if (!(await stopProcess(existing.pid))) {
+    throw new StetError(`the server of another build (pid ${existing.pid}) did not stop`, 1, "server_running");
+  }
+  console.error(`stet: stopped the server of another build (${existing.build ?? "without a build id"}) on port ${existing.port}`);
+  return null;
+}
+
+/** The server a client is sent to: the running one of this build, or one started on its own. */
+export async function ensureServer(ctx: Ctx): Promise<ServerInfo | null> {
+  return (await serverOfThisBuild(ctx)) ?? startDetached(ctx, { port: 0, open: false, printUrlOnly: false, json: false });
+}
+
+export async function serve(ctx: Ctx, opts: ServeOptions): Promise<number> {
+  const existing = await serverOfThisBuild(ctx);
+  if (existing) {
     const mine = await findReview(ctx, opts.branch).catch(() => null);
     const url = reviewUrl(existing, mine?.id);
     report({ ...existing, url }, opts, true);
@@ -208,7 +220,7 @@ export async function serve(ctx: Ctx, opts: ServeOptions): Promise<number> {
 
 // A server started by an agent's shell dies with it: harnesses stop background commands after a time limit.
 // Detached, it runs in its own systemd unit, or its own session.
-export async function startDetached(ctx: Ctx, opts: ServeOptions): Promise<ServerInfo | null> {
+async function startDetached(ctx: Ctx, opts: ServeOptions): Promise<ServerInfo | null> {
   const compiled = Bun.main.startsWith("/$bunfs/") || /^[A-Z]:[\\/]~BUN[\\/]/i.test(Bun.main);
   const self = compiled ? [process.execPath] : [process.execPath, Bun.main];
   const args = [...self, "serve", "--port", String(opts.port || 0), ...(opts.branch ? ["--branch", opts.branch] : [])];

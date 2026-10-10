@@ -126,12 +126,8 @@ const browserOpen: ActionDef = {
       throw notFound(`thread #${t.thread}`);
     }
     const hash = routeHash(routeOf(t), review.id);
-    const { readServerInfo } = await import("../server/info.ts");
-    let info: { port: number; token: string } | null = await readServerInfo(ctx.repo.commonDir);
-    if (!info) {
-      const { startDetached } = await import("../server/server.ts");
-      info = await startDetached(ctx, { port: 0, open: false, printUrlOnly: false, json: false });
-    }
+    const { ensureServer } = await import("../server/server.ts");
+    const info = await ensureServer(ctx);
     if (!info) throw new StetError("the server did not start; run `stet serve` to see why", 1, "no_server");
     return { kind: "url", url: `http://127.0.0.1:${info.port}/${hash}&token=${info.token}` };
   },

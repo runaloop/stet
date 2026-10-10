@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { actionTarget } from "../src/core/actions.ts";
+import { BUILD } from "../src/core/build.ts";
 import { openContext, ensureReview, type Ctx } from "../src/core/context.ts";
 import type { ModuleSpec } from "../src/core/module.ts";
 import { actionOf, actionsOf } from "../src/core/modules.ts";
@@ -48,11 +49,11 @@ beforeAll(async () => {
   ctx = await openContext({ cwd: f.root, role: "reviewer", author: "alice" });
   review = await ensureReview(ctx);
   clearNowCache();
-  // Stands in for `stet serve`: browser.open only needs a server that answers ping with the token.
+  // Stands in for `stet serve` of this build: browser.open only needs a server that answers ping with the token and the build.
   fake = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
-    fetch: (req) => (req.headers.get("x-stet-token") === TOKEN ? Response.json({ ok: true }) : new Response("no", { status: 401 })),
+    fetch: (req) => (req.headers.get("x-stet-token") === TOKEN ? Response.json({ ok: true, build: BUILD }) : new Response("no", { status: 401 })),
   });
   writeServerInfo(ctx.repo.commonDir, { pid: process.pid, port: fake.port!, token: TOKEN, url: "", startedAt: new Date().toISOString() });
   state = { ctx, defaultReview: review.id, pinnedNow: new Map(), pinning: new Map() };

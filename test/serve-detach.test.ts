@@ -39,30 +39,45 @@ test("serve --detach returns at once and the server outlives the command; --stop
   expect((await ok(stet(["serve", "--stop"], { cwd: f.root, role: "reviewer" }))).stopped).toBe(false);
 });
 
-test("serve replaces a server of another build, on its port", async () => {
-  const old = Bun.spawn(["bun", "--define", 'STET_BUILD="old"', join(import.meta.dir, "..", "src", "cli.ts"), "serve", "--json"], {
+/** A server of another build in the foreground, and what its port answers ping with now. */
+async function oldServer() {
+  const proc = Bun.spawn(["bun", "--define", 'STET_BUILD="old"', join(import.meta.dir, "..", "src", "cli.ts"), "serve", "--json"], {
     cwd: f.root,
     env: { ...process.env, ...GIT_ENV, STET_ROLE: "reviewer" },
     stdout: "pipe",
     stderr: "ignore",
   });
-  const reader = (old.stdout as ReadableStream<Uint8Array>).getReader();
-  const before = JSON.parse(new TextDecoder().decode((await reader.read()).value));
+  const reader = (proc.stdout as ReadableStream<Uint8Array>).getReader();
+  const info = JSON.parse(new TextDecoder().decode((await reader.read()).value));
   reader.releaseLock();
-  const token = before.url.split("token=")[1];
+  const token = info.url.split("token=")[1];
   const build = () =>
-    fetch(`http://127.0.0.1:${before.port}/api/ping`, { headers: { "x-stet-token": token }, signal: AbortSignal.timeout(1000) })
+    fetch(`http://127.0.0.1:${info.port}/api/ping`, { headers: { "x-stet-token": token }, signal: AbortSignal.timeout(1000) })
       .then((r) => r.json())
       .then((b: { build: string }) => b.build);
   expect(await build()).toBe("old");
+  return { proc, info, build };
+}
 
+test("serve replaces a server of another build, on its port", async () => {
+  const old = await oldServer();
   const r = await stet(["serve", "--detach"], { cwd: f.root, role: "reviewer" });
   expect(r.code).toBe(0);
   expect(r.stderr).toContain("stopped the server of another build (old)");
-  expect(r.json).toMatchObject({ port: before.port, reused: false });
-  expect(r.json.pid).not.toBe(before.pid);
-  expect(await old.exited).toBe(0);
-  expect(await build()).toBe("dev");
+  expect(r.json).toMatchObject({ port: old.info.port, reused: false });
+  expect(r.json.pid).not.toBe(old.info.pid);
+  expect(await old.proc.exited).toBe(0);
+  expect(await old.build()).toBe("dev");
 
   expect((await ok(stet(["serve", "--detach"], { cwd: f.root, role: "reviewer" }))).reused).toBe(true);
+});
+
+test("open --browser replaces a server of another build too, and sends the browser to the new one", async () => {
+  const old = await oldServer();
+  const r = await stet(["open", "--browser", "--print"], { cwd: f.root });
+  expect(r.code).toBe(0);
+  expect(r.stderr).toContain("stopped the server of another build (old)");
+  expect(new URL(r.json.url).port).toBe(String(old.info.port));
+  expect(await old.proc.exited).toBe(0);
+  expect(await old.build()).toBe("dev");
 });

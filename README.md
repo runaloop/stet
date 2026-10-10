@@ -107,7 +107,7 @@ All commands print JSON when piped or with `--json`, except `stet export`, which
 | `stet resolve <id> [--reason fixed\|wontfix\|answered]` / `stet reopen <id>` | reviewer only |
 | `stet resolve <id> --body <t\|->` | reviewer only: resolve with a message, a draft that resolves the thread (reason `go`) when you submit the review, with Request changes or an approval. The agent does as it says without asking again; its `question` or `disagree` reply reopens the thread |
 | `stet wait --for review\|reply\|version\|any [--timeout 30m]` | block until there is something to do (exit 5 on timeout) |
-| `stet open <id>` / `stet open [<id>] --browser` | open the editor at the thread; `--browser`: the thread, or without an id the review, in the browser, starting the server when none runs. `--print` prints the command or the URL instead |
+| `stet open <id>` / `stet open [<id>] --browser` | open the editor at the thread; `--browser`: the thread, or without an id the review, in the browser, starting the server when none runs and replacing one of another stet build. `--print` prints the command or the URL instead |
 | `stet prune` | drop snapshot refs nothing points at |
 | `stet export [--all] [--out <file>]` | the review as Markdown, drafts left out: one line per thread with its outcome and place (fixed in v2, answered, won't fix, waits for the agent), for a merge request description; `--all` adds the code then and now, every conversation and timeline, the versions and each review's verdict, for an archive or another agent. A closed review too: the branch's last one, or `--review <id>` |
 | `stet skill install` / `stet skill show` | install the agent's skill / print it |
