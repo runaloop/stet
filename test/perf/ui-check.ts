@@ -449,7 +449,7 @@ try {
     await b.eval(`document.querySelector(".fold-summary .fold-tests").click(); true`);
     await sleep(1200);
     const testAt = await b.eval(`(() => { const host = document.querySelector(".codeview-host"); const c = [...host.querySelectorAll("diffs-container")].find(c => c.shadowRoot.textContent.includes("CacheTest.kt")); return c ? { top: Math.round(c.getBoundingClientRect().top - host.getBoundingClientRect().top), scrollTop: Math.round(host.scrollTop), max: host.scrollHeight - host.clientHeight } : null; })()`);
-    check("the header counts the folded tests and its show button scrolls to them", chip.includes("1 test file") && chip.includes("folded") && testAt !== null && testAt.scrollTop > 0 && (testAt.top < 80 || testAt.scrollTop >= testAt.max - 2), { chip, testAt });
+    check("the header counts the folded tests and its show button scrolls to them", chip.includes("1 test file with only new code folded") && testAt !== null && testAt.scrollTop > 0 && (testAt.top < 80 || testAt.scrollTop >= testAt.max - 2), { chip, testAt });
 
     await b.eval(`location.hash = "#/compare/1..2"; true`);
     await waitFor(`document.querySelector(".compare .range-title")?.textContent.includes("(v1 → v2)") && [...document.querySelectorAll(".codeview-host diffs-container")].some(c => c.shadowRoot.textContent.includes("HUNDRED_V2"))`, 8000);

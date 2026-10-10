@@ -3,7 +3,7 @@ import { parsePatchFiles } from "@pierre/diffs";
 import type { CommentDto, ComparePlacement, ThreadDetail, VersionDto } from "../../src/core/types.ts";
 import { thread } from "../helpers/threads.ts";
 import { commitOf, commitRef, isSha } from "../../src/ui/commits.ts";
-import { fileRows, grepSorted, linesUrl, marksByPath, viewedCount } from "../../src/ui/compare.ts";
+import { fileRows, foldLabel, grepSorted, linesUrl, marksByPath, viewedCount } from "../../src/ui/compare.ts";
 import { DEFAULT_TEST_GLOBS } from "../../src/ui/fold.ts";
 import { foldedByDefault, isLong, readingOrder } from "../../src/ui/msgs.ts";
 import { FileOrder, parseOrder } from "../../src/ui/order.ts";
@@ -82,6 +82,14 @@ describe("compare", () => {
     const placed: ComparePlacement = { threadId: 1, side: "additions", path: "src/a.test.ts", range: { start: 2, end: 2 }, state: "ok" };
     expect(fileRows(fds, { ...cfg, folds: folded, placements: [placed] }).find((r) => r.fd.name === "src/a.test.ts")).toMatchObject({ group: null, hidden: false, threads: 1 });
     expect(viewedCount(rows, viewedIndex([viewedKey(fds[2]!)]))).toEqual({ shown: 2, seen: 1, hidden: 1 });
+  });
+
+  test("a folded group's button says why it is folded: tests for only adding code, generated and lock files for what they are", () => {
+    expect(foldLabel("tests", 1, false)).toBe("▸ 1 test file with only new code folded · show");
+    expect(foldLabel("tests", 2, true)).toBe("▾ 2 test files shown · hide");
+    expect(foldLabel("generated", 1, false)).toBe("▸ 1 generated / lock file folded · show");
+    expect(foldLabel("generated", 3, false)).toBe("▸ 3 generated / lock files folded · show");
+    expect(foldLabel("generated", 1, true)).toBe("▾ 1 generated / lock file shown · hide");
   });
 
   test("grep results in the order of the Changes page", () => {

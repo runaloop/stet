@@ -59,6 +59,7 @@ import { MARK_CSS, paintMarks } from "../lib/marks.ts";
 import { CHUNK, expansionOf, newLineOf, textLines, withSpan, type Reveal } from "../../src/ui/reveal.ts";
 import { rowPosition, type Cursor, type LineRange, type Seen } from "../../src/ui/cursor.ts";
 import { compareOrder } from "../../src/ui/nav.ts";
+import { foldedFiles, foldLabel } from "../../src/ui/compare.ts";
 import { PeekView } from "./Peek.tsx";
 import { plusLines } from "../plus.ts";
 import { blocksInSight, codeTop, lineAt, linesInSight, onScreen, placeAt, renderedTop, rowElement, stopElement } from "./anchor.ts";
@@ -123,7 +124,7 @@ function FoldFooter() {
       {groups.map(({ g, n, add, del }) => (
         <div class="fold-group">
           <button class="btn small" onClick={() => (groupsOpen.value = { ...open, [g]: !open[g] })}>
-            {open[g] ? "▾ hide" : "▸ show"} {n} {g === "tests" ? "test" : "generated / lock"} file{n === 1 ? "" : "s"}
+            {open[g] ? "▾ hide" : "▸ show"} {foldedFiles(g, n)}
           </button>{" "}
           <span class="stat"><span class="add">+{add}</span> <span class="del">−{del}</span></span>{" "}
           <span class="hint">
@@ -145,18 +146,15 @@ function FoldSummary() {
   if (!groups.length && !kept) return null;
   return (
     <span class="fold-summary">
-      {groups.map(({ g, list }) => {
-        const what = `${list.length} ${g === "tests" ? "test" : "generated / lock"} file${list.length === 1 ? "" : "s"}`;
-        return (
-          <button
-            class={`btn ghost small fold-${g}`}
-            title={g === "tests" ? "test files that only add code (nothing removed or changed, no skip markers) are folded into one group at the end · Space u t" : "files matched by compare.collapse"}
-            onClick={() => (open[g] ? (groupsOpen.value = { ...open, [g]: false }) : compareNav.current?.scrollToFile(list[0]!.fd.name))}
-          >
-            {open[g] ? `▾ ${what} shown · hide` : `▸ ${what} with only new code folded · show`}
-          </button>
-        );
-      })}
+      {groups.map(({ g, list }) => (
+        <button
+          class={`btn ghost small fold-${g}`}
+          title={g === "tests" ? "test files that only add code (nothing removed or changed, no skip markers) are folded into one group at the end · Space u t" : "files matched by compare.collapse"}
+          onClick={() => (open[g] ? (groupsOpen.value = { ...open, [g]: false }) : compareNav.current?.scrollToFile(list[0]!.fd.name))}
+        >
+          {foldLabel(g, list.length, open[g])}
+        </button>
+      ))}
       {kept ? (
         <span class="kept" title="a test that removes or changes lines, adds a skip marker or is deleted is never folded: that is how a test gets weakened">
           ⚠ {kept} changed test file{kept === 1 ? "" : "s"} stay{kept === 1 ? "s" : ""} in the diff

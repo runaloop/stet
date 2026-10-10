@@ -24,6 +24,18 @@ export function sectionTitle(r: FileRow): string {
   return r.group === "tests" ? "Tests with only new code" : r.group === "generated" ? "Generated and lock files" : groupTitle(r.kind);
 }
 
+/** "1 test file", "3 generated / lock files". */
+export function foldedFiles(group: FoldGroup, n: number): string {
+  return `${n} ${group === "tests" ? "test" : "generated / lock"} file${n === 1 ? "" : "s"}`;
+}
+
+/** The header's button of a fold group: tests fold for only adding code, generated and lock files whatever their change. */
+export function foldLabel(group: FoldGroup, n: number, open: boolean): string {
+  const what = foldedFiles(group, n);
+  if (open) return `▾ ${what} shown · hide`;
+  return `▸ ${what} ${group === "tests" ? "with only new code folded" : "folded"} · show`;
+}
+
 export interface FileRowsInput {
   folds: ReadonlyMap<string, FoldDecision>;
   /** The fold groups the reader opened. */
