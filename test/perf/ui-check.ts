@@ -1166,6 +1166,32 @@ try {
 
     const zoomOf = (sel: string) => b.eval(`[...document.querySelectorAll(${JSON.stringify(sel)})].map(v => ({ zoomed: v.classList.contains("zoomed"), w: Math.round(v.firstElementChild.getBoundingClientRect().width), x: Math.round(v.scrollLeft), y: Math.round(v.scrollTop) }))`) as Promise<{ zoomed: boolean; w: number; x: number; y: number }[]>;
     const centre = (sel: string) => b.eval(`(() => { const r = document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect(); return { x: Math.round(r.left + Math.min(r.width, 200) / 2), y: Math.round(r.top + Math.min(r.height, 200) / 2) }; })()`) as Promise<{ x: number; y: number }>;
+    const areaOf = async () => ({ views: await zoomOf(".img-area .img-view"), img: await b.eval(`Math.round(document.querySelector(".img-area .img-crop img").getBoundingClientRect().width)`), level: await b.eval(`document.querySelector(".code-label .img-zoom-level")?.textContent ?? null`) });
+    await b.eval(`document.activeElement?.blur(); true`);
+    await pointer([{ type: "pointerMove", ...(await centre(".img-area .img-view")) }]);
+    const areaFit = await areaOf();
+    await keys("+");
+    await sleep(200);
+    const areaIn = await areaOf();
+    await b.eval(`[...document.querySelectorAll(".code-label .img-zoom-bar button")].find(x => x.textContent === "100%").click(); true`);
+    await sleep(200);
+    const areaFull = await areaOf();
+    await keys("0");
+    await sleep(200);
+    const areaBack = await areaOf();
+    check(
+      "on an image thread's page the area zooms inside its crop: + over it zooms in, 100% shows the image's own pixels, 0 fits the crop again",
+      areaFit.views[0]?.zoomed === false &&
+        areaFit.views[0].w > 0 &&
+        areaIn.views[0]?.zoomed === true &&
+        areaIn.views[0].w > areaFit.views[0].w &&
+        areaIn.img === Math.round((240 * parseInt(areaIn.level ?? "0")) / 100) &&
+        areaFull.views[0]?.zoomed === true &&
+        areaFull.img === 240 &&
+        JSON.stringify(areaBack) === JSON.stringify(areaFit),
+      { areaFit, areaIn, areaFull, areaBack },
+    );
+
     await b.eval(`[...document.querySelectorAll(".code-label .seg button")].find(x => x.textContent === "whole image").click(); true`);
     await waitFor(`document.querySelector(".img-area .img-view img")?.complete && document.querySelector(".code-label .img-zoom-bar")`, 5000);
     await b.eval(`document.activeElement?.blur(); true`);

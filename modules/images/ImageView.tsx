@@ -415,15 +415,26 @@ export function ImageDiff({ file }: { file: string }) {
   );
 }
 
-/** The commented area of an image, with a margin, as a crop: on the thread page and in its timeline. */
-export function RegionCrop({ sha, path, region, height, frame = true }: { sha: string; path: string; region: Region; height?: number; frame?: boolean }) {
+/** The commented area of an image, with a margin, as a crop: on the thread page and in its timeline. With `zoom`, it zooms inside the crop. */
+export function RegionCrop({ sha, path, region, height, frame = true, zoom }: { sha: string; path: string; region: Region; height?: number; frame?: boolean; zoom?: Zoom }) {
   const c = cropRect(region);
   const pct = (v: number, of: number) => `${(v / of) * 100}%`;
-  return (
-    <div class="img-crop" style={{ aspectRatio: `${c.w} / ${c.h}`, ...(height ? { height: `${height}px` } : { width: `min(100%, ${displayWidth(c.w, c.h) * 2}px, calc(60vh * ${c.w / c.h}))` }) }}>
-      <img src={rawUrl(sha, path)} alt="" draggable={false} class={c.w < SMALL && !isSvg(path) ? "img-pixelated" : ""} style={{ width: pct(region.iw, c.w), left: pct(-c.x, c.w), top: pct(-c.y, c.h) }} />
+  const z = zoom?.scale.value ?? null;
+  const crisp = !isSvg(path) && (z !== null ? z >= 2 : c.w < SMALL);
+  // the width leaves 100% to max-width: a percentage in it would make the zoom view around the crop shrink it to nothing
+  const width = z !== null ? `${c.w * z}px` : `min(${displayWidth(c.w, c.h) * 2}px, calc(60vh * ${c.w / c.h}))`;
+  const crop = (
+    <div class="img-crop" style={{ aspectRatio: `${c.w} / ${c.h}`, ...(height ? { height: `${height}px` } : { width }) }}>
+      <img src={rawUrl(sha, path)} alt="" draggable={false} class={crisp ? "img-pixelated" : ""} style={{ width: pct(region.iw, c.w), left: pct(-c.x, c.w), top: pct(-c.y, c.h) }} />
       {frame ? <div class="img-frame tone-focus" style={{ left: pct(region.x - c.x, c.w), top: pct(region.y - c.y, c.h), width: pct(region.w, c.w), height: pct(region.h, c.h) }} /> : null}
     </div>
+  );
+  return zoom ? (
+    <ZoomView zoom={zoom} w={c.w} pan>
+      {crop}
+    </ZoomView>
+  ) : (
+    crop
   );
 }
 
@@ -431,7 +442,9 @@ export function RegionCrop({ sha, path, region, height, frame = true }: { sha: s
 export function ImageArea({ d, from, to }: { d: ThreadDetail; from: TimelineStepDto; to: TimelineStepDto }) {
   const region = d.thread.region!;
   const [whole, setWhole] = useState(false);
-  const zoom = useZoom();
+  const areaZoom = useZoom();
+  const wholeZoom = useZoom();
+  const zoom = whole ? wholeZoom : areaZoom;
   const single = from.index === to.index;
   const changed = d.timeline.slice(Math.min(from.index, to.index) + 1, Math.max(from.index, to.index) + 1).some((s) => s.method === "image");
   const pane = (s: TimelineStepDto) =>
@@ -442,7 +455,7 @@ export function ImageArea({ d, from, to }: { d: ThreadDetail; from: TimelineStep
     ) : (
       <figure class="img-pane">
         <figcaption>{s.label}</figcaption>
-        <RegionCrop sha={s.sha} path={s.path} region={region} />
+        <RegionCrop sha={s.sha} path={s.path} region={region} zoom={zoom} />
       </figure>
     );
   const label = single
@@ -460,7 +473,7 @@ export function ImageArea({ d, from, to }: { d: ThreadDetail; from: TimelineStep
         <span>{label}</span>
         <span class="spacer" />
         <span class="hint">{regionLabel(region)} px</span>
-        {whole ? <ZoomBar zoom={zoom} /> : null}
+        <ZoomBar zoom={zoom} />
         <span class="seg small">
           <button class={whole ? "" : "on"} onClick={() => setWhole(false)}>the area</button>
           <button class={whole ? "on" : ""} onClick={() => setWhole(true)}>whole image</button>

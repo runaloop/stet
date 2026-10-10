@@ -57,6 +57,30 @@ describe("the images module on the page", () => {
     expect(threadLanding(png.name, true)).toBe("file");
   });
 
+  test("a thread's area zooms inside its crop, apart from the whole image", async () => {
+    switched(true);
+    const host = drawn(<registry.ThreadArea d={detail} from={step} to={step} />);
+    const button = (text: string) => [...host.querySelectorAll("button")].find((b) => b.textContent === text)!;
+    const crop = () => host.querySelector<HTMLElement>(".img-area .img-view .img-crop");
+    const zoomed = () => host.querySelector(".img-area .img-view")!.classList.contains("zoomed");
+    expect(host.querySelector(".code-label .img-zoom-bar")).not.toBeNull();
+    expect(zoomed()).toBe(false);
+    button("100%").click();
+    await new Promise((r) => setTimeout(r, 0));
+    // the crop is the region with 16 px around it, inside the 120×80 image: 76 px wide
+    expect([zoomed(), crop()!.style.width]).toEqual([true, "76px"]);
+    expect(host.querySelector(".code-label .img-zoom-level")!.textContent).toBe("100%");
+    button("whole image").click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect([zoomed(), host.querySelector(".code-label .img-zoom-level")]).toEqual([false, null]);
+    button("the area").click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(crop()!.style.width).toBe("76px");
+    button("fit").click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect([zoomed(), host.querySelector(".code-label .img-zoom-level")]).toEqual([false, null]);
+  });
+
   test("a frame's tag knows the room above and left of its frame, to keep to the image", () => {
     switched(true);
     const pane = drawn(<ImagePane sha="s1" path={png.name} size={{ w: 120, h: 80, bytes: 1 }} frames={[{ id: 1, region: { ...region, y: 0 }, tone: "thread" }]} />);
