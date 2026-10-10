@@ -4,7 +4,7 @@ import { render, type ComponentChild } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ComparePlacement } from "../../src/core/types.ts";
 import { api } from "../api.ts";
-import { cancelModules, headerControl, isPicture, isSwitchable, textViewer, viewerByKind, viewerFor, webModules } from "../modules.tsx";
+import { cancelModules, headerControl, isSwitchable, textViewer, viewerByKind, viewerFor, webModules } from "../modules.tsx";
 import { Kbd } from "../components/Bits.tsx";
 import { mount, workerPool } from "../components/Code.tsx";
 import { FileGitMarks } from "../components/GitState.tsx";
@@ -62,7 +62,7 @@ import { compareOrder } from "../../src/ui/nav.ts";
 import { foldedFiles, foldLabel } from "../../src/ui/compare.ts";
 import { PeekView } from "./Peek.tsx";
 import { plusLines } from "../plus.ts";
-import { blocksInSight, codeTop, lineAt, linesInSight, onScreen, placeAt, renderedTop, rowElement, stopElement } from "./anchor.ts";
+import { blocksInSight, codeTop, itemElement, lineAt, linesInSight, onScreen, pin, placeAt, renderedTop, rowElement, stopElement } from "./anchor.ts";
 import { holdFade, snapshot, visibleBox } from "../lib/fade.ts";
 import { Presets, rangeTitle, ReviewedButton, VersionStrip } from "../components/VersionStrip.tsx";
 import { takeSpot } from "../jumps.ts";
@@ -394,27 +394,16 @@ export function CompareView({ from, to }: { from: string; to: string }) {
     else view.current?.scrollTo(target);
   };
 
-  /** Whether the reader scrolled, clicked or typed since this was called, for `ms`. */
-  const readerMoved = (ms: number) => {
-    let moved = false;
-    const stop = () => (moved = true);
-    const events = ["wheel", "pointerdown", "keydown"] as const;
-    for (const ev of events) window.addEventListener(ev, stop, { capture: true, passive: true });
-    setTimeout(() => {
-      for (const ev of events) window.removeEventListener(ev, stop, { capture: true });
-    }, ms);
-    return () => moved;
-  };
-
   // Images, rendered Markdown and the thread cards under lines measure their height only when drawn, and the ones
-  // drawn around a jump move it: jump again once they are measured, unless the reader scrolls, clicks or types meanwhile.
+  // drawn around a jump would move it: what it went to stays where it lands while they do.
   const settle = (target: CodeViewScrollTarget) => {
-    const moved = readerMoved(1500);
-    for (const ms of [250, 700, 1400]) setTimeout(() => moved() || view.current?.scrollTo(target), ms);
-  };
-
-  const settleOn = (path: string) => {
-    if (isPicture(path) || drawnFiles.peek().has(path)) settle({ type: "item", id: path, align: "start" });
+    const h = host.current;
+    if (!h || (target.type !== "line" && target.type !== "item")) return;
+    pin(h, () => {
+      const v = view.current as CodeView<never> | null;
+      if (!v) return null;
+      return target.type === "line" ? rowElement(v, target.id, target.side ?? "additions", target.lineNumber) : itemElement(v, target.id);
+    });
   };
 
   const scrollToThread = (id: number) => {
@@ -427,9 +416,14 @@ export function CompareView({ from, to }: { from: string; to: string }) {
         if (block) revealBlock(p.path, block.row, "center", p.side);
       });
     } else if (lands === "file") {
-      view.current.scrollTo({ type: "item", id: p.path, align: "start" });
-      settleOn(p.path);
-    } else scrollOrQueue({ type: "line", id: p.path, lineNumber: p.range.end, side: p.side, align: "center" }, codeOf(p.path));
+      const target: CodeViewScrollTarget = { type: "item", id: p.path, align: "start" };
+      view.current.scrollTo(target);
+      settle(target);
+    } else {
+      const target: CodeViewScrollTarget = { type: "line", id: p.path, lineNumber: p.range.end, side: p.side, align: "center" };
+      scrollOrQueue(target, codeOf(p.path));
+      settle(target);
+    }
     return true;
   };
 
@@ -475,8 +469,9 @@ export function CompareView({ from, to }: { from: string; to: string }) {
   };
 
   const scrollToFile = (path: string) => {
-    scrollOrQueue({ type: "item", id: path, align: "start" }, reveal(path, false));
-    settleOn(path);
+    const target: CodeViewScrollTarget = { type: "item", id: path, align: "start" };
+    scrollOrQueue(target, reveal(path, false));
+    settle(target);
   };
 
   // Runs `fn` once the rendered Markdown file has laid out its blocks for the cursor; the file is scrolled to when it
@@ -750,12 +745,6 @@ export function CompareView({ from, to }: { from: string; to: string }) {
         linkedLines.value = lines;
         if (!c) return;
         revealBlock(path, c.row, align, side);
-        // rendered files above it may grow only after it is placed, and push it out of the drawn window
-        const moved = readerMoved(3000);
-        for (const ms of [800, 1600, 2800])
-          setTimeout(() => {
-            if (!moved() && host.current && !onScreen(host.current, stopElement(path, c.row, side))) revealBlock(path, c.row, align, side);
-          }, ms);
       });
       return;
     }

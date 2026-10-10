@@ -1,11 +1,16 @@
 import type { CodeView } from "@pierre/diffs";
 import type { CursorSpace, Seen } from "../../src/ui/cursor.ts";
-import { holdFade } from "../lib/fade.ts";
+import { holdFade, stillness } from "../lib/fade.ts";
 import { drawnLines } from "../lib/marks.ts";
 import type { Side } from "../../src/ui/search.ts";
 
 /** The sticky file header covers this much of the top of the code view. */
 const HEADER = 48;
+
+/** Frames a placed element stands still before pierre counts as done with its own scroll to it. */
+const STILL = 4;
+/** How long a placed element is kept in its place while the files around it lay out: pictures load, Markdown renders. */
+const KEEP = 3000;
 
 let release: (() => void) | null = null;
 
@@ -27,54 +32,103 @@ const heldUntil = (placed?: () => void) => {
   };
 };
 
+type Want = number | ((el: Element) => number);
+
+function putAt(scroller: HTMLElement, el: Element, want: Want): void {
+  const off = offsetOf(scroller, el) - (typeof want === "number" ? want : want(el));
+  if (Math.abs(off) >= 1) scroller.scrollTop += off;
+}
+
+/** pierre's box of the drawn files, the one `el` is drawn in: it changes size with any of them. */
+export function filesBox(scroller: Element, el: Element): Element | null {
+  for (let at: Element | null = el; at && at !== scroller; at = at.parentElement ?? ((at.getRootNode() as Partial<ShadowRoot>).host ?? null)) {
+    if (at.parentElement?.parentElement === scroller) return at;
+  }
+  return null;
+}
+
 /**
- * Puts a rendered block where `want` says (px from the top of the scroller, given the block, as its height may count):
- * once as soon as it is drawn, and once more when the pictures above it have loaded (they push it down), within `ms`
- * and unless the reader scrolls, clicks or types first. Between the two pierre keeps the place itself; a correction on
- * every frame would fight its own and shake the page.
+ * Keeps an element `want` px from the top of the scroller while the files drawn around it change size. pierre keeps
+ * the first line on screen in place, and what grows between it and the element pushes the element away; this observer
+ * is made after pierre's, so it runs after pierre's in the same frame and the move is never drawn.
  */
-export function placeAt(scroller: HTMLElement, find: () => Element | null, want: number | ((el: Element) => number), ms = 1500, placed?: () => void): void {
+function keepAt(scroller: HTMLElement, find: () => Element | null, want: Want): () => void {
+  let box: Element | null = null;
+  const follow = (el: Element | null) => {
+    const b = el && filesBox(scroller, el);
+    if (b === box) return;
+    if (box) observer.unobserve(box);
+    box = b;
+    if (b) observer.observe(b);
+  };
+  const observer = new ResizeObserver(() => {
+    const el = find();
+    if (el) putAt(scroller, el, want);
+    follow(el);
+  });
+  follow(find());
+  return () => observer.disconnect();
+}
+
+/**
+ * A placement of an element: it ends at the reader's first scroll, click or key, when the next placement starts, or
+ * `KEEP` ms after `keep` starts keeping the element in place. `tell` lets go of the copy of the old view that waits
+ * for it and runs `placed`.
+ */
+function placement(placed?: () => void) {
   const tell = once(heldUntil(placed));
   release?.();
-  let done = false;
+  let over = false;
+  let kept = () => {};
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const events = ["wheel", "pointerdown", "keydown"] as const;
   const stop = () => {
     tell();
-    done = true;
+    over = true;
+    kept();
+    clearTimeout(timer);
     for (const ev of events) window.removeEventListener(ev, stop, { capture: true });
     if (release === stop) release = null;
   };
   release = stop;
   for (const ev of events) window.addEventListener(ev, stop, { capture: true, passive: true });
-  const end = performance.now() + ms;
-  const fix = (el: Element) => {
-    const y = typeof want === "number" ? want : want(el);
-    const off = el.getBoundingClientRect().top - scroller.getBoundingClientRect().top - y;
-    if (Math.abs(off) >= 1) scroller.scrollTop += off;
+  return {
+    tell,
+    stop,
+    over: () => over,
+    keep(scroller: HTMLElement, find: () => Element | null, want: Want) {
+      kept();
+      clearTimeout(timer);
+      kept = keepAt(scroller, find, want);
+      timer = setTimeout(stop, KEEP);
+    },
   };
-  const above = (el: Element) => [...(el.closest(".md-view")?.querySelectorAll("img") ?? [])].filter((img) => img.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+}
+
+/**
+ * Puts a rendered block where `want` says (px from the top of the scroller, given the block, as its height may count)
+ * as soon as it is drawn, and keeps it there while pictures load and files lay out around it. Once it stands still
+ * (pierre may still be scrolling to the file it is in) it is put there once more. Within `ms` it is drawn, or it is
+ * given up on.
+ */
+export function placeAt(scroller: HTMLElement, find: () => Element | null, want: Want, ms = 1500, placed?: () => void): void {
+  const p = placement(placed);
+  const end = performance.now() + ms;
+  const still = stillness(STILL);
   let first = false;
-  let last = NaN;
-  let still = 0;
   const tick = () => {
-    if (done) return;
+    if (p.over()) return;
     const el = find();
     const late = performance.now() > end;
     if (el && !first) {
-      fix(el);
+      putAt(scroller, el, want);
+      p.keep(scroller, find, want);
       first = true;
-      tell();
-    } else if (el) {
-      const top = el.getBoundingClientRect().top;
-      still = top === last ? still + 1 : 0;
-      last = top;
-      // the second time only once the layout around it is quiet: pictures loaded, nothing moved for a few frames
-      if (late || (still >= 4 && above(el).every((img) => img.complete))) {
-        fix(el);
-        return stop();
-      }
+    } else if (el && (late || still(String(el.getBoundingClientRect().top)))) {
+      putAt(scroller, el, want);
+      return p.tell();
     }
-    if (late) return stop();
+    if (late) return p.stop();
     requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);
@@ -82,38 +136,45 @@ export function placeAt(scroller: HTMLElement, find: () => Element | null, want:
 
 /**
  * Puts a line of the code `y` px below the top: pierre's own line target keeps it there while it lays the rows out,
- * and once the line has stood still for a few frames one last nudge takes up what pierre's sum leaves over.
+ * and once the line has stood still for a few frames one last nudge takes up what pierre's sum leaves over. Then it is
+ * kept there while the files around it lay out.
  */
 export function lineAt(scroller: HTMLElement, view: CodeView<never>, path: string, side: Side, line: number, y: number, ms = 1500, placed?: () => void): void {
-  const tell = once(heldUntil(placed));
-  release?.();
+  const p = placement(placed);
   const sticky = (view as unknown as { getStickyHeaderOffset?: () => number }).getStickyHeaderOffset?.() ?? 0;
   view.scrollTo({ type: "line", id: path, lineNumber: line, side, align: "start", offset: y - sticky });
-  let done = false;
-  const events = ["wheel", "pointerdown", "keydown"] as const;
-  const stop = () => {
-    tell();
-    done = true;
-    for (const ev of events) window.removeEventListener(ev, stop, { capture: true });
-    if (release === stop) release = null;
-  };
-  release = stop;
-  for (const ev of events) window.addEventListener(ev, stop, { capture: true, passive: true });
+  const find = () => rowElement(view, path, side, line);
   const end = performance.now() + ms;
-  let last = NaN;
-  let still = 0;
+  const still = stillness(6);
   const tick = () => {
-    if (done) return;
-    const el = rowElement(view, path, side, line);
-    const top = el ? el.getBoundingClientRect().top - scroller.getBoundingClientRect().top : NaN;
-    still = top === last ? still + 1 : 0;
-    last = top;
-    if (el && Math.abs(top - y) <= 2) tell();
-    if (el && still >= 6) {
-      if (Math.abs(top - y) >= 1) scroller.scrollTop += top - y;
-      return stop();
+    if (p.over()) return;
+    const el = find();
+    const top = el ? offsetOf(scroller, el) : NaN;
+    if (el && Math.abs(top - y) <= 2) p.tell();
+    if (el && still(String(top))) {
+      putAt(scroller, el, y);
+      p.tell();
+      return p.keep(scroller, find, y);
     }
-    if (performance.now() > end) return stop();
+    if (performance.now() > end) return p.stop();
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+/**
+ * Keeps an element a jump went to where pierre put it: once it is drawn and stands still, it stays there while the
+ * files around it lay out (pictures load, rendered Markdown and thread cards are measured).
+ */
+export function pin(scroller: HTMLElement, find: () => Element | null, ms = 1500): void {
+  const p = placement();
+  const end = performance.now() + ms;
+  const still = stillness(STILL);
+  const tick = () => {
+    if (p.over()) return;
+    const el = find();
+    if (el && still(String(offsetOf(scroller, el)))) return p.keep(scroller, find, offsetOf(scroller, el));
+    if (performance.now() > end) return p.stop();
     requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);
@@ -174,7 +235,7 @@ export function renderedTop(scroller: HTMLElement, path: string): { stop: number
   return { stop: Number(el.dataset.stop), side: isNew(el) ? "new" : "old", y: offsetOf(scroller, el), height: r.height, past };
 }
 
-function itemElement(view: CodeView<never>, path: string): HTMLElement | null {
+export function itemElement(view: CodeView<never>, path: string): HTMLElement | null {
   return view.getRenderedItems().find((r) => r.id === path)?.element ?? null;
 }
 
