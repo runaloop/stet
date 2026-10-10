@@ -2838,6 +2838,79 @@ try {
     const drawn = await b.eval(`(() => { const v = window.__INSTANCE; const s = v.renderState; return { children: v.stickyContainer.children.length, window: s.lastIndex - s.firstIndex + 1, items: v.items.length, kids: [...v.stickyContainer.children].map(c => c.shadowRoot?.querySelector("[data-title]")?.textContent) }; })()`);
     check("after another range, only the files drawn for it stay on the page (a file left from the old range makes the scroll stick and jump)", drawn.children === drawn.window, drawn);
 
+    // A jump below rendered Markdown with pictures, on a page just loaded, with pictures and texts slow to come: they
+    // are laid out after the cross-fade, and the line jumped to stays where the fade showed it.
+    mkdirSync(join(repo, "docs/settle"), { recursive: true });
+    mkdirSync(join(repo, "res/settle"), { recursive: true });
+    const settleFiles = (v: number) => {
+      for (let n = 1; n <= 6; n++) {
+        writeFileSync(join(repo, `res/settle/a${n}.png`), pngCard(800, 500, { bar: { y: 0, h: 40 + v * 10, color: [40 * n, 90, 200, 255] } }));
+        writeFileSync(join(repo, `res/settle/b${n}.png`), pngCard(600, 700, { bar: { y: 0, h: 40 + v * 10, color: [200, 40 * n, 90, 255] } }));
+        writeFileSync(join(repo, `docs/settle/p${n}.md`), [`# Page ${n}`, "", `Intro v${v}.`, "", `![a](../../res/settle/a${n}.png)`, "", "Some text ".repeat(40), "", `![b](../../res/settle/b${n}.png)`, "", `Outro v${v}.`, ""].join("\n"));
+      }
+      writeFileSync(join(repo, "res/settle/tall.png"), pngCard(500, 900, { bar: { y: 0, h: 60 + v, color: [0, 120, 60, 255] } }));
+      writeFileSync(join(repo, "docs/settle/short.md"), `# Short v${v}\n\n![tall](../../res/settle/tall.png)\n`);
+      const changed: Record<number, string> = v === 1 ? {} : { 3: "val s3 = THREE", 20: "val s20 = TWENTY", 150: "val s150 = TARGET" };
+      writeFileSync(join(repo, "docs/settle/zcode.kt"), Array.from({ length: 300 }, (_, i) => changed[i + 1] ?? `val s${i + 1} = ${i + 1}`).join("\n") + "\n");
+      writeFileSync(join(repo, "docs/settle/zz.md"), `# End v${v}\n\n` + "Last words.\n\n".repeat(80));
+    };
+    settleFiles(1);
+    run(repo, ["git", "add", "-A"]);
+    const settleA = JSON.parse(run(repo, ["bun", CLI, "version", "create", "--label", "pictures", "--json"])).version.number as number;
+    settleFiles(2);
+    run(repo, ["git", "add", "-A"]);
+    const settleB = JSON.parse(run(repo, ["bun", CLI, "version", "create", "--label", "other pictures", "--json"])).version.number as number;
+    let heldBack = 0;
+    const slowly = b.on((method, params) => {
+      if (method !== "network.beforeRequestSent" || !params.isBlocked) return;
+      // 300 to 900 ms, in an order that does not repeat itself soon
+      const ms = 300 + ((heldBack++ * 137) % 600);
+      setTimeout(() => void b.send("network.continueRequest", { request: params.request.request }).catch(() => null), ms);
+    });
+    await b.send("session.subscribe", { events: ["network.beforeRequestSent"] });
+    const { intercept } = await b.send("network.addIntercept", { phases: ["beforeRequestSent"], urlPatterns: ["/api/raw", "/api/blob"].map((pathname) => ({ type: "pattern", pathname })) });
+    await b.send("network.setCacheBehavior", { cacheBehavior: "bypass" });
+    // where the target is each frame, read by an observer made in that frame: it runs after pierre's and the page's
+    // own, so it sees what is painted
+    const recorder = `window.__steady = (target) => { const rec = window.__srec = { f: [], done: false }; const t0 = performance.now(); const one = () => { const o = document.querySelector(".view-fade"); let r = null; try { r = target(); } catch {} rec.f.push([Math.round(performance.now() - t0), !!o, r ? Math.round(r.getBoundingClientRect().top * 10) / 10 : null]); }; const f = () => { const ro = new ResizeObserver(() => { ro.disconnect(); one(); }); ro.observe(document.body); if (performance.now() - t0 < 4000) requestAnimationFrame(f); else rec.done = true; }; requestAnimationFrame(f); return true; }; true`;
+    const settleIn = (path: string) => `[...document.querySelectorAll(".codeview-host diffs-container")].find(x => x.shadowRoot?.querySelector("[data-title]")?.textContent === ${JSON.stringify(path)})`;
+    const settleRow = (line: number) => `() => [...(${settleIn("docs/settle/zcode.kt")}?.shadowRoot.querySelectorAll('[data-content] > [data-line="${line}"]') ?? [])].pop()`;
+    const stillAfterFade = async (act: () => Promise<unknown>, target: string) => {
+      await b.navigate("about:blank");
+      await b.navigate(`${url.split("#")[0]}#/compare/${settleA}..${settleB}`);
+      await waitFor(`document.querySelector(".codeview-host diffs-container")`, 10000);
+      await b.eval(recorder);
+      await b.eval(`__steady(${target})`);
+      await act();
+      await waitFor(`__srec.done`, 8000);
+      const f = (await b.eval(`__srec.f`)) as [number, boolean, number | null][];
+      const end = f.findIndex((x, i) => i > 0 && !x[1] && f[i - 1]![1]);
+      const after = end < 0 ? [] : f.filter((x) => x[0] >= f[end]![0] && x[0] <= f[end]![0] + 2000);
+      const tops = after.map((x) => x[2]);
+      const found = tops.length > 30 && tops.every((t) => t !== null);
+      const moved = found ? Math.max(...(tops as number[])) - Math.min(...(tops as number[])) : null;
+      return { faded: end >= 0, found, moved: moved === null ? null : Math.round(moved * 10) / 10, at: tops[0] ?? null };
+    };
+    const settleJumps = {
+      line3: await stillAfterFade(() => b.eval(`location.hash = "#/compare/${settleA}..${settleB}?file=docs%2Fsettle%2Fzcode.kt&line=3"; true`), settleRow(3)),
+      line20: await stillAfterFade(() => b.eval(`location.hash = "#/compare/${settleA}..${settleB}?file=docs%2Fsettle%2Fzcode.kt&line=20"; true`), settleRow(20)),
+      line150: await stillAfterFade(() => b.eval(`location.hash = "#/compare/${settleA}..${settleB}?file=docs%2Fsettle%2Fzcode.kt&line=150"; true`), settleRow(150)),
+      file: await stillAfterFade(async () => {
+        await b.eval(`[...document.querySelectorAll(".side-tabs button")].find(x => x.textContent.startsWith("Files")).click(); true`);
+        await b.eval(`[...document.querySelectorAll(".file-row")].find(r => r.querySelector(".file-name")?.textContent === "p6.md").querySelector(".file-link").click(); true`);
+      }, `() => ${settleIn("docs/settle/p6.md")}`),
+    };
+    await b.send("network.removeIntercept", { intercept });
+    await b.send("network.setCacheBehavior", { cacheBehavior: "default" });
+    await b.send("session.unsubscribe", { events: ["network.beforeRequestSent"] });
+    slowly();
+    await b.eval(csp);
+    check(
+      "a jump below rendered Markdown with pictures that come slowly (a line link, a file in Files) does not move once the fade is over",
+      heldBack > 0 && Object.values(settleJumps).every((j) => j.faded && j.found && j.moved !== null && j.moved <= 2),
+      { heldBack, ...settleJumps },
+    );
+
     await b.eval(`location.hash = "#/compare/base..${imgV}"; true`);
     await waitFor(`document.querySelector(".gitchip")`, 8000);
     const chipBefore = await b.eval(`document.querySelector(".gitchip")?.textContent`);

@@ -5,12 +5,14 @@ export class Bidi {
   private ws: WebSocket;
   private id = 0;
   private waiters = new Map<number, (m: any) => void>();
+  private listeners = new Set<(method: string, params: any) => void>();
   context = "";
   private constructor(ws: WebSocket) {
     this.ws = ws;
     ws.onmessage = (e) => {
       const m = JSON.parse(String(e.data));
       if (m.id !== undefined) this.waiters.get(m.id)?.(m);
+      else if (m.method) for (const l of this.listeners) l(m.method, m.params);
     };
     ws.onclose = () => {
       for (const w of this.waiters.values()) w({ type: "error", error: "closed", message: "the browser closed the connection" });
@@ -37,6 +39,11 @@ export class Bidi {
         else resolve(m.result);
       }),
     );
+  }
+  /** Calls `listener` with each event of the session subscribed to; the returned function stops it. */
+  on(listener: (method: string, params: any) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
   }
   async eval(expression: string): Promise<any> {
     const r = await this.send("script.evaluate", { expression, target: { context: this.context }, awaitPromise: true, resultOwnership: "none" });
