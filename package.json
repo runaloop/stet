@@ -20,6 +20,7 @@
     "perf:scroll": "bun test/perf/scroll.ts"
   },
   "dependencies": {
+    "@opentui/core": "0.5.16",
     "@pierre/diffs": "1.4.3",
     "@preact/signals": "2.11.2",
     "diff": "9.0.0",
@@ -29,7 +30,18 @@
   "devDependencies": {
     "@happy-dom/global-registrator": "20.14.5",
     "@types/bun": "1.4.2",
+    "@xterm/headless": "6.0.0",
     "typescript": "7.0.2"
+  },
+  "optionalDependencies": {
+    "@opentui/core-darwin-arm64": "0.5.16",
+    "@opentui/core-darwin-x64": "0.5.16",
+    "@opentui/core-linux-arm64": "0.5.16",
+    "@opentui/core-linux-arm64-musl": "0.5.16",
+    "@opentui/core-linux-x64": "0.5.16",
+    "@opentui/core-linux-x64-musl": "0.5.16",
+    "@opentui/core-win32-arm64": "0.5.16",
+    "@opentui/core-win32-x64": "0.5.16"
   },
   "engines": {
     "bun": ">=1.4.2"
