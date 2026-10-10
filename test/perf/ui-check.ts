@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { constants, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
@@ -39,17 +39,25 @@ async function firstMatch(stream: ReadableStream<Uint8Array>, re: RegExp, ms: nu
 // runs at once slow each other's pages past what the checks wait for: a second run waits for the first
 await takeTurn("stet-ui-check");
 mkdirSync(join(OUT, "shots"), { recursive: true });
+// what a run killed hard left behind: no other run is going now
+for (const old of readdirSync(OUT).filter((name) => name.startsWith("ui-check-"))) rmSync(join(OUT, old), { recursive: true, force: true });
 const runDir = mkdtempSync(join(OUT, "ui-check-"));
 const repo = realpathSync(mkdtempSync(join(tmpdir(), "stet-ui-")));
 let server: Subprocess<"ignore", "pipe", "ignore"> | undefined;
 let firefox: Subprocess<"ignore", "ignore", "pipe"> | undefined;
+// Firefox writes to its profile until it has exited, so the folder goes after that
+const stopChildren = async () => {
+  firefox?.kill();
+  server?.kill();
+  await Promise.race([Promise.all([firefox?.exited, server?.exited]), Bun.sleep(5000)]);
+};
 process.on("exit", () => {
   firefox?.kill();
   server?.kill();
   rmSync(repo, { recursive: true, force: true });
   rmSync(runDir, { recursive: true, force: true });
 });
-for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.on(signal, () => process.exit(128 + constants.signals[signal]));
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.on(signal, () => void stopChildren().then(() => process.exit(128 + constants.signals[signal])));
 
 const checks: [string, boolean, unknown][] = [];
 const check = (name: string, ok: boolean, detail: unknown) => checks.push([name, ok, detail]);
@@ -61,9 +69,12 @@ const report = () => {
   }
   return failed;
 };
-setTimeout(() => {
+let timedOut = false;
+setTimeout(async () => {
+  timedOut = true;
   check(`the run ends within ${LIMIT_MIN} minutes`, false, { after: checks.at(-1)?.[0] ?? null });
   report();
+  await stopChildren();
   process.exit(1);
 }, LIMIT_MIN * 60_000).unref();
 
@@ -2930,8 +2941,7 @@ try {
     await b.close();
   }
 } finally {
-  firefox.kill();
-  server.kill();
+  await stopChildren();
 }
 
-process.exit(report() ? 1 : 0);
+if (!timedOut) process.exit(report() ? 1 : 0);
