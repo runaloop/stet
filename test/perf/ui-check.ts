@@ -210,16 +210,17 @@ try {
     await b.screenshot(join(OUT, "shots", "ui-check-compare.png"));
 
     await b.eval(`location.hash = "#/compare/1..2"; true`);
-    await waitFor(`document.querySelectorAll(".codeview-host .thread-mini").length >= 2`, 8000);
+    // base..1 shows both threads too: ]t on it before 1..2 is drawn steps through the other diff
+    await waitFor(`[...document.querySelectorAll(".codeview-host diffs-container")].some(c => c.shadowRoot.textContent.includes("HUNDRED_V2")) && document.querySelectorAll(".codeview-host .thread-mini").length >= 2 && !document.querySelector(".view-fade")`, 8000);
+    const focusedThread = `(document.querySelector(".codeview-host .thread-mini.focused")?.dataset.thread ?? null)`;
+    const focusedOn = async (id: number) => ((await waitFor(`${focusedThread} === "${id}"`, 3000)) ? String(id) : await b.eval(focusedThread));
     await keys("]", "t");
-    await sleep(300);
-    const first = await b.eval(`document.querySelector(".codeview-host .thread-mini.focused")?.dataset.thread ?? null`);
+    const first = await focusedOn(t10);
     await keys("]", "t");
-    await sleep(300);
-    const second = await b.eval(`document.querySelector(".codeview-host .thread-mini.focused")?.dataset.thread ?? null`);
+    const second = await focusedOn(t100);
     check("]t steps through the threads on the diff", first === String(t10) && second === String(t100), { first, second });
     await keys(KEY.Enter);
-    await sleep(800);
+    await waitFor(`location.hash === "#/thread/${t100}"`, 3000);
     check("Enter opens the highlighted thread", (await b.eval("location.hash")) === `#/thread/${t100}`, await b.eval("location.hash"));
 
     await waitFor(`document.querySelector(".code-area diffs-container")?.shadowRoot?.textContent.includes("HUNDRED_V2")`, 8000);
@@ -285,16 +286,16 @@ try {
     await sleep(500);
 
     await keys(KEY.Escape);
-    await sleep(1200);
+    await waitFor(`location.hash === "#/compare/1..2" && ${focusedThread} === "${t10}"`, 5000);
     const back = await b.eval("location.hash");
-    const focusedBack = await b.eval(`document.querySelector(".codeview-host .thread-mini.focused")?.dataset.thread ?? null`);
+    const focusedBack = await b.eval(focusedThread);
     check("Esc goes back to the same compare, at the thread you came from", back === "#/compare/1..2" && focusedBack === String(t10), { back, focusedBack });
 
     await keys("S");
-    await sleep(600);
+    await waitFor(`location.hash === "#/drafts"`, 3000);
     check("S opens the drafts page first", (await b.eval("location.hash")) === "#/drafts", await b.eval("location.hash"));
     await keys("S");
-    await sleep(1000);
+    await waitFor(`location.hash === "#/compare/1..2" && !document.querySelector(".draft-bar")`, 5000);
     const after = await b.eval(`({ hash: location.hash, bar: !!document.querySelector(".draft-bar") })`);
     check("S on the drafts page submits and returns to the compare", after.hash === "#/compare/1..2" && after.bar === false, after);
 
@@ -313,6 +314,8 @@ try {
     await sleep(200);
     await keys(KEY.Enter);
     const approved = await waitFor(`document.querySelector("header .verdict")?.textContent ?? null`, 5000);
+    // the page goes back to the compare once the approval is in, after the header has it
+    await waitFor(`location.hash === "#/compare/1..2"`, 5000);
     const approvedAt = await b.eval(`({ hash: location.hash, toast: document.querySelector(".toast")?.textContent ?? null })`);
     await b.screenshot(join(OUT, "shots", "ui-check-approved.png"));
     check(
@@ -328,7 +331,7 @@ try {
     await keys("x");
     const closed = await waitFor(`[...document.querySelectorAll(".head-actions button")].some(x => x.textContent === "Reopen")`, 5000);
     check("x resolves in one keypress", closed === true, closed);
-    await b.eval(`(() => { const s = document.querySelector(".head-actions select"); s.value = "wontfix"; s.dispatchEvent(new Event("change", { bubbles: true })); return true; })()`);
+    await b.eval(`(() => { const s = document.querySelector(".head-actions select"); if (!s) return false; s.value = "wontfix"; s.dispatchEvent(new Event("change", { bubbles: true })); return true; })()`);
     const reason = await waitFor(`[...document.querySelectorAll(".head-badges .badge")].map(x => x.textContent).find(x => x === "✓ resolved: wontfix")`, 5000);
     check("a reason can be added afterwards", reason === "✓ resolved: wontfix", reason);
     await keys(KEY.Escape);
@@ -2413,6 +2416,8 @@ try {
     await plainShot("ui-check-resolve-drafts.png");
     await click(".submit-actions .btn.primary");
     const sentToast = await waitFor(`/#${settle} resolved with your message/.test(document.querySelector(".toast")?.textContent ?? "") ? document.querySelector(".toast").textContent : null`, 5000);
+    // a submit goes back to the compare after the toast: a jump made before that would be undone
+    await waitFor(`location.hash !== "#/drafts"`, 5000);
     await b.eval(`location.hash = "#/thread/${settle}"; true`);
     const settledView = await waitFor(`(() => { const badge = [...document.querySelectorAll(".head-badges .badge")].map(x => x.textContent).find(x => x === "✓ resolved: go"); const strip = document.querySelector(".state-strip.resolved")?.textContent ?? ""; const last = [...document.querySelectorAll(".comment .msg")].pop(); return badge && /with your message/.test(strip) ? { strip, last: last?.textContent ?? null } : null; })()`, 8000);
     await plainShot("ui-check-resolve-settled.png");
@@ -2713,8 +2718,8 @@ try {
     const hlButton = await waitFor(`document.querySelector(".thread-place .to-code")?.textContent ?? null`, 3000);
     await keys("g", "t");
     // the marks are drawn a frame or two after the key: read them once the spot and the dimmed thread are there, while the flash is on
-    const hlBack = ((await waitFor(`(() => { const m = ${hlMarksNow}; return m && m.spot.length && m.dim.length && m.flash ? m : null; })()`, 900)) ?? (await hlMarks())) as HlMarks;
-    const hlInView = await b.eval(`(() => { const row = ${hlCode}.querySelector('[data-content] > [data-stet-mark~="spot"]'); const r = row.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; })()`);
+    const hlBack = ((await waitFor(`(() => { const m = ${hlMarksNow}; return m && m.spot.length && m.dim.length && m.flash ? m : null; })()`, 3000)) ?? (await hlMarks())) as HlMarks;
+    const hlInView = await b.eval(`(() => { const r = ${hlCode}?.querySelector('[data-content] > [data-stet-mark~="spot"]')?.getBoundingClientRect(); return r ? r.top >= 0 && r.bottom <= innerHeight : "no spot"; })()`);
     const hlCards = await waitFor(`(() => { const dim = [...document.querySelectorAll(".code-area .anno .thread-mini.dim")].map(e => +e.dataset.thread); return dim.length ? dim : null; })()`, 1000);
     await sleep(1300);
     const hlSettled = { marks: await hlMarks(), button: await b.eval(`!!document.querySelector(".thread-place .to-code")`) };
@@ -2766,8 +2771,8 @@ try {
     const hlMdButton = await waitFor(`!!document.querySelector(".thread-place .to-code")`, 3000);
     const hlMdAway = await b.eval(`({ tops: [...document.querySelectorAll('.code-body [data-threads~="${hlMdA}"]')].map(e => Math.round(e.getBoundingClientRect().top)), page: document.scrollingElement.scrollTop, h: document.scrollingElement.scrollHeight, view: !!document.querySelector(".code-area .md-view"), paras: document.querySelectorAll(".code-area .md-view p").length })`);
     await keys("g", "t");
-    const hlMdBack = ((await waitFor(`(() => { const m = ${hlBlocksNow}; return m && m.spot.length && m.dim.length && m.flash ? m : null; })()`, 900)) ?? (await hlBlocks())) as HlBlocks;
-    const hlMdInView = await b.eval(`(() => { const r = ${hlMd}.querySelector(".md-thread-spot").getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; })()`);
+    const hlMdBack = ((await waitFor(`(() => { const m = ${hlBlocksNow}; return m && m.spot.length && m.dim.length && m.flash ? m : null; })()`, 3000)) ?? (await hlBlocks())) as HlBlocks;
+    const hlMdInView = await b.eval(`(() => { const r = ${hlMd}?.querySelector(".md-thread-spot")?.getBoundingClientRect(); return r ? r.top >= 0 && r.bottom <= innerHeight : "no spot"; })()`);
     await sleep(4300);
     await b.eval(`document.querySelector('.code-area .md-threads .thread-mini[data-thread="${hlMdB}"]').scrollIntoView({ block: "center" }); true`);
     await sleep(300);
