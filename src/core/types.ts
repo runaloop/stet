@@ -286,6 +286,17 @@ export interface StatusDto {
   lastSeq: number;
 }
 
+/** `GET /api/review`: the status with the server's pin of "now", the versions with their file counts, and what the UI shows. */
+export interface ReviewStatusDto extends StatusDto {
+  pinnedNow: string | null;
+  /** When the server took that pin, to tell a report of the worktree against an older pin from one against a newer. */
+  pinnedNowAt: string | null;
+  versionsList: VersionDto[];
+  submissions?: SubmissionDto[];
+  /** The settings marked `ui` by key, the modules on in the repository, and the actions the page may run. */
+  ui?: { config: Record<string, string | null>; modules: string[]; actions: { id: string; label: string; command: string; where: string[] }[] };
+}
+
 /** A thread resolved with the reviewer's last word (`go`): an instruction to act on, not a question. */
 export interface SettledDto {
   id: number;

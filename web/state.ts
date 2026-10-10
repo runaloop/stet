@@ -1,7 +1,7 @@
 import { batch, computed, effect, signal, untracked } from "@preact/signals";
 import { BUILD } from "../src/core/build.ts";
-import type { ChangeKind, CommentDto, GitStateDto, NowStateDto, ReviewDto, ReviewedDto, ThreadDetail, ThreadSummary } from "../src/core/types.ts";
-import { api, ApiError, getToken, setToken, subscribe, type ReviewStatus } from "./api.ts";
+import type { ChangeKind, CommentDto, GitStateDto, NowStateDto, ReviewDto, ReviewedDto, ReviewStatusDto, ThreadDetail, ThreadSummary } from "../src/core/types.ts";
+import { api, ApiError, getToken, setToken, subscribe } from "./api.ts";
 import { applyFilters, DEFAULT_FILTERS, type Filters } from "../src/ui/filters.ts";
 import { DEFAULT_TEST_GLOBS, parseList } from "../src/ui/fold.ts";
 import { CORE_PRESETS, orderOf, type OrderPreset } from "../src/ui/order.ts";
@@ -18,7 +18,7 @@ export { parseHash };
 export const route = signal<Route>({ name: "home" });
 export const reviews = signal<ReviewDto[]>([]);
 export const reviewId = signal<number | null>(null);
-export const status = signal<ReviewStatus | null>(null);
+export const status = signal<ReviewStatusDto | null>(null);
 export const threads = signal<ThreadSummary[]>([]);
 export const detail = signal<ThreadDetail | null>(null);
 export const drafts = signal<CommentDto[]>([]);

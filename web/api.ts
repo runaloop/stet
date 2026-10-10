@@ -14,25 +14,13 @@ import type {
   ResolveReason,
   ReviewDto,
   ReviewedDto,
-  StatusDto,
-  SubmissionDto,
+  ReviewStatusDto,
   SubmittedDto,
   ThreadDetail,
   ThreadSummary,
   Verdict,
-  VersionDto,
 } from "../src/core/types.ts";
 import type { ActionTarget, Launch } from "../src/core/module.ts";
-
-export type ReviewStatus = StatusDto & {
-  pinnedNow: string | null;
-  /** When the server took that pin, to tell a report of the worktree against an older pin from one against a newer. */
-  pinnedNowAt: string | null;
-  versionsList: VersionDto[];
-  submissions?: SubmissionDto[];
-  /** The settings marked `ui` by key, the modules on in the repository, and the actions the page may run. */
-  ui?: { config: Record<string, string | null>; modules: string[]; actions: { id: string; label: string; command: string; where: string[] }[] };
-};
 
 export interface BlobDto {
   sha: string;
@@ -92,7 +80,7 @@ const blobValues = new Map<string, BlobDto>();
 
 export const api = {
   reviews: () => call<{ reviews: ReviewDto[]; default: number | null }>("GET", "/api/reviews"),
-  review: (review: number) => call<ReviewStatus>("GET", "/api/review", { query: { review } }),
+  review: (review: number) => call<ReviewStatusDto>("GET", "/api/review", { query: { review } }),
   git: (review: number) => call<GitStateDto>("GET", "/api/git", { query: { review } }),
   refreshNow: (review: number) => call<{ sha: string | null; changed: boolean }>("POST", "/api/now/refresh", { query: { review } }),
   threads: (review: number) => call<ThreadSummary[]>("GET", "/api/threads", { query: { review, status: "all" } }),
