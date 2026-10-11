@@ -1,3 +1,4 @@
+import { writeFileSync } from "node:fs";
 import { createCliRenderer, type CliRenderer, type KeyEvent } from "@opentui/core";
 import { clientApi, type Api } from "../client/api.ts";
 import { subscribe, type Live, type Subscription } from "../client/live.ts";
@@ -23,6 +24,9 @@ const RELOAD_MS = 150;
 const PREVIEW_MS = 60;
 const JJ_MS = 300;
 const CACHE = 24;
+
+/** A file the frame count is written to after every frame, for the idle check of the tests. */
+const FRAMES = process.env.STET_TUI_FRAMES;
 
 const textKey = (w: Writing) => (w.kind === "reply" ? `reply:${w.thread}` : w.kind === "edit" ? `edit:${w.comment}` : "summary");
 
@@ -61,6 +65,7 @@ export class App {
         this.v.now = Date.now();
         const f = render(this.v, w, h);
         if (this.composer.place(f.box)) this.later(0, () => this.redraw());
+        if (FRAMES) writeFileSync(FRAMES, String(this.screen.frames));
         return f.rows;
       } catch (e) {
         this.end({ error: e });
@@ -785,7 +790,6 @@ export async function runTui(ctx: Ctx, review: number): Promise<number> {
   renderer.on("destroy", () => app.end({ code: 0 }));
   void app.start().catch(crash);
   const r = await result;
-  const frames = app.screen.frames;
   try {
     await app.close();
   } finally {
@@ -793,7 +797,6 @@ export async function runTui(ctx: Ctx, review: number): Promise<number> {
     process.off("uncaughtException", crash);
     process.off("unhandledRejection", crash);
   }
-  if (process.env.STET_TUI_FRAMES) await Bun.write(process.env.STET_TUI_FRAMES, String(frames));
   if ("error" in r) throw r.error;
   return r.code;
 }
