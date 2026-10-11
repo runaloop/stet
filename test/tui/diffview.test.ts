@@ -175,9 +175,9 @@ afterAll(() => hl.close());
 test("colours come from the worker for the lines on screen, the code plain until then", async () => {
   const v = view(80, 24, hl);
   let came = 0;
-  hl.onColours = (fd) => {
+  hl.onColours = (fd, side, start, n) => {
     came++;
-    v.invalidate(fd);
+    v.invalidate(fd, side, start, n);
   };
   v.onWant = (w) => hl.want(w);
   const first = v.lines();

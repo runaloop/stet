@@ -22,7 +22,7 @@ function workerUrl(): string {
 
 export class Highlighter implements TokenSource {
   /** Files whose colours came: the caller paints them again. */
-  onColours: (fd: FileDiffMetadata) => void = () => {};
+  onColours: (fd: FileDiffMetadata, side: 0 | 1, start: number, n: number) => void = () => {};
   private worker: Worker | null = null;
   private sent = new Map<FileDiffMetadata, number>();
   private readonly byId = new Map<number, FileDiffMetadata>();
@@ -130,7 +130,7 @@ export class Highlighter implements TokenSource {
       lines[m.start! + j] = buf.subarray(p, p + len);
       p += len;
     }
-    this.onColours(fd);
+    this.onColours(fd, m.side!, m.start!, m.n!);
   }
 
   /** Whether every line on screen has its colours, for the tests. */

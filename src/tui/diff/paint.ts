@@ -152,7 +152,7 @@ export class Painter {
       const markOld = k !== ADD ? marked(h.marks.old, rows.oldNo[r]!) : null;
       const markNew = k !== DEL ? marked(h.marks.new, rows.newNo[r]!) : null;
       const mark = markNew ?? markOld;
-      const field = `${num(rows.oldNo[r]!, o.num)}${num(rows.newNo[r]!, o.num)}`;
+      const field = `${f.single ? " ".repeat(o.num) : num(rows.oldNo[r]!, o.num)}${num(rows.newNo[r]!, o.num)}`;
       const g: Cls[] = h.at ? [cur, "ln"] : ["ln"];
       return code.map((c, y) => {
         const head: Span[] =

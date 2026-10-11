@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { join } from "node:path";
 import { clientApi, type Api } from "../../src/client/api.ts";
 import type { ThreadDetail } from "../../src/core/types.ts";
+import { fetchWide, scopesOf, wideKey } from "../../src/tui/code.ts";
 import { rowText } from "../../src/tui/grid.ts";
 import { KeyMatcher } from "../../src/tui/keys/match.ts";
 import { KEYS } from "../../src/tui/keys/table.ts";
@@ -168,4 +169,25 @@ test("120×40: ? lists the column's keys, how to move around and the mouse", asy
   expect(text).toContain("Space e  Space s t");
   expect(text).toContain("Shift+drag");
   expect(text).toMatchSnapshot();
+});
+
+test("180×46: z widens the thread's code to every change of its file, then to the whole file", async () => {
+  const v = await view(ids.timing);
+  v.focus = "code";
+  const d = v.detail!;
+  expect(scopesOf(d, "diff")).toEqual(["around", "changes", "file"]);
+  v.scope = "changes";
+  const loading = frame(v, 180, 46);
+  expect(loading).toContain("all changes · loading…");
+  v.wide = await fetchWide(api, d, "diff", "changes", wideKey(d, "diff", "changes")!);
+  const changes = frame(v, 180, 46);
+  expect(changes).toContain("src/auth.ts · every change of the file from v1 to v2");
+  expect(changes).toContain("▲ thread #1 · v2");
+  v.scope = "file";
+  v.wide = await fetchWide(api, d, "diff", "file", wideKey(d, "diff", "file")!);
+  const file = frame(v, 180, 46);
+  expect(file).toContain("the whole file at v2, changes from v1");
+  expect(file).toContain("export function authorized");
+  expect(changes).toMatchSnapshot();
+  expect(file).toMatchSnapshot();
 });

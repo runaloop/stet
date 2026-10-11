@@ -6,7 +6,8 @@ import { connect } from "../client/server.ts";
 import type { Ctx } from "../core/context.ts";
 import type { CommentDto, ThreadDetail } from "../core/types.ts";
 import { stepFile, stepThread, stepUnread } from "../ui/nav.ts";
-import { codeViews } from "./code.ts";
+import { codeViews, fetchWide, scopesOf, threadCode, wideKey } from "./code.ts";
+import { Highlighter } from "./diff/highlight.ts";
 import { ComposerView } from "./composer.ts";
 import { KeyReader } from "./keys/input.ts";
 import { KeyMatcher, rowsIn } from "./keys/match.ts";
@@ -56,6 +57,7 @@ export class App {
   readonly screen: Screen;
   private readonly composer: ComposerView;
   private readonly texts: Texts;
+  private readonly hl = new Highlighter();
   private ended = false;
 
   constructor(
@@ -66,6 +68,13 @@ export class App {
   ) {
     this.texts = new Texts(textsPath(ctx.repo.commonDir, review));
     this.v.summary = this.texts.get("summary");
+    this.v.hl.tokens = this.hl;
+    this.v.hl.want = (w) => this.hl.want(w);
+    this.hl.onColours = (fd, side, start, n) => {
+      let seen = false;
+      for (const d of this.diffs()) seen = d.invalidate(fd, side, start, n) || seen;
+      if (seen) this.redraw();
+    };
     this.screen = new Screen(renderer, (w, h) => {
       try {
         this.v.now = Date.now();
@@ -114,11 +123,17 @@ export class App {
   }
 
   async close(): Promise<void> {
+    this.hl.close();
     for (const t of [...this.timers, this.toastTimer, this.readTimer, this.reloadTimer, this.previewTimer, this.landedTimer]) clearTimeout(t);
     this.matcher.reset();
     this.texts.flush();
     await this.sub?.close();
     this.sub = null;
+  }
+
+  /** The diffs on screen, whose rows are painted again as their colours come. */
+  private diffs() {
+    return [this.v.code.diff, this.v.draftCode.diff];
   }
 
   private redraw(): void {
@@ -286,6 +301,21 @@ export class App {
     return v.focus !== "list";
   }
 
+  /** The code of the thread's wider scope: every change of its file, or the whole file. */
+  private async loadWide(): Promise<void> {
+    const v = this.v;
+    const d = v.detail;
+    const api = this.api;
+    if (!d || !api) return;
+    const view = threadCode(d, v.view).view;
+    const key = wideKey(d, view, v.scope);
+    if (!key || v.wide?.key === key) return;
+    const wide = await fetchWide(api, d, view, v.scope, key);
+    if (this.ended || v.detail?.thread.id !== d.thread.id) return;
+    v.wide = wide;
+    this.redraw();
+  }
+
   // --- moving around
 
   /** Moves the list's cursor; the thread shows at once when fetched lately, else after a short pause. */
@@ -295,6 +325,8 @@ export class App {
     v.selected = id;
     v.followList = true;
     v.view = null;
+    v.scope = "around";
+    v.wide = null;
     v.tops.code = v.tops.conv = v.tops.thread = 0;
     const cached = this.cache.get(id);
     if (cached) this.show(cached);
@@ -542,11 +574,21 @@ export class App {
         if (views.length < 2) return this.say("the thread's code has one view only");
         const at = views.indexOf(v.view ?? views[0]!);
         v.view = views[(at + 1) % views.length]!;
+        if (!scopesOf(d, v.view).includes(v.scope)) v.scope = "around";
         v.tops.code = v.tops.thread = 0;
+        void this.loadWide();
         return this.redraw();
       }
-      case "code.more":
-        return this.say("all changes and the whole file come with the diff widget");
+      case "code.more": {
+        const d = v.detail;
+        if (!d) return;
+        const scopes = scopesOf(d, threadCode(d, v.view).view);
+        if (scopes.length < 2) return this.say("the thread's code has no wider scope");
+        v.scope = scopes[(Math.max(0, scopes.indexOf(v.scope)) + 1) % scopes.length]!;
+        v.tops.code = v.tops.thread = 0;
+        void this.loadWide();
+        return this.redraw();
+      }
       case "thread.reply":
         if (v.selected !== null) this.write({ kind: "reply", thread: v.selected });
         return;

@@ -184,6 +184,7 @@ export class DiffView {
       this.builtSplit = this.split;
     }
     this.painted.clear();
+    this.lineRows.clear();
     this.lay = new Layout(this.rows.len, (r) => this.heightOf(r));
     if (cur) {
       const r = this.find(cur);
@@ -232,13 +233,61 @@ export class DiffView {
     this.painted.clear();
   }
 
-  /** Painted rows of a file go, as its colours came. */
-  invalidate(fd: FileDiffMetadata | null = null): void {
-    if (!fd) return this.painted.clear();
-    for (const r of [...this.painted.keys()]) {
-      const it = this.items[this.rows.item[r]!];
-      if (it?.kind === "file" && it.fd === fd && this.rows.kind[r] !== CARD) this.painted.delete(r);
+  /** The rows of each file's lines, by side, made when colours first come for it. */
+  private lineRows = new Map<FileDiffMetadata, [Int32Array, Int32Array]>();
+
+  private rowsOfLines(fd: FileDiffMetadata): [Int32Array, Int32Array] | null {
+    let m = this.lineRows.get(fd);
+    if (m) return m;
+    const i = this.items.findIndex((x) => x.kind === "file" && x.fd === fd);
+    if (i === -1) return null;
+    m = [new Int32Array(fd.deletionLines.length).fill(-1), new Int32Array(fd.additionLines.length).fill(-1)];
+    for (let r = this.rows.first[i]!, end = lastRow(this.rows, i); r <= end; r++) {
+      if (!isLine(this.rows.kind[r]!)) continue;
+      if (this.rows.a[r]! >= 0) m[0][this.rows.a[r]!] = r;
+      if (this.rows.b[r]! >= 0) m[1][this.rows.b[r]!] = r;
     }
+    this.lineRows.set(fd, m);
+    return m;
+  }
+
+  /**
+   * Painted rows go as colours came for their lines: of a file's side from `start` on, `n` lines (all of the view's
+   * rows without a file). True when one of them is on screen.
+   */
+  invalidate(fd: FileDiffMetadata | null = null, side: 0 | 1 = 1, start = 0, n = Number.MAX_SAFE_INTEGER): boolean {
+    if (!fd) {
+      this.painted.clear();
+      return true;
+    }
+    const m = this.rowsOfLines(fd);
+    if (!m) return false;
+    const first = this.lay.len ? this.lay.rowAt(this.top) : 0;
+    const last = this.lay.len ? this.lay.rowAt(this.top + this.height) : 0;
+    let seen = false;
+    const arr = m[side];
+    for (let i = start, end = Math.min(arr.length, start + n); i < end; i++) {
+      const r = arr[i]!;
+      if (r < 0) continue;
+      this.painted.delete(r);
+      if (this.all || (r >= first && r <= last)) seen = true;
+    }
+    return seen;
+  }
+
+  /** Every row painted, for a short diff that scrolls with the text around it rather than on its own. */
+  private all = false;
+
+  allLines(): Line[] {
+    this.all = true;
+    const saved = [this.top, this.height];
+    this.top = 0;
+    this.height = this.lay.total;
+    const out: Line[] = [];
+    for (let r = 0; r < this.rows.len; r++) for (const l of this.paintRow(r)) out.push(l);
+    this.want();
+    [this.top, this.height] = saved as [number, number];
+    return out;
   }
 
   /** A card opened or closed: its height changes and what is below moves. */
@@ -293,7 +342,7 @@ export class DiffView {
       open: !!placed && this.opened.has(placed.threadId),
       height: isLine(k) ? Math.max(1, height) : 1,
     });
-    if (this.painted.size > 4000) this.painted.clear();
+    if (!this.all && this.painted.size > 4000) this.painted.clear();
     this.painted.set(r, lines);
     return lines;
   }

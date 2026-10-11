@@ -37,6 +37,10 @@ export interface FileItem {
   placed?: readonly Placed[];
   /** In place of the code: a binary file, an image, a rename with no change. */
   note?: string;
+  /** Lines of one version, not a diff: only their numbers show. */
+  single?: boolean;
+  /** No bar for the lines before the first hunk: the code is an excerpt, not a file. */
+  excerpt?: boolean;
 }
 
 export interface GroupItem {
@@ -149,7 +153,7 @@ function fileRows(out: Builder, item: number, f: FileItem, split: boolean): void
   let oEnd = 0;
   let nEnd = 0;
   fd.hunks.forEach((h, hi) => {
-    if (h.collapsedBefore > 0) {
+    if (h.collapsedBefore > 0 && !(hi === 0 && f.excerpt && !whole)) {
       if (whole) between(out, item, oEnd, nEnd, h.collapsedBefore, hi, f.reveal, split);
       else out.push(GAP, item, -1, -1, h.deletionStart - h.collapsedBefore, h.additionStart - h.collapsedBefore, hi, h.collapsedBefore);
     }

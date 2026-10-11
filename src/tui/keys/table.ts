@@ -37,7 +37,7 @@ const inThread = (scope: "code" | "conv" | "thread"): KeyRow[] => [
   { id: "thread.resolve", keys: ["x"], scope, desc: "resolve" },
   { id: "thread.reopen", keys: ["X"], scope, desc: "reopen" },
   { id: "code.view", keys: ["t"], scope, desc: "the code: diff / then / at the last step" },
-  { id: "code.more", keys: ["z"], scope, desc: "all changes or the whole file (with the diff widget)" },
+  { id: "code.more", keys: ["z"], scope, desc: "how much of the file: around the thread, all changes, the whole file" },
   { id: "msg.prev", keys: ["{"], scope, desc: "previous message" },
   { id: "msg.next", keys: ["}"], scope, desc: "next message" },
   ...(scope === "code" ? [{ id: "focus.right", keys: ["l"], scope, desc: "the conversation" }] : []),

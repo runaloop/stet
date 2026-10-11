@@ -3,7 +3,9 @@
  * three from 150 cells (list, code, conversation), two from 100 (list, thread), else one with the list slid over it.
  */
 import type { CommentDto, CompareDto, GitStateDto, ThreadDetail } from "../core/types.ts";
-import { codeLines, nearThread, threadCode, type CodeView } from "./code.ts";
+import type { CodeView, Scope as CodeScope, Wide } from "./code.ts";
+import type { TokenSource } from "./diff/paint.ts";
+import type { Want } from "./diff/view.ts";
 import { bar, hcat, overlay, pane, type Pane, type Row } from "./grid.ts";
 import { KEYS, keyLabel, type Scope } from "./keys/table.ts";
 import { ordered, type Data, type ListFilter } from "./model.ts";
@@ -11,7 +13,7 @@ import { blank, key, line, plural, s, spansWidth, wrap, type Line, type Span } f
 import { bannerLine, footerLine, headerLine, type Hint, type Tab, type Toast } from "./views/bars.ts";
 import { fileCounts, fileOf, filesLines, listLines, listWidth, sideTitle, type Side } from "./views/list.ts";
 import {
-  codePart,
+  CodePane,
   conversation,
   messagesNote,
   PREVIEW_HINT,
@@ -64,6 +66,14 @@ export interface ViewState {
   /** Messages that were unread when the thread was first shown: the NEW rule stays over them. */
   fresh: ReadonlySet<number>;
   view: CodeView | null;
+  /** How much of the thread's file its code shows (`z`). */
+  scope: CodeScope;
+  /** The wider scope's code, once fetched. */
+  wide: Wide | null;
+  /** Syntax colours, and where the lines on screen are asked for. */
+  hl: { tokens: TokenSource; want: (w: Want[]) => void };
+  code: CodePane;
+  draftCode: CodePane;
   tops: { list: number; code: number; conv: number; thread: number; drafts: number; draft: number; help: number };
   /** Scroll the conversation to its NEW rule on the next frame. */
   toNews: boolean;
@@ -86,7 +96,15 @@ export interface ViewState {
 }
 
 export function initialView(): ViewState {
+  const hl: ViewState["hl"] = { tokens: { line: () => undefined, style: () => undefined }, want: () => {} };
+  const tokens: TokenSource = { line: (fd, side, i) => hl.tokens.line(fd, side, i), style: (id) => hl.tokens.style(id) };
+  const want = (w: Want[]) => hl.want(w);
   return {
+    hl,
+    code: new CodePane(tokens, want),
+    draftCode: new CodePane(tokens, want),
+    scope: "around",
+    wide: null,
     data: { status: null, threads: [], drafts: [], now: null, online: true },
     git: null,
     banner: null,
@@ -327,8 +345,8 @@ function threadPanes(v: ViewState, cols: 1 | 2 | 3, widths: number[], height: nu
   const writing = v.writing?.kind === "reply" && v.writing.thread === d.thread.id;
   if (cols === 3) {
     const [codeW, convW] = widths as [number, number];
-    const part = codePart(d, v.view, codeW - 2);
-    const codeLinesAll = [...threadHead(d, part.view, codeW - 2), ...part.lines];
+    const part = v.code.lines(d, v.view, v.scope, v.wide, codeW - 2);
+    const codeLinesAll = [...threadHead(d, part.view, part.scope, codeW - 2), ...part.lines];
     const code = place(codeLinesAll, v.tops.code, inner, codeW - 2, v, false);
     v.tops.code = code.top;
     const conv = conversation(d, v.fresh, convW - 2, v.now);
@@ -348,8 +366,8 @@ function threadPanes(v: ViewState, cols: 1 | 2 | 3, widths: number[], height: nu
   }
   const w = widths[0]!;
   const narrow = cols === 1;
-  const part = codePart(d, v.view, w - 2, narrow ? 1 : null);
-  const head = narrow ? stripLines(d, w - 2) : threadHead(d, part.view, w - 2);
+  const part = v.code.lines(d, v.view, v.scope, v.wide, w - 2, narrow && v.scope === "around" ? 1 : null);
+  const head = narrow ? stripLines(d, w - 2) : threadHead(d, part.view, part.scope, w - 2);
   const codeRows = narrow ? part.lines.slice(1) : part.lines;
   const conv = conversation(d, v.fresh, w - 2, v.now);
   const ruleText = `${narrow ? "" : "Conversation · "}${plural(d.comments.length, "message")}${conv.fresh ? ` · ${conv.fresh} new` : ""}`;
@@ -430,7 +448,7 @@ function draftRight(v: ViewState, w: number): { title: Span[]; lines: Line[] } {
   if (!c) return { title: [s("Draft", "b")], lines: [] };
   const d = v.draftDetail;
   if (!d || d.thread.id !== c.threadId) return { title: [s(`#${c.threadId}`, "b")], lines: [blank(), line(s(` loading thread #${c.threadId}…`, "dim"))] };
-  const rows = codeLines(nearThread(threadCode(d, null), 1), w, null);
+  const rows = v.draftCode.lines(d, null, "around", null, w, 1, false).lines.slice(1);
   const msg = conversation({ ...d, comments: [c], events: [] }, new Set(), w, v.now).lines;
   return { title: threadTitle(d, false), lines: [blank(), ...rows, blank(), ...msg] };
 }

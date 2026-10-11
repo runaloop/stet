@@ -1,10 +1,15 @@
 /**
- * A thread's code as plain rows: the server's diff of its lines from when it was written to now, or its lines at one
- * end, with a few lines around. A stand-in for the diff widget of phase 3, which takes over behind `codeLines`.
+ * A thread's code on the diff widget: around the thread (the server's diff of its lines from when it was written to
+ * now, or its lines at one end, with a few lines around), every change of its file, or the whole file. The two wider
+ * scopes come from the server: the file's patch between the two steps, and both files for the whole one.
  */
+import { hydratePartialDiff, parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
+import type { Api } from "../client/api.ts";
 import type { Excerpt, ThreadDetail, TimelineStepDto } from "../core/types.ts";
 import { outdatedText } from "../ui/timeline.ts";
-import { chop, clean, filled, line, rangeText, s, spread, type Line, type Span } from "./text.ts";
+import type { FileItem, Placed } from "./diff/model.ts";
+import type { LineMarks } from "./diff/paint.ts";
+import { rangeText, s, spread, type Line, type Span } from "./text.ts";
 
 export interface CodeRow {
   kind: "ctx" | "add" | "del" | "gap";
@@ -17,6 +22,9 @@ export interface CodeRow {
 
 /** Diff: how the lines changed from when the thread was written; Then: as written; At: as they are at the last step. */
 export type CodeView = "diff" | "then" | "at";
+
+/** How much of the file: around the thread, every change of the file, or the whole file. */
+export type Scope = "around" | "changes" | "file";
 
 export interface Code {
   view: CodeView;
@@ -57,7 +65,7 @@ export function patchRows(patch: string, then: TimelineStepDto["range"], now: Ti
 function excerptRows(e: Excerpt): CodeRow[] {
   return e.lines.map((text, i) => {
     const at = e.firstLine + i;
-    return { kind: "ctx", old: null, new: at, text, marked: at >= e.start && at <= e.end };
+    return { kind: "ctx", old: at, new: at, text, marked: at >= e.start && at <= e.end };
   });
 }
 
@@ -103,44 +111,172 @@ export function nearThread(code: Code, around: number): Code {
   return { ...code, rows: code.rows.slice(Math.max(0, marked[0]! - around), marked[marked.length - 1]! + around + 1) };
 }
 
-export function counts(code: Code): { add: number; del: number } {
-  return { add: code.rows.filter((r) => r.kind === "add").length, del: code.rows.filter((r) => r.kind === "del").length };
+/**
+ * The ends of the thread's code: the step its old side is at and the one its new side is at. Every change of the file
+ * runs from when the thread was written to its last step, whichever view is on.
+ */
+export function codeEnds(d: ThreadDetail, view: CodeView, scope: Scope = "around"): { from: TimelineStepDto; to: TimelineStepDto } {
+  const first = d.timeline[0]!;
+  const last = d.timeline[d.timeline.length - 1]!;
+  return view === "diff" || scope === "changes" ? { from: first, to: last } : view === "then" ? { from: first, to: first } : { from: last, to: last };
+}
+
+/** The scopes `z` goes through in a view: every change of the file once the thread has more than one step. */
+export function scopesOf(d: ThreadDetail, view: CodeView): Scope[] {
+  if (d.thread.region) return ["around"];
+  const first = d.timeline[0]!;
+  const last = d.timeline[d.timeline.length - 1]!;
+  const { to } = codeEnds(d, view);
+  const changes = first.path && last.path && first.sha !== last.sha ? ["changes" as const] : [];
+  return ["around", ...changes, ...(to.path ? ["file" as const] : [])];
+}
+
+/** What a wider scope needs from the server, and the key its answer is kept under. */
+export function wideKey(d: ThreadDetail, view: CodeView, scope: Scope): string | null {
+  if (scope === "around" || !scopesOf(d, view).includes(scope)) return null;
+  const { from, to } = codeEnds(d, view, scope);
+  return `${d.thread.id}:${view}:${scope}:${from.sha}:${from.path}:${to.sha}:${to.path}`;
+}
+
+/** A wider scope's code as the app fetched it: a file diff, whole files for `file`. */
+export interface Wide {
+  key: string;
+  fd: FileDiffMetadata | null;
+  error?: string;
+}
+
+/** The rows as a patch of one file that pierre parses: hunks split where the rows have a gap. */
+function rowsPatch(path: string, rows: CodeRow[]): string {
+  const out: string[] = [`diff --git a/${path} b/${path}`, `--- a/${path}`, `+++ b/${path}`];
+  let hunk: CodeRow[] = [];
+  const flush = () => {
+    if (!hunk.length) return;
+    const olds = hunk.filter((r) => r.kind !== "add");
+    const news = hunk.filter((r) => r.kind !== "del");
+    const o = olds[0]?.old ?? 1;
+    const n = news[0]?.new ?? 1;
+    out.push(`@@ -${olds.length ? o : Math.max(0, o - 1)},${olds.length} +${news.length ? n : Math.max(0, n - 1)},${news.length} @@`);
+    for (const r of hunk) out.push(`${r.kind === "add" ? "+" : r.kind === "del" ? "-" : " "}${r.text}`);
+    hunk = [];
+  };
+  for (const r of rows) {
+    if (r.kind === "gap") flush();
+    else hunk.push(r);
+  }
+  flush();
+  return `${out.join("\n")}\n`;
+}
+
+const parsed = new Map<string, FileDiffMetadata | null>();
+
+/** A patch of one file as pierre's file diff, the same object for the same key so its colours stay. */
+export function fileDiff(key: string, patch: string): FileDiffMetadata | null {
+  let fd = parsed.get(key);
+  if (fd === undefined) {
+    fd = parsePatchFiles(patch, key)[0]?.files[0] ?? null;
+    if (parsed.size > 64) parsed.delete(parsed.keys().next().value!);
+    parsed.set(key, fd);
+  }
+  return fd;
+}
+
+export interface ThreadBlock {
+  item: FileItem;
+  marks: LineMarks;
+  /** The line over the code: the file, what the code shows, −N +M. */
+  title: string;
+  view: CodeView;
+  scope: Scope;
+}
+
+function counts(fd: FileDiffMetadata | null): { add: number; del: number } {
+  let add = 0;
+  let del = 0;
+  for (const h of fd?.hunks ?? []) {
+    add += h.additionLines;
+    del += h.deletionLines;
+  }
+  return { add, del };
 }
 
 /** The file's header over its code: the path, what the rows show, −N +M. */
-export function fileHeader(path: string, code: Code, w: number): Line {
-  const c = counts(code);
+export function fileHeader(path: string, title: string, fd: FileDiffMetadata | null, w: number): Line {
+  const c = counts(fd);
   const right: Span[] = [];
   if (c.del) right.push(s(`−${c.del}`, "delc"));
   if (c.add) right.push(...(c.del ? [s(" ")] : []), s(`+${c.add}`, "addc"));
-  return { spans: spread([s(" "), s(path, "fh"), s(` · ${code.title}`, "dim")], right, w) };
+  return { spans: spread([s(" "), s(path, "fh"), s(` · ${title}`, "dim")], right, w) };
 }
 
+const SCOPE_TITLES: Record<Exclude<Scope, "around">, (view: CodeView, from: TimelineStepDto, to: TimelineStepDto) => string> = {
+  changes: (_v, from, to) => `every change of the file from ${from.label} to ${to.label}`,
+  file: (v, from, to) => (v === "diff" ? `the whole file at ${to.label}, changes from ${from.label}` : `the whole file at ${to.label}`),
+};
+
 /**
- * The rows as screen lines: line numbers, ▌ on the thread's lines, diff rows painted across the width, long lines
- * wrapped. `mark` is the row put under the thread's last line: "▲ thread #1 · v2".
+ * The thread's code to draw: around the thread from the thread's own data (`around` rows each side of its lines when
+ * given), or the wider scope `wide` holds once it came. Null while the wider scope is on its way.
  */
-export function codeLines(code: Code, w: number, mark: Span[] | null): Line[] {
-  const numbers = code.rows.flatMap((r) => [r.old ?? 0, r.new ?? 0]);
-  const side = Math.max(3, String(Math.max(0, ...numbers)).length + 1);
-  const num = (v: number | null) => (v === null ? " ".repeat(side) : String(v).padStart(side));
-  const lastMarked = code.rows.reduce((at, r, i) => (r.marked ? i : at), -1);
-  const room = Math.max(1, w - side * 2 - 3);
-  const out: Line[] = [];
-  code.rows.forEach((r, i) => {
-    if (r.kind === "gap") {
-      out.push(line(s(`${" ".repeat(side * 2 - 1)}⋯`, "ln")));
-      return;
+export function threadBlock(d: ThreadDetail, view: CodeView | null, scope: Scope, wide: Wide | null, around: number | null = null): ThreadBlock | null {
+  const t = d.thread;
+  const base = threadCode(d, view);
+  const v = base.view;
+  const { from, to } = codeEnds(d, v, scope);
+  const single = scope === "changes" ? false : scope === "file" ? v !== "diff" : !base.diff;
+  const path = t.anchor.path ?? t.path;
+  const key = wideKey(d, v, scope);
+  const marks: LineMarks = single ? { old: [], new: [] } : { old: from.range ? [{ ...from.range, strong: false }] : [], new: [] };
+  const mine = v === "then" && scope !== "changes" ? from.range : to.range;
+  if (mine) marks.new.push({ ...mine, strong: false });
+  const placed: Placed[] = mine
+    ? [{ threadId: t.id, side: "additions", range: mine }]
+    : from.range
+      ? [{ threadId: t.id, side: "deletions", range: from.range }]
+      : [];
+  if (!key) {
+    const code = around === null ? base : nearThread(base, around);
+    const fd = code.rows.length ? fileDiff(`around:${t.id}:${v}:${to.sha}:${around ?? ""}:${code.rows.length}`, rowsPatch(path, code.rows)) : null;
+    const item: FileItem = { kind: "file", key: path, fd: fd ?? EMPTY, collapsed: false, placed, single, excerpt: true, ...(fd ? {} : { note: "" }) };
+    return { item, marks, title: code.title, view: v, scope: "around" };
+  }
+  if (!wide || wide.key !== key) return null;
+  const title = SCOPE_TITLES[scope as Exclude<Scope, "around">](v, from, to);
+  const fd = wide.fd ?? EMPTY;
+  const item: FileItem = { kind: "file", key: path, fd, collapsed: false, placed, single, ...(scope === "file" ? { reveal: { spans: [], full: true } } : {}), ...(wide.fd ? {} : { note: wide.error ?? "no changes in this file" }) };
+  return { item, marks, title, view: v, scope };
+}
+
+const EMPTY = { name: "", type: "change", hunks: [], splitLineCount: 0, unifiedLineCount: 0, isPartial: true, deletionLines: [], additionLines: [] } as unknown as FileDiffMetadata;
+
+/** A whole file of one version as a diff of context lines, for the whole-file scope of Then and At. */
+export function wholeFile(key: string, path: string, text: string): FileDiffMetadata | null {
+  const all = text.split("\n");
+  if (all[all.length - 1] === "") all.pop();
+  if (!all.length) return null;
+  return fileDiff(key, rowsPatch(path, all.map((t, i) => ({ kind: "ctx", old: i + 1, new: i + 1, text: t, marked: false }))));
+}
+
+/** Fetches a wider scope's code: the file's patch between the ends, with both files for the whole of it. */
+export async function fetchWide(api: Pick<Api, "patch" | "blob">, d: ThreadDetail, view: CodeView, scope: Scope, key: string): Promise<Wide> {
+  const { from, to } = codeEnds(d, view, scope);
+  try {
+    let fd: FileDiffMetadata | null = null;
+    if (scope === "changes" || view === "diff") {
+      const text = await api.patch(from.sha, to.sha, [...new Set([from.path!, to.path!])]);
+      const part = text ? fileDiff(`${key}:patch`, text) : null;
+      if (scope === "changes") fd = part;
+      else {
+        const [a, b] = await Promise.all([api.blob(from.sha, from.path!), api.blob(to.sha, to.path!)]);
+        if (part && a.contents !== null && b.contents !== null) {
+          fd = hydratePartialDiff("clone", part, { oldFile: { name: from.path!, contents: a.contents }, newFile: { name: to.path!, contents: b.contents } } as never);
+        } else if (b.contents !== null) fd = wholeFile(key, to.path!, b.contents);
+      }
+    } else {
+      const b = await api.blob(to.sha, to.path!);
+      fd = b.contents !== null ? wholeFile(key, to.path!, b.contents) : null;
     }
-    const field = code.diff ? `${num(r.old)}${num(r.new)}` : `${" ".repeat(side)}${num(r.new)}`;
-    const head: Span[] = r.marked ? [s("▌", "mk"), s(field.slice(1), "ln")] : [s(field, "ln")];
-    const sign = r.kind === "add" ? "+" : r.kind === "del" ? "-" : " ";
-    const fill = r.kind === "add" ? (["add"] as const) : r.kind === "del" ? (["del"] as const) : null;
-    chop(clean(r.text), room).forEach((part, k) => {
-      const spans = [...(k === 0 ? head : [s(" ".repeat(side * 2), "ln")]), s(` ${k === 0 ? sign : " "} ${part}`)];
-      out.push(fill ? filled([...fill], ...spans) : { spans });
-    });
-    if (i === lastMarked && mark) out.push(line(s(" ".repeat(side * 2), "ln"), s("   "), ...mark));
-  });
-  return out;
+    return fd ? { key, fd } : { key, fd: null, error: scope === "changes" ? "no changes in this file" : "the file is not text" };
+  } catch (e) {
+    return { key, fd: null, error: (e as Error).message };
+  }
 }

@@ -378,3 +378,105 @@ stet  feature/rate-limit  not pushed · 2 not staged · 2 new   v1   v2  now = v
  KEYS   j k  scroll   Esc  close                                                                                        
 "
 `;
+
+exports[`180×46: z widens the thread's code to every change of its file, then to the whole file 1`] = `
+"
+stet  feature/rate-limit  not pushed · 2 not staged · 2 new   v1   v2  now = v2                                                                  Round 5   Changes   Drafts 1    ?  
+╭─  Threads   Files   Search  ─────────╮╭─ #1 src/auth.ts:6–7  changed   your turn  written on v1 ──────────── 3 of 9 ─╮╭─ Conversation ────────────────────── 2 messages · 1 new ─╮
+│ open 8 resolved 2 · all 11 · [ ] new ││ Your turn. The agent says it fixed this. Check the code, then resolve (x) or ││                                                          │
+│                                      ││ reply (r).                                                                   ││ you · reviewer @v1 · just now                            │
+│ src/auth.ts                         3││                                                                              ││   \`===\` on secrets leaks timing. Use                     │
+│ ● #8 L1  your turn                   ││  v1  written · L5 · 1 msg  ──▶   v2  changed · L6–7 · 2 msgs                 ││   \`crypto.timingSafeEqual\` on equal-length buffers.      │
+│   Nit: the import is fine, but \`KEY\`…││  Diff  Then · At v2  t     around the thread  all changes  whole file  z     ││                                                          │
+│   #7 L3  agent's turn                ││                                                                              ││ ── NEW ──────────────────────────────────────────────    │
+│   Read API_KEY once at startup and r…││ src/auth.ts · every change of the file from v1 to v2                    −3 +5││ claude · agent  fixed  @v2 · just now                    │
+│ ● #1 L6–7  changed   your turn       ││  1    - const KEY = process.env.API_KEY ?? "";                               ││   Fixed: both sides go through \`Buffer\`, a length check, │
+│   \`===\` on secrets leaks timing. Use…││     1 + import { timingSafeEqual } from "node:crypto";                       ││   then \`timingSafeEqual\`.                                │
+│ src/db.ts                           1││     2 +                                                                      ││                                                          │
+│   #3 L9  outdated   your turn        ││     3 + const KEY = Buffer.from(process.env.API_KEY ?? "");                  ││                                                          │
+│   Leftover debug log: please drop it.││  2  4                                                                        ││                                                          │
+│ src/routes.ts                       4││  3  5   export function authorized(req: Request): boolean {                  ││                                                          │
+│   #2 L5  your turn                   ││  4    -   const given = req.headers.get("x-api-key") ?? "";                  ││                                                          │
+│   Where do 100 and 60 000 come from?…││▌ 5    -   return given === KEY;                                              ││                                                          │
+│   #4 L10–11  agent's turn            ││▌    6 +   const given = Buffer.from(req.headers.get("x-api-key") ?? "");     ││                                                          │
+│   I am not comfortable keying the li…││▌    7 +   return given.length === KEY.length && timingSafeEqual(given, KEY); ││                                                          │
+│ ● #9 L12  your turn                  ││         ▲ thread #1 · v2  changed                                            ││                                                          │
+│   Checking the key before the route …││  6  8   }                                                                    ││                                                          │
+│   #11 L13  draft                     ││                                                                              ││                                                          │
+│   Should 401 come with a \`www-authen…││                                                                              ││                                                          │
+│ src/server.ts                       1││                                                                              ││                                                          │
+│   #10 L3  agent's turn               ││                                                                              ││                                                          │
+│   \`Number(undefined ?? 8080)\` is fin…││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│ 2 resolved hidden ·  Space u r       ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││  r  reply ·  x  resolve ·  { }  previous / next message  │
+│                                      ││                                                                              ││                                                          │
+╰──────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────╯╰──────────────────────────────────────────────────────────╯
+ CODE   j k  scroll   ] t   [ t  thread   J K  file   n  unread   Tab  next column   h  list   r  reply   x  resolve   t  diff / then / at   Space  menu   ?  all keys              
+"
+`;
+
+exports[`180×46: z widens the thread's code to every change of its file, then to the whole file 2`] = `
+"
+stet  feature/rate-limit  not pushed · 2 not staged · 2 new   v1   v2  now = v2                                                                  Round 5   Changes   Drafts 1    ?  
+╭─  Threads   Files   Search  ─────────╮╭─ #1 src/auth.ts:6–7  changed   your turn  written on v1 ──────────── 3 of 9 ─╮╭─ Conversation ────────────────────── 2 messages · 1 new ─╮
+│ open 8 resolved 2 · all 11 · [ ] new ││ Your turn. The agent says it fixed this. Check the code, then resolve (x) or ││                                                          │
+│                                      ││ reply (r).                                                                   ││ you · reviewer @v1 · just now                            │
+│ src/auth.ts                         3││                                                                              ││   \`===\` on secrets leaks timing. Use                     │
+│ ● #8 L1  your turn                   ││  v1  written · L5 · 1 msg  ──▶   v2  changed · L6–7 · 2 msgs                 ││   \`crypto.timingSafeEqual\` on equal-length buffers.      │
+│   Nit: the import is fine, but \`KEY\`…││  Diff  Then · At v2  t     around the thread · all changes  whole file   z   ││                                                          │
+│   #7 L3  agent's turn                ││                                                                              ││ ── NEW ──────────────────────────────────────────────    │
+│   Read API_KEY once at startup and r…││ src/auth.ts · the whole file at v2, changes from v1                     −3 +5││ claude · agent  fixed  @v2 · just now                    │
+│ ● #1 L6–7  changed   your turn       ││  1    - const KEY = process.env.API_KEY ?? "";                               ││   Fixed: both sides go through \`Buffer\`, a length check, │
+│   \`===\` on secrets leaks timing. Use…││     1 + import { timingSafeEqual } from "node:crypto";                       ││   then \`timingSafeEqual\`.                                │
+│ src/db.ts                           1││     2 +                                                                      ││                                                          │
+│   #3 L9  outdated   your turn        ││     3 + const KEY = Buffer.from(process.env.API_KEY ?? "");                  ││                                                          │
+│   Leftover debug log: please drop it.││  2  4                                                                        ││                                                          │
+│ src/routes.ts                       4││  3  5   export function authorized(req: Request): boolean {                  ││                                                          │
+│   #2 L5  your turn                   ││  4    -   const given = req.headers.get("x-api-key") ?? "";                  ││                                                          │
+│   Where do 100 and 60 000 come from?…││▌ 5    -   return given === KEY;                                              ││                                                          │
+│   #4 L10–11  agent's turn            ││▌    6 +   const given = Buffer.from(req.headers.get("x-api-key") ?? "");     ││                                                          │
+│   I am not comfortable keying the li…││▌    7 +   return given.length === KEY.length && timingSafeEqual(given, KEY); ││                                                          │
+│ ● #9 L12  your turn                  ││         ▲ thread #1 · v2  changed                                            ││                                                          │
+│   Checking the key before the route …││  6  8   }                                                                    ││                                                          │
+│   #11 L13  draft                     ││                                                                              ││                                                          │
+│   Should 401 come with a \`www-authen…││                                                                              ││                                                          │
+│ src/server.ts                       1││                                                                              ││                                                          │
+│   #10 L3  agent's turn               ││                                                                              ││                                                          │
+│   \`Number(undefined ?? 8080)\` is fin…││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│ 2 resolved hidden ·  Space u r       ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││  r  reply ·  x  resolve ·  { }  previous / next message  │
+│                                      ││                                                                              ││                                                          │
+╰──────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────╯╰──────────────────────────────────────────────────────────╯
+ CODE   j k  scroll   ] t   [ t  thread   J K  file   n  unread   Tab  next column   h  list   r  reply   x  resolve   t  diff / then / at   Space  menu   ?  all keys              
+"
+`;

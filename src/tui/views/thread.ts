@@ -1,7 +1,10 @@
 import type { CommentDto, ThreadDetail, ThreadSummary, TimelineStepDto } from "../../core/types.ts";
 import { readingOrder } from "../../ui/msgs.ts";
 import { threadStrip } from "../../ui/strip.ts";
-import { codeLines, codeViews, fileHeader, nearThread, threadCode, type CodeView } from "../code.ts";
+import { codeViews, fileHeader, scopesOf, threadBlock, threadCode, type CodeView, type Scope, type ThreadBlock, type Wide } from "../code.ts";
+import type { FileItem } from "../diff/model.ts";
+import type { Hooks, TokenSource } from "../diff/paint.ts";
+import { DiffView, type Want } from "../diff/view.ts";
 import { ago, blank, filled, key, line, plural, rangeText, s, wrap, type Cls, type Line, type Span } from "../text.ts";
 
 const tag = (text: string, c: Cls) => s(` ${text} `, c);
@@ -98,36 +101,80 @@ const VIEW_NAMES: Record<CodeView, (d: ThreadDetail) => string> = {
   at: (d) => `At ${d.timeline[d.timeline.length - 1]!.label}`,
 };
 
-/** Diff / Then / At, and how much code: only "around the thread" until the diff widget comes. */
-export function viewsLine(d: ThreadDetail, view: CodeView): Line {
+const SCOPE_NAMES: Record<Scope, string> = { around: "around the thread", changes: "all changes", file: "whole file" };
+
+/** One choice of several in a line: the chosen one lit, the others dim around it, and the key that steps through them. */
+function choices<T extends string>(all: readonly T[], on: T, name: (x: T) => string): Span[] {
+  const at = all.indexOf(on);
+  const before = all.slice(0, Math.max(0, at)).map(name).join(" · ");
+  const after = all.slice(at + 1).map(name).join(" · ");
+  return [...(before ? [s(`${before} `, "dim")] : []), s(` ${name(on)} `, "seg"), ...(after ? [s(` ${after}`, "dim")] : [])];
+}
+
+/** Diff / Then / At, and how much of the file: around the thread, all changes, the whole file. */
+export function viewsLine(d: ThreadDetail, view: CodeView, scope: Scope): Line {
   const have = codeViews(d);
-  const spans: Span[] = [s(" ")];
-  const rest: string[] = [];
-  for (const v of ["diff", "then", "at"] as const) {
-    if (v === view) spans.push(s(` ${VIEW_NAMES[v](d)} `, "seg"));
-    else rest.push(VIEW_NAMES[v](d));
-  }
-  const others = rest.join(" · ");
-  if (view === "diff") spans.push(s(" "), s(others, "dim"));
-  else spans.splice(1, 0, s(`${others} `, "dim"));
-  spans.push(s(" "), ...(have.length > 1 ? [key("t")] : [s(" t ", "dim")]), s("    "), s(" around the thread ", "seg"), s(" "), s("all changes · whole file", "dim"), s(" "), key("z"));
+  const scopes = scopesOf(d, view);
+  const spans: Span[] = [s(" "), ...choices(["diff", "then", "at"] as const, view, (v) => VIEW_NAMES[v](d))];
+  spans.push(s(" "), ...(have.length > 1 ? [key("t")] : [s(" t ", "dim")]), s("    "), ...choices(scopes, scopes.includes(scope) ? scope : "around", (x) => SCOPE_NAMES[x]));
+  spans.push(s(" "), ...(scopes.length > 1 ? [key("z")] : [s(" z ", "dim")]));
   return { spans };
 }
 
-/** The code part: the file's header and its rows, with the ▲ row under the thread's lines. */
-export function codePart(d: ThreadDetail, view: CodeView | null, w: number, around: number | null = null): { lines: Line[]; view: CodeView } {
-  const all = threadCode(d, view);
-  const code = around === null ? all : nearThread(all, around);
-  const t = d.thread;
-  const last = d.timeline[d.timeline.length - 1]!;
-  const stateTag = t.anchor.state === "changed" || t.anchor.state === "moved" ? [s(" "), tag(t.anchor.state, "tchg")] : [];
-  const mark = [s(`▲ thread #${t.id} · ${code.view === "then" ? d.timeline[0]!.label : last.label}`, "acc"), ...(code.view === "then" ? [] : stateTag)];
-  return { lines: [fileHeader(t.anchor.path ?? t.path, code, w), ...codeLines(code, w, mark)], view: code.view };
+/**
+ * A thread's code on the diff widget, painted whole: it scrolls with the text around it. The file's header over it, the
+ * ▲ row under the thread's lines.
+ */
+export class CodePane {
+  readonly diff: DiffView;
+  private block: ThreadBlock | null = null;
+  private d: ThreadDetail | null = null;
+  private shown: FileItem | null = null;
+
+  constructor(tokens: TokenSource, want: (w: Want[]) => void) {
+    const hooks: Hooks = {
+      header: (f, w) => fileHeader(f.key, this.block?.title ?? "", f.fd.hunks.length ? f.fd : null, w),
+      group: () => blank(),
+      note: (f) => line(s(`   ${f.note || "no lines to show"}`, "dim")),
+      card: (_f, _p, _w, _open, indent) => {
+        const d = this.d!;
+        const t = d.thread;
+        const then = this.block?.view === "then";
+        const label = then ? d.timeline[0]!.label : d.timeline[d.timeline.length - 1]!.label;
+        const stateTag = !then && (t.anchor.state === "changed" || t.anchor.state === "moved") ? [s(" "), tag(t.anchor.state, "tchg")] : [];
+        return [line(s(" ".repeat(indent), "ln"), s(`▲ thread #${t.id} · ${label}`, "acc"), ...stateTag)];
+      },
+    };
+    this.diff = new DiffView(hooks, tokens);
+    this.diff.cursor = -1;
+    this.diff.onWant = want;
+  }
+
+  /** The code of `view` and `scope` in `w` cells; while a wider scope loads, the header says so. */
+  lines(d: ThreadDetail, view: CodeView | null, scope: Scope, wide: Wide | null, w: number, around: number | null = null, mark = true): { lines: Line[]; view: CodeView; scope: Scope } {
+    this.d = d;
+    const block = threadBlock(d, view, scope, wide, around);
+    if (!block) {
+      const v = threadCode(d, view).view;
+      const busy = wide?.error ?? "loading…";
+      return { lines: [fileHeader(d.thread.anchor.path ?? d.thread.path, `${SCOPE_NAMES[scope]} · ${busy}`, null, w)], view: v, scope };
+    }
+    this.block = block;
+    this.diff.setSize(w, 1000);
+    const it = mark ? block.item : { ...block.item, placed: [] };
+    const same = this.shown && this.shown.fd === it.fd && this.shown.key === it.key && this.shown.single === it.single && JSON.stringify(this.shown.placed) === JSON.stringify(it.placed);
+    this.diff.marks.set(it.key, block.marks);
+    if (!same) {
+      this.shown = it;
+      this.diff.setItems([it]);
+    }
+    return { lines: this.diff.allLines(), view: block.view, scope: block.scope };
+  }
 }
 
 /** What sits over the code in a thread's column: the strip, the steps, the views. */
-export function threadHead(d: ThreadDetail, view: CodeView, w: number): Line[] {
-  return [...stripLines(d, w), blank(), timelineLine(d), viewsLine(d, view), blank()];
+export function threadHead(d: ThreadDetail, view: CodeView, scope: Scope, w: number): Line[] {
+  return [...stripLines(d, w), blank(), timelineLine(d), viewsLine(d, view, scope), blank()];
 }
 
 const INTENT: Record<string, Cls> = { fixed: "tok", question: "tq", answered: "tchg", disagree: "tbad" };
