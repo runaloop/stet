@@ -2,35 +2,35 @@
 
 exports[`120×40: the list has the focus and the selected thread shows beside it as a preview 1`] = `
 "
-stet  feature/rate-limit  not pushed · 2 not staged · 2 new   v1   v2  now = v2      Round 3   Changes   Drafts 1    ?  
+stet  feature/rate-limit  not pushed · 2 not staged · 2 new   v1   v2  now = v2      Round 5   Changes   Drafts 1    ?  
  The agent handed over v2.   Space r v  shows what changed since you last looked.                                       
-╭─ Threads Files Search ───────────────╮╭─ #2 src/routes.ts:5  your turn  written on v1 ───────────────────── preview ─╮
-│ open 5 resolved 2 · all 8 · [ ] new  ││ Your turn. The agent asked you a question and waits for your answer.         │
+╭─  Threads   Files   Search  ─────────╮╭─ #2 src/routes.ts:5  your turn  written on v1 ───────────────────── preview ─╮
+│ open 8 resolved 2 · all 11 · [ ] new ││ Your turn. The agent asked you a question and waits for your answer.         │
 │                                      ││                                                                              │
-│ src/auth.ts                         1││  v1  written · L5 · 1 msg  ──▶   v2  no change · L5 · 2 msgs                 │
-│ ● #1 L6–7  changed   your turn       ││ Diff · Then  At v2   t      around the thread  all changes · whole file  z   │
-│   \`===\` on secrets leaks timing. Use…││                                                                              │
-│ src/db.ts                           1││ src/routes.ts · line 5 at v2 · unchanged since v1                            │
-│   #3 L9  outdated   your turn        ││     2   import { findUser } from "./db.ts";                                  │
-│   Leftover debug log: please drop it.││     3   import { RateLimiter } from "./limiter.ts";                          │
-│ src/routes.ts                       3││     4                                                                        │
-│   #2 L5  your turn                   ││▌    5   const limiter = new RateLimiter(100, 60_000);                        │
-│   Where do 100 and 60 000 come from?…││         ▲ thread #2 · v2                                                     │
-│   #4 L10–11  agent's turn            ││     6                                                                        │
-│   I am not comfortable keying the li…││     7   export async function handle(req: Request): Promise<Response> {      │
-│   #8 L13  draft                      ││     8     const url = new URL(req.url);                                      │
-│   Should 401 come with a \`www-authen…││                                                                              │
-│ src/server.ts                       1││ ── Conversation · 2 messages ─────────────────────────────────────────────   │
-│   #7 L3  agent's turn                ││ you · reviewer @v1 · just now                                                │
-│   \`Number(undefined ?? 8080)\` is fin…││   Where do 100 and 60 000 come from? Should they be settings?                │
+│ src/auth.ts                         3││  v1  written · L5 · 1 msg  ──▶   v2  no change · L5 · 2 msgs                 │
+│ ● #8 L1  your turn                   ││ Diff · Then  At v2   t      around the thread  all changes · whole file  z   │
+│   Nit: the import is fine, but \`KEY\`…││                                                                              │
+│   #7 L3  agent's turn                ││ src/routes.ts · line 5 at v2 · unchanged since v1                            │
+│   Read API_KEY once at startup and r…││     2   import { findUser } from "./db.ts";                                  │
+│ ● #1 L6–7  changed   your turn       ││     3   import { RateLimiter } from "./limiter.ts";                          │
+│   \`===\` on secrets leaks timing. Use…││     4                                                                        │
+│ src/db.ts                           1││▌    5   const limiter = new RateLimiter(100, 60_000);                        │
+│   #3 L9  outdated   your turn        ││         ▲ thread #2 · v2                                                     │
+│   Leftover debug log: please drop it.││     6                                                                        │
+│ src/routes.ts                       4││     7   export async function handle(req: Request): Promise<Response> {      │
+│   #2 L5  your turn                   ││     8     const url = new URL(req.url);                                      │
+│   Where do 100 and 60 000 come from?…││                                                                              │
+│   #4 L10–11  agent's turn            ││ ── Conversation · 2 messages ─────────────────────────────────────────────   │
+│   I am not comfortable keying the li…││ you · reviewer @v1 · just now                                                │
+│ ● #9 L12  your turn                  ││   Where do 100 and 60 000 come from? Should they be settings?                │
+│   Checking the key before the route …││                                                                              │
+│   #11 L13  draft                     ││ claude · agent  question  @v2 · just now                                     │
+│   Should 401 come with a \`www-authen…││   100 requests a minute is the limit the old nginx config had. I can move    │
+│ src/server.ts                       1││   both to \`RATE_LIMIT\` / \`RATE_WINDOW_MS\` env settings if you want that in   │
+│   #10 L3  agent's turn               ││   this branch.                                                               │
+│   \`Number(undefined ?? 8080)\` is fin…││                                                                              │
 │                                      ││                                                                              │
-│ 2 resolved hidden ·  Space u r       ││ claude · agent  question  @v2 · just now                                     │
-│                                      ││   100 requests a minute is the limit the old nginx config had. I can move    │
-│                                      ││   both to \`RATE_LIMIT\` / \`RATE_WINDOW_MS\` env settings if you want that in   │
-│                                      ││   this branch.                                                               │
-│                                      ││                                                                              │
-│                                      ││                                                                              │
-│                                      ││  Enter  or  l  go into the thread ·  r  reply here                           │
+│ 2 resolved hidden ·  Space u r       ││  Enter  or  l  go into the thread ·  r  reply here                           │
 │                                      ││                                                                              │
 │                                      ││                                                                              │
 │                                      ││                                                                              │
@@ -41,41 +41,41 @@ stet  feature/rate-limit  not pushed · 2 not staged · 2 new   v1   v2  now = v
 │                                      ││                                                                              │
 │                                      ││                                                                              │
 ╰──────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────╯
- THREADS   j k  move   Enter   l  into the thread   J K  file   n  unread   Tab  column   Space  menu   ?  keys   q  qu…
+ THREADS   j k  thread   J K  file   Enter   l  into the thread   n  unread   Space e  files   Tab  column   Space  men…
 "
 `;
 
 exports[`180×46: three columns, the code focused, a NEW rule over the agent's unread fix 1`] = `
 "
-stet  feature/rate-limit  not pushed · 2 not staged · 2 new   v1   v2  now = v2                                                                  Round 3   Changes   Drafts 1    ?  
+stet  feature/rate-limit  not pushed · 2 not staged · 2 new   v1   v2  now = v2                                                                  Round 5   Changes   Drafts 1    ?  
  The agent handed over v2.   Space r v  shows what changed since you last looked.                                                                                                   
-╭─ Threads Files Search ───────────────╮╭─ #1 src/auth.ts:6–7  changed   your turn  written on v1 ──────────── 1 of 6 ─╮╭─ Conversation ────────────────────── 2 messages · 1 new ─╮
-│ open 5 resolved 2 · all 8 · [ ] new  ││ Your turn. The agent says it fixed this. Check the code, then resolve (x) or ││                                                          │
+╭─  Threads   Files   Search  ─────────╮╭─ #1 src/auth.ts:6–7  changed   your turn  written on v1 ──────────── 3 of 9 ─╮╭─ Conversation ────────────────────── 2 messages · 1 new ─╮
+│ open 8 resolved 2 · all 11 · [ ] new ││ Your turn. The agent says it fixed this. Check the code, then resolve (x) or ││                                                          │
 │                                      ││ reply (r).                                                                   ││ you · reviewer @v1 · just now                            │
-│ src/auth.ts                         1││                                                                              ││   \`===\` on secrets leaks timing. Use                     │
-│ ● #1 L6–7  changed   your turn       ││  v1  written · L5 · 1 msg  ──▶   v2  changed · L6–7 · 2 msgs                 ││   \`crypto.timingSafeEqual\` on equal-length buffers.      │
-│   \`===\` on secrets leaks timing. Use…││  Diff  Then · At v2  t      around the thread  all changes · whole file  z   ││                                                          │
-│ src/db.ts                           1││                                                                              ││ ── NEW ──────────────────────────────────────────────    │
-│   #3 L9  outdated   your turn        ││ src/auth.ts · lines 6–7 · how they changed from v1 to v2                −3 +5││ claude · agent  fixed  @v2 · just now                    │
-│   Leftover debug log: please drop it.││  1    - const KEY = process.env.API_KEY ?? "";                               ││   Fixed: both sides go through \`Buffer\`, a length check, │
-│ src/routes.ts                       3││     1 + import { timingSafeEqual } from "node:crypto";                       ││   then \`timingSafeEqual\`.                                │
-│   #2 L5  your turn                   ││  2  2                                                                        ││                                                          │
-│   Where do 100 and 60 000 come from?…││     3 + const KEY = Buffer.from(process.env.API_KEY ?? "");                  ││                                                          │
-│   #4 L10–11  agent's turn            ││     4 +                                                                      ││                                                          │
-│   I am not comfortable keying the li…││  3  5   export function authorized(req: Request): boolean {                  ││                                                          │
-│   #8 L13  draft                      ││  4    -   const given = req.headers.get("x-api-key") ?? "";                  ││                                                          │
-│   Should 401 come with a \`www-authen…││▌ 5    -   return given === KEY;                                              ││                                                          │
-│ src/server.ts                       1││▌    6 +   const given = Buffer.from(req.headers.get("x-api-key") ?? "");     ││                                                          │
-│   #7 L3  agent's turn                ││▌    7 +   return given.length === KEY.length && timingSafeEqual(given, KEY); ││                                                          │
-│   \`Number(undefined ?? 8080)\` is fin…││         ▲ thread #1 · v2  changed                                            ││                                                          │
-│                                      ││  6  8   }                                                                    ││                                                          │
+│ src/auth.ts                         3││                                                                              ││   \`===\` on secrets leaks timing. Use                     │
+│ ● #8 L1  your turn                   ││  v1  written · L5 · 1 msg  ──▶   v2  changed · L6–7 · 2 msgs                 ││   \`crypto.timingSafeEqual\` on equal-length buffers.      │
+│   Nit: the import is fine, but \`KEY\`…││  Diff  Then · At v2  t      around the thread  all changes · whole file  z   ││                                                          │
+│   #7 L3  agent's turn                ││                                                                              ││ ── NEW ──────────────────────────────────────────────    │
+│   Read API_KEY once at startup and r…││ src/auth.ts · lines 6–7 · how they changed from v1 to v2                −3 +5││ claude · agent  fixed  @v2 · just now                    │
+│ ● #1 L6–7  changed   your turn       ││  1    - const KEY = process.env.API_KEY ?? "";                               ││   Fixed: both sides go through \`Buffer\`, a length check, │
+│   \`===\` on secrets leaks timing. Use…││     1 + import { timingSafeEqual } from "node:crypto";                       ││   then \`timingSafeEqual\`.                                │
+│ src/db.ts                           1││  2  2                                                                        ││                                                          │
+│   #3 L9  outdated   your turn        ││     3 + const KEY = Buffer.from(process.env.API_KEY ?? "");                  ││                                                          │
+│   Leftover debug log: please drop it.││     4 +                                                                      ││                                                          │
+│ src/routes.ts                       4││  3  5   export function authorized(req: Request): boolean {                  ││                                                          │
+│   #2 L5  your turn                   ││  4    -   const given = req.headers.get("x-api-key") ?? "";                  ││                                                          │
+│   Where do 100 and 60 000 come from?…││▌ 5    -   return given === KEY;                                              ││                                                          │
+│   #4 L10–11  agent's turn            ││▌    6 +   const given = Buffer.from(req.headers.get("x-api-key") ?? "");     ││                                                          │
+│   I am not comfortable keying the li…││▌    7 +   return given.length === KEY.length && timingSafeEqual(given, KEY); ││                                                          │
+│ ● #9 L12  your turn                  ││         ▲ thread #1 · v2  changed                                            ││                                                          │
+│   Checking the key before the route …││  6  8   }                                                                    ││                                                          │
+│   #11 L13  draft                     ││                                                                              ││                                                          │
+│   Should 401 come with a \`www-authen…││                                                                              ││                                                          │
+│ src/server.ts                       1││                                                                              ││                                                          │
+│   #10 L3  agent's turn               ││                                                                              ││                                                          │
+│   \`Number(undefined ?? 8080)\` is fin…││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
 │ 2 resolved hidden ·  Space u r       ││                                                                              ││                                                          │
-│                                      ││                                                                              ││                                                          │
-│                                      ││                                                                              ││                                                          │
-│                                      ││                                                                              ││                                                          │
-│                                      ││                                                                              ││                                                          │
-│                                      ││                                                                              ││                                                          │
-│                                      ││                                                                              ││                                                          │
 │                                      ││                                                                              ││                                                          │
 │                                      ││                                                                              ││                                                          │
 │                                      ││                                                                              ││                                                          │
@@ -92,40 +92,40 @@ stet  feature/rate-limit  not pushed · 2 not staged · 2 new   v1   v2  now = v
 │                                      ││                                                                              ││  r  reply ·  x  resolve ·  { }  previous / next message  │
 │                                      ││                                                                              ││                                                          │
 ╰──────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────╯╰──────────────────────────────────────────────────────────╯
- CODE   j k  scroll   ] t   [ t  next / prev thread   n  unread   Tab  next column   h  list   r  reply   x  resolve   t  diff / then / at   Space  menu   ?  all keys              
+ CODE   j k  scroll   ] t   [ t  thread   J K  file   n  unread   Tab  next column   h  list   r  reply   x  resolve   t  diff / then / at   Space  menu   ?  all keys              
 "
 `;
 
 exports[`120×40: the reply box at the bottom of the thread's column 1`] = `
 "
-stet  feature/rate-limit  not pushed · 2 not staged · 2 new   v1   v2  now = v2      Round 3   Changes   Drafts 1    ?  
-╭─ Threads Files Search ───────────────╮╭─ #2 src/routes.ts:5  your turn  written on v1 ────────────────────── 3 of 6 ─╮
-│ open 5 resolved 2 · all 8 · [ ] new  ││ Your turn. The agent asked you a question and waits for your answer.         │
+stet  feature/rate-limit  not pushed · 2 not staged · 2 new   v1   v2  now = v2      Round 5   Changes   Drafts 1    ?  
+╭─  Threads   Files   Search  ─────────╮╭─ #2 src/routes.ts:5  your turn  written on v1 ────────────────────── 5 of 9 ─╮
+│ open 8 resolved 2 · all 11 · [ ] new ││ Your turn. The agent asked you a question and waits for your answer.         │
 │                                      ││                                                                              │
-│ src/auth.ts                         1││  v1  written · L5 · 1 msg  ──▶   v2  no change · L5 · 2 msgs                 │
-│ ● #1 L6–7  changed   your turn       ││ Diff · Then  At v2   t      around the thread  all changes · whole file  z   │
-│   \`===\` on secrets leaks timing. Use…││                                                                              │
-│ src/db.ts                           1││ src/routes.ts · line 5 at v2 · unchanged since v1                            │
-│   #3 L9  outdated   your turn        ││     2   import { findUser } from "./db.ts";                                  │
-│   Leftover debug log: please drop it.││     3   import { RateLimiter } from "./limiter.ts";                          │
-│ src/routes.ts                       3││     4                                                                        │
-│   #2 L5  your turn                   ││▌    5   const limiter = new RateLimiter(100, 60_000);                        │
-│   Where do 100 and 60 000 come from?…││         ▲ thread #2 · v2                                                     │
-│   #4 L10–11  agent's turn            ││     6                                                                        │
-│   I am not comfortable keying the li…││     7   export async function handle(req: Request): Promise<Response> {      │
-│   #8 L13  draft                      ││     8     const url = new URL(req.url);                                      │
-│   Should 401 come with a \`www-authen…││                                                                              │
-│ src/server.ts                       1││ ── Conversation · 2 messages ─────────────────────────────────────────────   │
-│   #7 L3  agent's turn                ││ you · reviewer @v1 · just now                                                │
-│   \`Number(undefined ?? 8080)\` is fin…││   Where do 100 and 60 000 come from? Should they be settings?                │
-│                                      ││                                                                              │
-│ 2 resolved hidden ·  Space u r       ││ claude · agent  question  @v2 · just now                                     │
-│                                      ││   100 requests a minute is the limit the old nginx config had. I can move    │
-│                                      ││   both to \`RATE_LIMIT\` / \`RATE_WINDOW_MS\` env settings if you want that in   │
-│                                      ││   this branch.                                                               │
-│                                      ││                                                                              │
+│ src/auth.ts                         3││  v1  written · L5 · 1 msg  ──▶   v2  no change · L5 · 2 msgs                 │
+│ ● #8 L1  your turn                   ││ Diff · Then  At v2   t      around the thread  all changes · whole file  z   │
+│   Nit: the import is fine, but \`KEY\`…││                                                                              │
+│   #7 L3  agent's turn                ││ src/routes.ts · line 5 at v2 · unchanged since v1                            │
+│   Read API_KEY once at startup and r…││     2   import { findUser } from "./db.ts";                                  │
+│ ● #1 L6–7  changed   your turn       ││     3   import { RateLimiter } from "./limiter.ts";                          │
+│   \`===\` on secrets leaks timing. Use…││     4                                                                        │
+│ src/db.ts                           1││▌    5   const limiter = new RateLimiter(100, 60_000);                        │
+│   #3 L9  outdated   your turn        ││         ▲ thread #2 · v2                                                     │
+│   Leftover debug log: please drop it.││     6                                                                        │
+│ src/routes.ts                       4││     7   export async function handle(req: Request): Promise<Response> {      │
+│   #2 L5  your turn                   ││     8     const url = new URL(req.url);                                      │
+│   Where do 100 and 60 000 come from?…││                                                                              │
+│   #4 L10–11  agent's turn            ││ ── Conversation · 2 messages ─────────────────────────────────────────────   │
+│   I am not comfortable keying the li…││ you · reviewer @v1 · just now                                                │
+│ ● #9 L12  your turn                  ││   Where do 100 and 60 000 come from? Should they be settings?                │
+│   Checking the key before the route …││                                                                              │
+│   #11 L13  draft                     ││ claude · agent  question  @v2 · just now                                     │
+│   Should 401 come with a \`www-authen…││   100 requests a minute is the limit the old nginx config had. I can move    │
+│ src/server.ts                       1││   both to \`RATE_LIMIT\` / \`RATE_WINDOW_MS\` env settings if you want that in   │
+│   #10 L3  agent's turn               ││   this branch.                                                               │
+│   \`Number(undefined ?? 8080)\` is fin…││                                                                              │
 │                                      ││ ╭─ Reply to #2 · draft ─────────────────────────────────────────────────────╮│
-│                                      ││ │ Env vars, please, with these numbers as defaults. And name the second one ││
+│ 2 resolved hidden ·  Space u r       ││ │ Env vars, please, with these numbers as defaults. And name the second one ││
 │                                      ││ │ RATE_WINDOW_MS everywhere, the README says RATE_WINDOW.                   ││
 │                                      ││ │                                                                           ││
 │                                      ││ ╰─  Ctrl+S  save draft ·  Ctrl+G  send now ·  Esc  leave, text kept ────────╯│
@@ -143,41 +143,41 @@ stet  feature/rate-limit  not pushed · 2 not staged · 2 new   v1   v2  now = v
 
 exports[`120×40: the Space menu lists the groups this UI has 1`] = `
 "
-stet  feature/rate-limit  not pushed · 2 not staged · 2 new   v1   v2  now = v2      Round 3   Changes   Drafts 1    ?  
-╭─ Threads Files Search ───────────────╮╭─ #2 src/routes.ts:5  your turn  written on v1 ───────────────────── preview ─╮
-│ open 5 resolved 2 · all 8 · [ ] new  ││ Your turn. The agent asked you a question and waits for your answer.         │
+stet  feature/rate-limit  not pushed · 2 not staged · 2 new   v1   v2  now = v2      Round 5   Changes   Drafts 1    ?  
+╭─  Threads   Files   Search  ─────────╮╭─ #2 src/routes.ts:5  your turn  written on v1 ───────────────────── preview ─╮
+│ open 8 resolved 2 · all 11 · [ ] new ││ Your turn. The agent asked you a question and waits for your answer.         │
 │                                      ││                                                                              │
-│ src/auth.ts                         1││  v1  written · L5 · 1 msg  ──▶   v2  no change · L5 · 2 msgs                 │
-│ ● #1 L6–7  changed   your turn       ││ Diff · Then  At v2   t      around the thread  all changes · whole file  z   │
-│   \`===\` on secrets leaks timing. Use…││                                                                              │
-│ src/db.ts                           1││ src/routes.ts · line 5 at v2 · unchanged since v1                            │
-│   #3 L9  outdated   your turn        ││     2   import { findUser } from "./db.ts";                                  │
-│   Leftover debug log: please drop it.││     3   import { RateLimiter } from "./limiter.ts";                          │
-│ src/routes.ts                       3││     4                                                                        │
-│   #2 L5  your turn                   ││▌    5   const limiter = new RateLimiter(100, 60_000);                        │
-│   Where do 100 and 60 000 come from?…││         ▲ thread #2 · v2                                                     │
-│   #4 L10–11  agent's turn            ││     6                                                                        │
-│   I am not comfortable keying the li…││     7   export async function handle(req: Request): Promise<Response> {      │
-│   #8 L13  draft                      ││     8     const url = new URL(req.url);                                      │
-│   Should 401 come with a \`www-authen…││                                                                              │
-│ src/server.ts                       1││ ── Conversation · 2 messages ─────────────────────────────────────────────   │
-│   #7 L3  agent's turn                ││ you · reviewer @v1 · just now                                                │
-│   \`Number(undefined ?? 8080)\` is fin…││   Where do 100 and 60 000 come from? Should they be settings?                │
+│ src/auth.ts                         3││  v1  written · L5 · 1 msg  ──▶   v2  no change · L5 · 2 msgs                 │
+│ ● #8 L1  your turn                   ││ Diff · Then  At v2   t      around the thread  all changes · whole file  z   │
+│   Nit: the import is fine, but \`KEY\`…││                                                                              │
+│   #7 L3  agent's turn                ││ src/routes.ts · line 5 at v2 · unchanged since v1                            │
+│   Read API_KEY once at startup and r…││     2   import { findUser } from "./db.ts";                                  │
+│ ● #1 L6–7  changed   your turn       ││     3   import { RateLimiter } from "./limiter.ts";                          │
+│   \`===\` on secrets leaks timing. Use…││     4                                                                        │
+│ src/db.ts                           1││▌    5   const limiter = new RateLimiter(100, 60_000);                        │
+│   #3 L9  outdated   your turn        ││         ▲ thread #2 · v2                                                     │
+│   Leftover debug log: please drop it.││     6                                                                        │
+│ src/routes.ts                       4││     7   export async function handle(req: Request): Promise<Response> {      │
+│   #2 L5  your turn                   ││     8     const url = new URL(req.url);                                      │
+│   Where do 100 and 60 000 come from?…││                                                                              │
+│   #4 L10–11  agent's turn            ││ ── Conversation · 2 messages ─────────────────────────────────────────────   │
+│   I am not comfortable keying the li…││ you · reviewer @v1 · just now                                                │
+│ ● #9 L12  your turn                  ││   Where do 100 and 60 000 come from? Should they be settings?                │
+│   Checking the key before the route …││                                                                              │
+│   #11 L13  draft                     ││ claude · agent  question  @v2 · just now                                     │
+│   Should 401 come with a \`www-authen…││   100 requests a minute is the limit the old nginx config had. I can move    │
+│ src/server.ts                       1││   both to \`RATE_LIMIT\` / \`RATE_WINDOW_MS\` env settings if you want that in   │
+│   #10 L3  agent's turn               ││   this branch.                                                               │
+│   \`Number(undefined ?? 8080)\` is fin…││                                                                              │
 │                                      ││                                                                              │
-│ 2 resolved hidden ·  Space u r       ││ claude · agent  question  @v2 · just now                                     │
-│                                      ││   100 requests a minute is the limit the old nginx config had. I can move    │
-│                                      ││   both to \`RATE_LIMIT\` / \`RATE_WINDOW_MS\` env settings if you want that in   │
-│                                      ││   this branch.                                                               │
-│                                      ││                                                                              │
-│                                      ││                                                                              │
-│                                      ││  Enter  or  l  go into the thread ·  r  reply here                           │
-│                                      ││                                                                              │
+│ 2 resolved hidden ·  Space u r       ││  Enter  or  l  go into the thread ·  r  reply here                           │
 │                                      ││                                                                              │
 │                                      ││                                                                              │
 │                                      ││                                                                              │
 │                                      ││                            ╭─ Space ────────────────────────────────────────╮│
-│                                      ││                            │ r +review               n threads with news    ││
-│                                      ││                            │ u +ui toggles           ? all keys             ││
+│                                      ││                            │ e files of the review   u +ui toggles          ││
+│                                      ││                            │ s +search               n threads with news    ││
+│                                      ││                            │ r +review               ? all keys             ││
 │                                      ││                            │                                                ││
 │                                      ││                            │ a key runs it or opens its group · Esc closes  ││
 │                                      ││                            ╰────────────────────────────────────────────────╯│
@@ -188,11 +188,11 @@ stet  feature/rate-limit  not pushed · 2 not staged · 2 new   v1   v2  now = v
 
 exports[`120×40: the Drafts tab with the approve question 1`] = `
 "
-stet  feature/rate-limit  not pushed · 2 not staged · 2 new   v1   v2  now = v2      Round 3   Changes   Drafts 1    ?  
-╭─ Your review · 1 draft ───────────────────╮╭─ #8 src/routes.ts:13  draft  ────────────────  e  edit ·  d d  discard ─╮
+stet  feature/rate-limit  not pushed · 2 not staged · 2 new   v1   v2  now = v2      Round 5   Changes   Drafts 1    ?  
+╭─ Your review · 1 draft ───────────────────╮╭─ #11 src/routes.ts:13  draft  ───────────────  e  edit ·  d d  discard ─╮
 │ The agent sees drafts only when you send …││                                                                         │
 │                                           ││    12     if (!authorized(req)) return new Response("unauthorized", { st│
-│ #8 src/routes.ts:13  new thread           ││         atus: 401 });                                                   │
+│ #11 src/routes.ts:13  new thread          ││         atus: 401 });                                                   │
 │   Should 401 come with a \`www-authenticat…││▌   13     if (url.pathname.startsWith("/users/")) {                     │
 │                                           ││    14       const user = await findUser(url.pathname.slice(7));         │
 │ Summary  c                                ││                                                                         │
@@ -233,8 +233,8 @@ stet  feature/rate-limit  not pushed · 2 not staged · 2 new   v1   v2  now = v
 
 exports[`80×24: one column, the thread; h slides the list in over it 1`] = `
 "
-stet rate-limit   v2                               Round 3   Changes   Drafts 1 
-╭─ #1 src/auth.ts:6–7  changed   your turn  ────────────────────────── 1 of 6 ─╮
+stet rate-limit   v2                               Round 5   Changes   Drafts 1 
+╭─ #1 src/auth.ts:6–7  changed   your turn  ────────────────────────── 3 of 9 ─╮
 │ Your turn. The agent says it fixed this. Check the code, then resolve (x) or │
 │ reply (r).                                                                   │
 │  4    -   const given = req.headers.get("x-api-key") ?? "";                  │
@@ -256,35 +256,125 @@ stet rate-limit   v2                               Round 3   Changes   Drafts 1
 │                                                                              │
 │                                                                              │
 ╰──────────────────────────────────────────────────────────────────────────────╯
- THREAD   h  list   j k  scroll   ] t  next   r  reply   x  resolve   ?  keys   
+ THREAD   h  list   j k  scroll   ] t   [ t  thread   r  reply   x  resolve   ?…
 "
 `;
 
 exports[`80×24: one column, the thread; h slides the list in over it 2`] = `
 "
-stet rate-limit   v2                               Round 3   Changes   Drafts 1 
-╭─ Threads Files Search ─────────────────────╮─────────────────────── preview ─╮
-│ open 5 resolved 2 · all 8 · [ ] new        │ck the code, then resolve (x) or │
+stet rate-limit   v2                               Round 5   Changes   Drafts 1 
+╭─  Threads   Files   Search  ───────────────╮─────────────────────── preview ─╮
+│ open 8 resolved 2 · all 11 · [ ] new       │ck the code, then resolve (x) or │
 │                                            │                                 │
-│ src/auth.ts                               1│pi-key") ?? "";                  │
+│ src/auth.ts                               3│pi-key") ?? "";                  │
+│ ● #8 L1  your turn                         │                                 │
+│   Nit: the import is fine, but \`KEY\` is a …│ers.get("x-api-key") ?? "");     │
+│   #7 L3  agent's turn                      │ && timingSafeEqual(given, KEY); │
+│   Read API_KEY once at startup and refuse …│                                 │
 │ ● #1 L6–7  changed   your turn             │                                 │
-│   \`===\` on secrets leaks timing. Use \`cryp…│ers.get("x-api-key") ?? "");     │
-│ src/db.ts                                 1│ && timingSafeEqual(given, KEY); │
+│   \`===\` on secrets leaks timing. Use \`cryp…│                                 │
+│ src/db.ts                                 1│──────────────────────────────   │
 │   #3 L9  outdated   your turn              │                                 │
-│   Leftover debug log: please drop it.      │                                 │
-│ src/routes.ts                             3│                                 │
-│   #2 L5  your turn                         │──────────────────────────────   │
-│   Where do 100 and 60 000 come from? Shoul…│                                 │
-│   #4 L10–11  agent's turn                  │.timingSafeEqual\` on             │
-│   I am not comfortable keying the limiter …│                                 │
-│   #8 L13  draft                            │                                 │
-│   Should 401 come with a \`www-authenticate…│─────────────────────────────    │
-│ src/server.ts                             1│                                 │
-│   #7 L3  agent's turn                      │ength check, then                │
-│   \`Number(undefined ?? 8080)\` is fine, but…│                                 │
-│                                            │                                 │
-│ 2 resolved hidden ·  Space u r             │                                 │
+│   Leftover debug log: please drop it.      │.timingSafeEqual\` on             │
+│ src/routes.ts                             4│                                 │
+│   #2 L5  your turn                         │                                 │
+│   Where do 100 and 60 000 come from? Shoul…│─────────────────────────────    │
+│   #4 L10–11  agent's turn                  │                                 │
+│   I am not comfortable keying the limiter …│ength check, then                │
+│ ● #9 L12  your turn                        │                                 │
+│   Checking the key before the route means …│                                 │
+│   #11 L13  draft                           │                                 │
 ╰────────────────────────────────────────────╯─────────────────────────────────╯
- THREADS   j k  move   Enter   l  into the thread   J K  file   n  unread   Tab…
+ THREADS   j k  thread   J K  file   Enter   l  into the thread   n  unread   S…
+"
+`;
+
+exports[`120×40: the Files tab lists the changed files with −/+ and their threads, the file's first thread beside it 1`] = `
+"
+stet  feature/rate-limit  not pushed · 2 not staged · 2 new   v1   v2  now = v2      Round 5   Changes   Drafts 1    ?  
+╭─  Threads   Files   Search  ─────────╮╭─ #2 src/routes.ts:5  your turn  written on v1 ───────────────────── preview ─╮
+│ 4 files · base → v2                  ││ Your turn. The agent asked you a question and waits for your answer.         │
+│                                      ││                                                                              │
+│ README.md                    −1 +3  1││  v1  written · L5 · 1 msg  ──▶   v2  no change · L5 · 2 msgs                 │
+│ src/auth.ts new                 +8 ●3││ Diff · Then  At v2   t      around the thread  all changes · whole file  z   │
+│ src/limiter.ts new             +18  1││                                                                              │
+│ src/routes.ts                   +7 ●4││ src/routes.ts · line 5 at v2 · unchanged since v1                            │
+│                                      ││     2   import { findUser } from "./db.ts";                                  │
+│                                      ││     3   import { RateLimiter } from "./limiter.ts";                          │
+│                                      ││     4                                                                        │
+│                                      ││▌    5   const limiter = new RateLimiter(100, 60_000);                        │
+│                                      ││         ▲ thread #2 · v2                                                     │
+│                                      ││     6                                                                        │
+│                                      ││     7   export async function handle(req: Request): Promise<Response> {      │
+│                                      ││     8     const url = new URL(req.url);                                      │
+│                                      ││                                                                              │
+│                                      ││ ── Conversation · 2 messages ─────────────────────────────────────────────   │
+│                                      ││ you · reviewer @v1 · just now                                                │
+│                                      ││   Where do 100 and 60 000 come from? Should they be settings?                │
+│                                      ││                                                                              │
+│                                      ││ claude · agent  question  @v2 · just now                                     │
+│                                      ││   100 requests a minute is the limit the old nginx config had. I can move    │
+│                                      ││   both to \`RATE_LIMIT\` / \`RATE_WINDOW_MS\` env settings if you want that in   │
+│                                      ││   this branch.                                                               │
+│                                      ││                                                                              │
+│                                      ││                                                                              │
+│                                      ││  Enter  or  l  go into the thread ·  r  reply here                           │
+│                                      ││                                                                              │
+│                                      ││                                                                              │
+│                                      ││                                                                              │
+│                                      ││                                                                              │
+│                                      ││                                                                              │
+│                                      ││                                                                              │
+│                                      ││                                                                              │
+│                                      ││                                                                              │
+│                                      ││                                                                              │
+│                                      ││                                                                              │
+╰──────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────╯
+ FILES   j k  file   Enter   l  into its first thread   Space s t  threads   Tab  column   Space  menu   ?  keys   q  q…
+"
+`;
+
+exports[`120×40: ? lists the column's keys, how to move around and the mouse 1`] = `
+"
+stet  feature/rate-limit  not pushed · 2 not staged · 2 new   v1   v2  now = v2      Round 5   Changes   Drafts 1    ?  
+╭─╭─ Keys ──────────────────────────────────────────────────────────────────────────────────────────────── 5 more ↓ ─╮─╮
+│ │ The thread list                                                                                                  │ │
+│ │  j  ↓  ] t            next thread                                                                                │ │
+│ │  k  ↑  [ t            previous thread                                                                            │ │
+│ │  Enter  l  o          into the thread                                                                            │ │
+│ │  g g                  first thread                                                                               │ │
+│ │  G                    last thread                                                                                │ │
+│ │  Ctrl+D  PgDn         half a page down                                                                           │ │
+│ │  Ctrl+U  PgUp         half a page up                                                                             │ │
+│ │  J                    first thread of the next file                                                              │ │
+│ │  K                    first thread of the previous file                                                          │ │
+│ │  n                    next unread thread                                                                         │ │
+│ │  N                    previous unread thread                                                                     │ │
+│ │  r                    reply to the thread                                                                        │ │
+│ │  Esc  h               hide the list (narrow screens)                                                             │ │
+│ │  q                    quit                                                                                       │ │
+│ │                                                                                                                  │ │
+│ │ Moving around                                                                                                    │ │
+│ │  h  l  Tab            columns: h left, l right, Tab cycles them; or click a column                               │ │
+│ │  Space e  Space s t   the left column's tabs: Files, Threads; or click a tab in its border                       │ │
+│ │  s  Space r v         the Drafts and Changes tabs at the top; Esc back to the round; or click them               │ │
+│ │  j  k                 in the list: the next / previous thread; in the code and the conversation: scroll          │ │
+│ │  J  K                 the first thread of the next / previous file, wherever you are                             │ │
+│ │  ]t  [t               the next / previous thread from the code or the conversation                               │ │
+│ │  n  N                 the next / previous unread thread                                                          │ │
+│ │  mouse                click a row, a tab, a column or a key chip; the wheel scrolls the column under the pointer │ │
+│ │  Shift+drag           selects text in most terminals while the mouse is on (Option+drag in iTerm2)               │ │
+│ │                                                                                                                  │ │
+│ │ Everywhere                                                                                                       │ │
+│ │  Space e              the changed files, in the left column                                                      │ │
+│ │  Space s t            the threads, in the left column                                                            │ │
+│ │  Tab                  next column                                                                                │ │
+│ │  Shift+Tab            previous column                                                                            │ │
+│ │  S  Space r s         drafts, then S again submits: request changes (approve when there are no drafts)           │ │
+│ │  s  Space r d         your drafts                                                                                │ │
+│ │  Space r v            changes since you last looked                                                              │ │
+│ │  R  Space r r         re-read “now” from the working tree                                                        │ │
+╰─╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯─╯
+ KEYS   j k  scroll   Esc  close                                                                                        
 "
 `;

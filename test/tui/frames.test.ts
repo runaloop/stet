@@ -5,7 +5,7 @@ import type { ThreadDetail } from "../../src/core/types.ts";
 import { rowText } from "../../src/tui/grid.ts";
 import { KeyMatcher } from "../../src/tui/keys/match.ts";
 import { KEYS } from "../../src/tui/keys/table.ts";
-import { initialView, render, type ViewState } from "../../src/tui/render.ts";
+import { helpFor, initialView, render, type ViewState } from "../../src/tui/render.ts";
 import { width } from "../../src/tui/text.ts";
 import { seedTui, type Seeded } from "../fixtures/tui-seed.ts";
 import { Fixture, GIT_ENV } from "../helpers/fixture.ts";
@@ -129,12 +129,44 @@ test("80×24: one column, the thread; h slides the list in over it", async () =>
   const v = await view(ids.timing);
   v.focus = "code";
   const thread = frame(v, 80, 24);
-  expect(thread).toContain("1 of 6");
-  expect(thread).not.toContain("Threads Files Search");
+  expect(thread).toMatch(/\d+ of \d+/);
+  expect(thread).not.toContain(" Threads ");
   v.listOpen = true;
   v.focus = "list";
   const list = frame(v, 80, 24);
-  expect(list).toContain("Threads Files Search");
+  expect(list).toContain(" Threads ");
   expect(thread).toMatchSnapshot();
   expect(list).toMatchSnapshot();
+});
+
+test("120×40: the Files tab lists the changed files with −/+ and their threads, the file's first thread beside it", async () => {
+  const v = await view(ids.magic);
+  v.side = "files";
+  v.files = await api.compare(review, "base", "2");
+  v.fileSel = "src/routes.ts";
+  const text = frame(v, 120, 40);
+  expect(text).toContain("4 files · base → v2");
+  expect(text).toContain(" FILES ");
+  expect(text).toMatch(/src\/routes\.ts\s+\+\d+ ●4/);
+  expect(text).toMatchSnapshot();
+});
+
+test("120×40: J lands in another file and its header row is marked", async () => {
+  const v = await view(ids.magic);
+  v.landed = "src/routes.ts";
+  const rows = render(v, 120, 40).rows;
+  const header = rows.find((r) => r.map((x) => x.text).join("").includes("src/routes.ts") && r.some((x) => x.c?.includes("info")));
+  expect(header).toBeDefined();
+  v.landed = null;
+  expect(render(v, 120, 40).rows.some((r) => r.map((x) => x.text).join("").includes("src/routes.ts") && r.some((x) => x.c?.includes("info")))).toBe(false);
+});
+
+test("120×40: ? lists the column's keys, how to move around and the mouse", async () => {
+  const v = await view(ids.magic);
+  v.help = helpFor("list");
+  const text = frame(v, 120, 40);
+  expect(text).toContain("Moving around");
+  expect(text).toContain("Space e  Space s t");
+  expect(text).toContain("Shift+drag");
+  expect(text).toMatchSnapshot();
 });

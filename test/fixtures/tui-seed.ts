@@ -14,11 +14,15 @@ export interface Seeded {
   memory: number;
   port: number;
   draft: number;
+  keyOnce: number;
+  keyName: number;
+  order: number;
 }
 
 /**
- * Two versions and eight threads: the agent's fix waiting for you and unread, a question, an outdated thread, a long
- * message waiting for the agent, two resolved, a new thread on v2 and a draft thread.
+ * Two versions and eleven threads: the agent's fix waiting for you and unread, a question, an outdated thread, a long
+ * message waiting for the agent, two resolved, new threads on v2 (three in src/auth.ts, four in src/routes.ts) and a
+ * draft thread.
  */
 export function seedTui(root: string, cli: string[]): Seeded {
   rmSync(root, { recursive: true, force: true });
@@ -220,9 +224,15 @@ export function authorized(req: Request): boolean {
   stet("reviewer", "resolve", String(memory), "--reason", "answered");
 
   // a new thread on v2, sent right away, and a draft for the next review
+  // more threads in two files, so J and K (first thread of the next file) differ from j and k
+  const keyOnce = comment("src/auth.ts", "3", "Read API_KEY once at startup and refuse to start when it is empty? Today an empty key accepts an empty header.", "--at", "2");
+  const keyName = comment("src/auth.ts", "1", "Nit: the import is fine, but `KEY` is a Buffer now; `KEY_BYTES`?", "--at", "2");
+  reply("agent", keyName, "Renamed in my working tree; it comes with the next version.", "--intent", "fixed");
+  const order = comment("src/routes.ts", "12", "Checking the key before the route means a 401 for every unknown path: is that on purpose?", "--at", "2");
+  reply("agent", order, "Yes: answering 404 before the key check would tell anyone which paths exist. I would keep it.", "--intent", "disagree");
   const port = comment("src/server.ts", "3", "`Number(undefined ?? 8080)` is fine, but `PORT=abc` gives NaN and Bun picks a random port. Validate it?", "--at", "2");
   const draft = comment("src/routes.ts", "13", "Should 401 come with a `www-authenticate` header?", "--at", "2", "--draft");
-  return { timing, magic, logLine, ipKey, readme, memory, port, draft };
+  return { timing, magic, logLine, ipKey, readme, memory, port, draft, keyOnce, keyName, order };
 }
 
 if (import.meta.main) {
