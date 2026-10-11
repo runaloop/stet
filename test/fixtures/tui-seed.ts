@@ -5,6 +5,53 @@ import { dirname, join } from "node:path";
 
 const GIT = { GIT_AUTHOR_NAME: "Demo", GIT_AUTHOR_EMAIL: "demo@example.com", GIT_COMMITTER_NAME: "Demo", GIT_COMMITTER_EMAIL: "demo@example.com" };
 
+/** A report module of a few hundred lines, `v` 1 or 2: the second renames a function, changes a few lines and adds some. */
+export function reportModule(v: 1 | 2): string {
+  const out: string[] = [
+    `import { db } from "./db.ts";`,
+    "",
+    "/** One line of the usage report: who called what, how often, how slow. */",
+    "export interface Row {",
+    "  key: string;",
+    "  route: string;",
+    "  hits: number;",
+    "  p95: number;",
+    "}",
+    "",
+  ];
+  const routes = ["users", "orders", "invoices", "health", "search", "export", "admin", "metrics", "billing", "audit", "tokens", "webhooks"].flatMap((r) => [r, `${r}V2`, `${r}Batch`, `${r}Stats`]);
+  routes.forEach((r, i) => {
+    const name = v === 2 && r === "orders" ? "orderRows" : `${r}Rows`;
+    out.push(
+      `/** The report's rows for /${r}: one per key, the busiest first. */`,
+      `export function ${name}(rows: Row[], limit = ${10 + i}): Row[] {`,
+      `  const mine = rows.filter((row) => row.route === "/${r}");`,
+      v === 2 && i % 4 === 1 ? `  const sorted = [...mine].sort((a, b) => b.hits - a.hits || a.key.localeCompare(b.key));` : `  const sorted = [...mine].sort((a, b) => b.hits - a.hits);`,
+      `  // ${r}: keys below ${i + 1} hits a minute are noise`,
+      `  return sorted.filter((row) => row.hits >= ${i + 1}).slice(0, limit);`,
+      "}",
+      "",
+    );
+    if (v === 2 && i === 6) out.push("/** Admin rows never leave the server. */", "export const ADMIN_ONLY = true;", "");
+  });
+  out.push(
+    "export function total(rows: Row[]): { hits: number; slowest: Row | null } {",
+    "  let hits = 0;",
+    "  let slowest: Row | null = null;",
+    "  for (const row of rows) {",
+    "    hits += row.hits;",
+    "    if (!slowest || row.p95 > slowest.p95) slowest = row;",
+    "  }",
+    "  return { hits, slowest };",
+    "}",
+    "",
+    `export function save(rows: Row[]): void {`,
+    `  for (const row of rows) db.run("insert into report values (?, ?, ?, ?)", [row.key, row.route, row.hits, row.p95]);`,
+    "}",
+  );
+  return `${out.join("\n")}\n`;
+}
+
 export interface Seeded {
   timing: number;
   magic: number;
@@ -17,12 +64,14 @@ export interface Seeded {
   keyOnce: number;
   keyName: number;
   order: number;
+  report: number;
 }
 
 /**
- * Two versions and eleven threads: the agent's fix waiting for you and unread, a question, an outdated thread, a long
- * message waiting for the agent, two resolved, new threads on v2 (three in src/auth.ts, four in src/routes.ts) and a
- * draft thread.
+ * Two versions and twelve threads: the agent's fix waiting for you and unread, a question, an outdated thread, a long
+ * message waiting for the agent, two resolved, new threads on v2 (three in src/auth.ts, four in src/routes.ts, one deep
+ * in the long src/report.ts) and a draft thread. v2 also adds a test that only adds code and a lock file, which the
+ * Changes tab folds.
  */
 export function seedTui(root: string, cli: string[]): Seeded {
   rmSync(root, { recursive: true, force: true });
@@ -143,6 +192,7 @@ export async function findUser(id: string): Promise<User | null> {
   return users.get(id) ?? null;
 }
 `);
+  write("src/report.ts", reportModule(1));
   stet("agent", "version", "create", "--label", "rate limit and API key");
 
   // round 1: the reviewer's drafts, sent as one review
@@ -204,6 +254,22 @@ export function authorized(req: Request): boolean {
   }
 }
 `);
+  write("src/report.ts", reportModule(2));
+  write("src/limiter.test.ts", `import { expect, test } from "bun:test";
+import { RateLimiter } from "./limiter.ts";
+
+test("the sweep drops keys whose hits left the window", () => {
+  const l = new RateLimiter(1, 10);
+  for (let i = 0; i < 10_001; i++) l.allow(String(i), 0);
+  expect(l.allow("x", 100)).toBe(true);
+});
+`);
+  write("bun.lock", `{
+  "lockfileVersion": 1,
+  "workspaces": { "": { "name": "shop-api" } },
+  "packages": {}
+}
+`);
   stet("agent", "version", "create", "--label", "constant-time key check, sweep, docs");
 
   reply("agent", timing, "Fixed: both sides go through `Buffer`, a length check, then `timingSafeEqual`.", "--intent", "fixed");
@@ -232,7 +298,9 @@ export function authorized(req: Request): boolean {
   reply("agent", order, "Yes: answering 404 before the key check would tell anyone which paths exist. I would keep it.", "--intent", "disagree");
   const port = comment("src/server.ts", "3", "`Number(undefined ?? 8080)` is fine, but `PORT=abc` gives NaN and Bun picks a random port. Validate it?", "--at", "2");
   const draft = comment("src/routes.ts", "13", "Should 401 come with a `www-authenticate` header?", "--at", "2", "--draft");
-  return { timing, magic, logLine, ipKey, readme, memory, port, draft, keyOnce, keyName, order };
+  const deep = String(reportModule(2).split("\n").findIndex((l) => l.includes("export function auditStatsRows")) + 1);
+  const report = comment("src/report.ts", deep, "`limit` grows with the route's index: is that on purpose, or should every route share one default?", "--at", "2");
+  return { timing, magic, logLine, ipKey, readme, memory, port, draft, keyOnce, keyName, order, report };
 }
 
 if (import.meta.main) {

@@ -2,6 +2,12 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { join } from "node:path";
 import { clientApi, type Api } from "../../src/client/api.ts";
 import type { ThreadDetail } from "../../src/core/types.ts";
+import { parsePatchFiles } from "@pierre/diffs";
+import { createTestRenderer } from "@opentui/core/testing";
+import { viewedKey } from "../../src/ui/viewed.ts";
+import { syncChanges } from "../../src/tui/changes.ts";
+import { colorMode } from "../../src/tui/diff/colors.ts";
+import { Screen } from "../../src/tui/screen.ts";
 import { fetchWide, scopesOf, wideKey } from "../../src/tui/code.ts";
 import { rowText } from "../../src/tui/grid.ts";
 import { KeyMatcher } from "../../src/tui/keys/match.ts";
@@ -101,7 +107,9 @@ test("120×40: the Space menu lists the groups this UI has", async () => {
   const text = frame(v, 120, 40);
   expect(text).toContain("+review");
   expect(text).toContain("+ui toggles");
-  expect(text).not.toContain("+find");
+  expect(text).toContain("+find");
+  expect(text).toContain("+git");
+  expect(text).toContain("search all files ↗");
   expect(text).toContain("MENU");
   expect(text).toMatchSnapshot();
 });
@@ -145,7 +153,7 @@ test("120×40: the Files tab lists the changed files with −/+ and their thread
   v.files = await api.compare(review, "base", "2");
   v.fileSel = "src/routes.ts";
   const text = frame(v, 120, 40);
-  expect(text).toContain("4 files · base → v2");
+  expect(text).toContain("7 files · base → v2");
   expect(text).toContain(" FILES ");
   expect(text).toMatch(/src\/routes\.ts\s+\+\d+ ●4/);
   expect(text).toMatchSnapshot();
@@ -190,4 +198,95 @@ test("180×46: z widens the thread's code to every change of its file, then to t
   expect(file).toContain("export function authorized");
   expect(changes).toMatchSnapshot();
   expect(file).toMatchSnapshot();
+});
+
+/** The Changes tab on the range `from..to`, loaded as the app loads it. */
+async function changes(from: string, to: string): Promise<ViewState> {
+  const v = await view(ids.timing);
+  v.tab = "changes";
+  v.banner = null;
+  const c = v.changes;
+  c.from = from;
+  c.to = to;
+  c.data = await api.compare(review, from, to);
+  c.base = parsePatchFiles(await api.patch(c.data.from.sha, c.data.to.sha), `${from}-${to}`).flatMap((p) => p.files);
+  const cur = await api.cursors(review);
+  c.viewed = new Set(cur.viewed);
+  c.reviewed = cur.reviewed;
+  syncChanges(v.data, c, false);
+  c.diff.first();
+  return v;
+}
+
+test("120×40: the Changes tab: the whole branch in words, the files in reading order with viewed boxes, the diff with cards", async () => {
+  const v = await changes("base", "2");
+  const text = frame(v, 120, 40);
+  expect(text).toContain("The whole branch main → v2 · ");
+  expect(text).toMatch(/\[ \] src\/auth\.ts\s+\+8 ●3/);
+  expect(text).toContain("CODE (");
+  expect(text).toContain("TESTS WITH ONLY NEW CODE (1)");
+  expect(text).toContain("▾ src/auth.ts");
+  expect(text).toContain("▲ #8");
+  expect(text).toContain(" CHANGES ");
+  expect(text).toMatchSnapshot();
+});
+
+test("120×40: a viewed file folds to its header; a fold group's row folds the tests that only add code", async () => {
+  const v = await changes("base", "2");
+  const c = v.changes;
+  const auth = c.rows.find((r) => r.fd.name === "src/auth.ts")!;
+  c.viewed = new Set([viewedKey(auth.fd)]);
+  syncChanges(v.data, c, false);
+  const text = frame(v, 120, 40);
+  expect(text).toContain("▸ src/auth.ts");
+  expect(text).toContain("[x] viewed");
+  expect(text).toContain("1 of ");
+  const last = c.diff.items[c.diff.items.length - 1]!;
+  expect(c.diff.items.some((i) => i.kind === "group" && i.key === "group:tests" && !i.open)).toBe(true);
+  expect(last.kind === "group" || last.kind === "file").toBe(true);
+  c.diff.last();
+  expect(frame(v, 120, 40)).toContain("▸ 1 test file with only new code folded · show");
+});
+
+test("180×46: the cursor on a card, its card open; the strip lights the range's ends", async () => {
+  const v = await changes("1", "2");
+  const c = v.changes;
+  frame(v, 180, 46);
+  c.diff.goTo(c.diff.nextCard(1), "center");
+  c.diff.toggleCard(c.diff.info()!.thread!);
+  const text = frame(v, 180, 46);
+  expect(text).toContain("What changed in v2 v1 → v2");
+  expect(text).toContain("Enter  opens the thread");
+  expect(text).toMatchSnapshot();
+});
+
+test("80×24: one column, the diff; the files slide in over it when they have the focus", async () => {
+  const v = await changes("base", "2");
+  const diff = frame(v, 80, 24);
+  expect(diff).not.toContain("CODE (");
+  v.changes.focus = "list";
+  const list = frame(v, 80, 24);
+  expect(list).toContain("CODE (");
+  expect(list).toContain(" FILES ");
+  expect(diff).toMatchSnapshot();
+  expect(list).toMatchSnapshot();
+});
+
+test("? on the Changes tab lists its keys: lines, files, threads, folds, viewed, the range", async () => {
+  const v = await changes("base", "2");
+  v.help = helpFor("changes");
+  const text = v.help.map((l) => l.spans.map((x) => x.text).join("")).join("\n");
+  for (const k of ["] t ", "[ t ", "] b  L", "] c", "z a", "m ", "] v", "{", "p ", "Enter  o"]) expect(text).toContain(k);
+});
+
+test("256 colours under TERM=screen-256color: the frame paints with palette indexes", async () => {
+  const v = await changes("base", "2");
+  const { renderer, renderOnce, captureSpans } = await createTestRenderer({ width: 120, height: 40 });
+  const screen = new Screen(renderer, (w, h) => render(v, w, h).rows, colorMode({ TERM: "screen-256color" }));
+  renderer.root.add(screen);
+  await renderOnce();
+  const spans = captureSpans().lines.flatMap((l) => l.spans);
+  expect(spans.length).toBeGreaterThan(50);
+  expect(spans.every((x) => x.fg.intent === "indexed" && x.bg.intent === "indexed")).toBe(true);
+  renderer.destroy();
 });
