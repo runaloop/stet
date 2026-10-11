@@ -80,15 +80,15 @@ export class KeyMatcher {
   }
 
   /** What may come after the keys typed so far, for the footer. */
-  next(scopes: readonly Scope[]): { key: string; desc: string }[] {
-    const out = new Map<string, string>();
+  next(scopes: readonly Scope[]): { key: string; desc: string; off?: KeyRow["off"] }[] {
+    const out = new Map<string, { desc: string; off?: KeyRow["off"] }>();
     for (const c of this.candidates(this.buffer, scopes)) {
       const t = tokens(c.keys);
       const key = t[this.buffer.length];
       if (key === undefined || out.has(key)) continue;
-      out.set(key, t.length === this.buffer.length + 1 ? (c.row.short ?? c.row.desc) : `+${LEADER_GROUPS[[...this.buffer, key].join("")] ?? "more"}`);
+      out.set(key, t.length === this.buffer.length + 1 ? { desc: c.row.short ?? c.row.desc, ...(c.row.off ? { off: c.row.off } : {}) } : { desc: `+${LEADER_GROUPS[[...this.buffer, key].join("")] ?? "more"}` });
     }
-    return [...out.entries()].map(([key, desc]) => ({ key, desc }));
+    return [...out.entries()].map(([key, x]) => ({ key, ...x }));
   }
 
   private candidates(prefix: readonly string[], scopes: readonly Scope[]): { row: KeyRow; keys: string }[] {

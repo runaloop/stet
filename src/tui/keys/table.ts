@@ -5,10 +5,10 @@
 
 /**
  * Where a key works: a column of the Round tab (the list, the code, the conversation, or the thread column that holds
- * both when they share one), the Drafts and Changes tabs, the reply box, a question, the keys list, or everywhere
+ * both when they share one), the Drafts tab, the Changes tab's files and diff, the reply box, a question, the keys list, or everywhere
  * (`global`, after the focused place's own keys).
  */
-export type Scope = "list" | "files" | "search" | "code" | "conv" | "thread" | "drafts" | "changes" | "composer" | "choice" | "help" | "global";
+export type Scope = "list" | "files" | "search" | "code" | "conv" | "thread" | "drafts" | "changes" | "cfiles" | "composer" | "choice" | "help" | "global";
 
 export interface KeyRow {
   id: string;
@@ -18,6 +18,10 @@ export interface KeyRow {
   desc: string;
   /** What the Space menu says, when `desc` is too long for it. */
   short?: string;
+  /** Not in the terminal yet: `browser` opens the same place in the browser, `later` is greyed in the menu. */
+  off?: "browser" | "later";
+  /** Takes a count typed before it: `5j`. */
+  count?: true;
 }
 
 const inThread = (scope: "code" | "conv" | "thread"): KeyRow[] => [
@@ -86,8 +90,49 @@ export const KEYS: KeyRow[] = [
   { id: "drafts.guide", keys: ["g"], scope: "drafts", desc: "ask the agent for a guide to the next version" },
   { id: "tab.round", keys: ["<Esc>", "q"], scope: "drafts", desc: "back to the round" },
 
+  { id: "diff.down", keys: ["j", "<Down>"], scope: "changes", desc: "cursor down (5j: five lines)", count: true },
+  { id: "diff.up", keys: ["k", "<Up>"], scope: "changes", desc: "cursor up", count: true },
+  { id: "diff.first", keys: ["gg"], scope: "changes", desc: "first line of the diff" },
+  { id: "diff.last", keys: ["G"], scope: "changes", desc: "last line of the diff" },
+  { id: "diff.pageDown", keys: ["<C-d>", "<PageDown>"], scope: "changes", desc: "half a page down" },
+  { id: "diff.pageUp", keys: ["<C-u>", "<PageUp>"], scope: "changes", desc: "half a page up" },
+  { id: "diff.nextChange", keys: ["]c"], scope: "changes", desc: "next change", count: true },
+  { id: "diff.prevChange", keys: ["[c"], scope: "changes", desc: "previous change", count: true },
+  { id: "diff.nextHunk", keys: ["]h"], scope: "changes", desc: "next hunk", count: true },
+  { id: "diff.prevHunk", keys: ["[h"], scope: "changes", desc: "previous hunk", count: true },
+  { id: "diff.nextFile", keys: ["]b", "L"], scope: "changes", desc: "next file", count: true },
+  { id: "diff.prevFile", keys: ["[b", "H"], scope: "changes", desc: "previous file", count: true },
+  { id: "diff.nextThread", keys: ["]t"], scope: "changes", desc: "next thread on this diff" },
+  { id: "diff.prevThread", keys: ["[t"], scope: "changes", desc: "previous thread on this diff" },
+  { id: "unread.next", keys: ["]u", "n"], scope: "changes", desc: "next unread thread" },
+  { id: "unread.prev", keys: ["[u", "N"], scope: "changes", desc: "previous unread thread" },
+  { id: "diff.center", keys: ["zz"], scope: "changes", desc: "center the cursor line" },
+  { id: "diff.open", keys: ["zo"], scope: "changes", desc: "open the file (or the thread's card) under the cursor" },
+  { id: "diff.close", keys: ["zc"], scope: "changes", desc: "close the file (or the thread's card) under the cursor" },
+  { id: "diff.toggle", keys: ["za"], scope: "changes", desc: "open / close the file (or the thread's card) under the cursor" },
+  { id: "diff.openAll", keys: ["zR"], scope: "changes", desc: "open all files" },
+  { id: "diff.closeAll", keys: ["zM"], scope: "changes", desc: "close all files" },
+  { id: "diff.right", keys: ["zl"], scope: "changes", desc: "scroll right (without wrap)", count: true },
+  { id: "diff.left", keys: ["zh"], scope: "changes", desc: "scroll left (without wrap)", count: true },
+  { id: "diff.enter", keys: ["<CR>", "o"], scope: "changes", desc: "open the thread under the cursor; on a bar, its lines; on a file's header, open or fold it" },
+  { id: "diff.viewed", keys: ["m"], scope: "changes", desc: "mark the file under the cursor viewed, or not: a viewed file folds until it changes" },
+  { id: "range.toNext", keys: ["]v"], scope: "changes", desc: "“to” one version later" },
+  { id: "range.toPrev", keys: ["[v"], scope: "changes", desc: "“to” one version earlier" },
+  { id: "range.fromNext", keys: ["}"], scope: "changes", desc: "“from” one version later" },
+  { id: "range.fromPrev", keys: ["{"], scope: "changes", desc: "“from” one version earlier" },
+  { id: "range.preset", keys: ["p"], scope: "changes", desc: "next preset: the whole branch, what changed in the last version, since you last looked" },
+  { id: "changes.files", keys: ["h"], scope: "changes", desc: "the files" },
   { id: "tab.round", keys: ["<Esc>", "q"], scope: "changes", desc: "back to the round" },
 
+  { id: "cfiles.down", keys: ["j", "<Down>"], scope: "cfiles", desc: "next file, the diff goes along", count: true },
+  { id: "cfiles.up", keys: ["k", "<Up>"], scope: "cfiles", desc: "previous file", count: true },
+  { id: "cfiles.first", keys: ["gg"], scope: "cfiles", desc: "first file" },
+  { id: "cfiles.last", keys: ["G"], scope: "cfiles", desc: "last file" },
+  { id: "cfiles.open", keys: ["<CR>", "l", "o"], scope: "cfiles", desc: "into the diff, at the file" },
+  { id: "diff.viewed", keys: ["m"], scope: "cfiles", desc: "mark the file viewed, or not" },
+  { id: "diff.toggle", keys: ["za"], scope: "cfiles", desc: "open / close the file in the diff" },
+  { id: "list.close", keys: ["<Esc>", "h"], scope: "cfiles", desc: "hide the list (narrow screens)" },
+  { id: "tab.round", keys: ["q"], scope: "cfiles", desc: "back to the round" },
   { id: "composer.draft", keys: ["<C-s>", "<C-CR>"], scope: "composer", desc: "save as a draft: the agent sees it after you submit the review" },
   { id: "composer.now", keys: ["<C-g>", "<C-S-CR>"], scope: "composer", desc: "send now" },
   { id: "composer.leave", keys: ["<Esc>"], scope: "composer", desc: "leave; the text is kept for next time (jj too)" },
@@ -112,6 +157,20 @@ export const KEYS: KeyRow[] = [
   { id: "filter.resolved", keys: ["<Space>ur"], scope: "global", desc: "show / hide resolved threads", short: "resolved threads" },
   { id: "filter.news", keys: ["<Space>n"], scope: "global", desc: "threads with news" },
   { id: "help", keys: ["?", "<Space>?"], scope: "global", desc: "all keys" },
+  { id: "diff.wrap", keys: ["w", "<Space>uw"], scope: "global", desc: "wrap long lines" },
+  { id: "diff.layout", keys: ["<Space>ud"], scope: "global", desc: "split / unified diff (auto splits on a wide screen)", short: "split / unified" },
+  { id: "diff.tests", keys: ["<Space>ut"], scope: "global", desc: "show / hide test files that only add code", short: "tests with only new code" },
+
+  { id: "find.file", keys: ["<Space><Space>", "<Space>ff"], scope: "global", desc: "find a file of the diff", short: "find a file", off: "later" },
+  { id: "find.version", keys: ["<Space>fv"], scope: "global", desc: "find a version: what changed in it, or make it from / to", short: "find a version", off: "later" },
+  { id: "search.files", keys: ["<Space>/", "<Space>sg"], scope: "global", desc: "search all files (grep)", short: "search all files", off: "browser" },
+  { id: "search.word", keys: ["<Space>sw"], scope: "global", desc: "find the selected word in all files", short: "the word in all files", off: "browser" },
+  { id: "search.diff", keys: ["<Space>sd"], scope: "global", desc: "search the diff", off: "later" },
+  { id: "search.keys", keys: ["<Space>sk"], scope: "global", desc: "search keys and run one", short: "search keys", off: "later" },
+  { id: "git.state", keys: ["<Space>gs"], scope: "global", desc: "git state: pushed or not, staged, not staged, new files", short: "git state", off: "later" },
+  { id: "git.commits", keys: ["<Space>gc"], scope: "global", desc: "commits: pick the two ends of the compare", short: "commits", off: "browser" },
+  { id: "git.link", keys: ["<Space>gY"], scope: "global", desc: "copy a link to the cursor line", short: "copy a link", off: "later" },
+  { id: "git.blame", keys: ["<Space>gb"], scope: "global", desc: "blame: the version, round and threads that brought the cursor line", short: "blame", off: "browser" },
 ];
 
 /** The names of the `<Space>` groups, as web/keys.ts has them. */

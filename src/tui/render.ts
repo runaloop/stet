@@ -5,11 +5,13 @@
 import type { CommentDto, CompareDto, GitStateDto, ThreadDetail } from "../core/types.ts";
 import type { CodeView, Scope as CodeScope, Wide } from "./code.ts";
 import type { TokenSource } from "./diff/paint.ts";
-import type { Want } from "./diff/view.ts";
+import { DiffView, type Want } from "./diff/view.ts";
+import { initialChanges, type ChangesState } from "./changes.ts";
+import { changesHooks, diffPane, filesPane, filesWidth } from "./views/changes.ts";
 import { bar, hcat, overlay, pane, type Pane, type Row } from "./grid.ts";
 import { KEYS, keyLabel, type Scope } from "./keys/table.ts";
 import { ordered, type Data, type ListFilter } from "./model.ts";
-import { blank, key, line, plural, s, spansWidth, wrap, type Line, type Span } from "./text.ts";
+import { blank, key, line, plural, s, spansWidth, wrap, type Cls, type Line, type Span } from "./text.ts";
 import { bannerLine, footerLine, headerLine, type Hint, type Tab, type Toast } from "./views/bars.ts";
 import { fileCounts, fileOf, filesLines, listLines, listWidth, sideTitle, type Side } from "./views/list.ts";
 import {
@@ -74,7 +76,10 @@ export interface ViewState {
   hl: { tokens: TokenSource; want: (w: Want[]) => void };
   code: CodePane;
   draftCode: CodePane;
-  tops: { list: number; code: number; conv: number; thread: number; drafts: number; draft: number; help: number };
+  changes: ChangesState;
+  tops: { list: number; code: number; conv: number; thread: number; drafts: number; draft: number; help: number; clist: number };
+  /** The tab a thread was opened from, for Esc to go back to it. */
+  back: "changes" | null;
   /** Scroll the conversation to its NEW rule on the next frame. */
   toNews: boolean;
   draftSel: number | null;
@@ -83,23 +88,25 @@ export interface ViewState {
   guide: boolean;
   writing: Writing | null;
   composerText: string;
+  /** A count typed before a move: `5` of `5j`. */
+  count: string;
   /** Keys typed of a binding not complete yet: `<Space>` opens the menu. */
   prefix: string[];
-  next: { key: string; desc: string }[];
+  next: { key: string; desc: string; off?: "browser" | "later" }[];
   choice: Choice | null;
   help: Line[] | null;
   toast: Toast | null;
   connecting: string | null;
   now: number;
   /** Set by the last frame: where { and } go, and how many rows a page has. */
-  geom: { starts: number[]; page: number; columns: 1 | 2 | 3 };
+  geom: { starts: number[]; page: number; columns: 1 | 2 | 3; diff?: { x: number; y: number } };
 }
 
 export function initialView(): ViewState {
   const hl: ViewState["hl"] = { tokens: { line: () => undefined, style: () => undefined }, want: () => {} };
   const tokens: TokenSource = { line: (fd, side, i) => hl.tokens.line(fd, side, i), style: (id) => hl.tokens.style(id) };
   const want = (w: Want[]) => hl.want(w);
-  return {
+  const v: ViewState = {
     hl,
     code: new CodePane(tokens, want),
     draftCode: new CodePane(tokens, want),
@@ -120,8 +127,9 @@ export function initialView(): ViewState {
     detail: null,
     fresh: new Set(),
     view: null,
-    tops: { list: 0, code: 0, conv: 0, thread: 0, drafts: 0, draft: 0, help: 0 },
+    tops: { list: 0, code: 0, conv: 0, thread: 0, drafts: 0, draft: 0, help: 0, clist: 0 },
     toNews: false,
+    back: null,
     draftSel: null,
     draftDetail: null,
     summary: "",
@@ -130,19 +138,25 @@ export function initialView(): ViewState {
     composerText: "",
     prefix: [],
     next: [],
+    count: "",
     choice: null,
     help: null,
     toast: null,
     connecting: null,
     now: Date.now(),
     geom: { starts: [], page: 10, columns: 2 },
+    changes: null as unknown as ChangesState,
   };
+  const diff = new DiffView(changesHooks(() => ({ d: v.data, c: v.changes })), tokens);
+  diff.onWant = want;
+  v.changes = initialChanges(diff);
+  return v;
 }
 
 export const columnsFor = (w: number): 1 | 2 | 3 => (w >= 150 ? 3 : w >= 100 ? 2 : 1);
 
 /** The scope keys go to: the focused column, the composer, a box over the screen. */
-export type Place = "list" | "files" | "search" | "code" | "conv" | "thread" | "drafts" | "changes" | "composer" | "choice" | "help" | "menu";
+export type Place = "list" | "files" | "search" | "code" | "conv" | "thread" | "drafts" | "changes" | "cfiles" | "composer" | "choice" | "help" | "menu";
 
 const listScope = (v: ViewState): "list" | "files" | "search" => (v.side === "threads" ? "list" : v.side);
 
@@ -155,9 +169,9 @@ export function scopeOf(v: ViewState): Place {
 }
 
 /** The column in focus, under any box over it. */
-export function columnOf(v: ViewState): "list" | "files" | "search" | "code" | "conv" | "thread" | "drafts" | "changes" {
+export function columnOf(v: ViewState): "list" | "files" | "search" | "code" | "conv" | "thread" | "drafts" | "changes" | "cfiles" {
   if (v.tab === "drafts") return "drafts";
-  if (v.tab === "changes") return "changes";
+  if (v.tab === "changes") return v.changes.focus === "list" ? "cfiles" : "changes";
   const cols = v.geom.columns;
   if (v.focus === "list") return listScope(v);
   return cols === 3 ? v.focus : "thread";
@@ -172,6 +186,7 @@ const CHIPS: Record<Place, string> = {
   thread: "THREAD",
   drafts: "DRAFTS",
   changes: "CHANGES",
+  cfiles: "FILES",
   composer: "REPLY",
   choice: "QUESTION",
   help: "KEYS",
@@ -186,7 +201,8 @@ const HINTS: Record<Place, Hint[]> = {
   conv: [["j k", "scroll"], ["{ }", "message"], ["] t", "[ t", "thread"], ["J K", "file"], ["r", "reply"], ["x", "resolve"], ["h", "code"], ["Tab", "next column"], ["Space", "menu"], ["?", "all keys"]],
   thread: [["j k", "scroll"], ["] t", "[ t", "thread"], ["J K", "file"], ["n", "unread"], ["h", "list"], ["r", "reply"], ["x", "resolve"], ["t", "diff / then / at"], ["{ }", "message"], ["Space", "menu"], ["?", "keys"]],
   drafts: [["j k", "move"], ["Enter", "its thread"], ["e", "edit"], ["d d", "discard"], ["c", "summary"], ["S", "request changes"], ["A", "approve"], ["g", "guide"], ["Esc", "back"]],
-  changes: [["Esc", "back to the round"], ["s", "drafts"], ["?", "keys"]],
+  changes: [["j k", "line"], ["] t", "[ t", "thread"], ["] b", "[ b", "file"], ["Enter", "open"], ["m", "viewed"], ["z a", "fold"], ["] v", "[ v", "range"], ["h", "files"], ["Space", "menu"], ["?", "keys"]],
+  cfiles: [["j k", "file"], ["Enter", "l", "into the diff"], ["m", "viewed"], ["z a", "fold"], ["Tab", "column"], ["Space", "menu"], ["?", "keys"], ["q", "round"]],
   composer: [["type the message"], ["Ctrl+S", "save as draft"], ["Ctrl+G", "send now"], ["Esc", "or"], ["j j", "leave, the text stays"], ["Ctrl+C", "quit"]],
   choice: [["j k", "choose"], ["Enter", "confirm"], ["Esc", "cancel"]],
   help: [["j k", "scroll"], ["Esc", "close"]],
@@ -201,6 +217,7 @@ function composerHints(v: ViewState): Hint[] {
 
 function footer(v: ViewState, w: number): Line {
   const scope = scopeOf(v);
+  if (v.count) return footerLine(w, { chip: CHIPS[scope], hints: [[`${v.count} …`], ["j k", "] c", "] b", "move that many"], ["Esc", "forget it"]], toast: null });
   if (v.prefix.length && scope !== "menu") {
     const hints: Hint[] = [[`${keyLabel(v.prefix.join(""))} …`], ...v.next.map((n) => [keyLabel(n.key), n.desc] as Hint)];
     return footerLine(w, { chip: CHIPS[scope], hints, toast: null });
@@ -403,6 +420,28 @@ function roundTab(v: ViewState, w: number, height: number, top: number): { rows:
   return { rows: hcat(all.map((p) => pane(p, height))), box };
 }
 
+// --- the Changes tab
+
+const listWidthOf = (c: ChangesState, w: number) => Math.min(w - 60, Math.max(40, Math.min(Math.floor(w * 0.3), filesWidth(c))));
+
+function changesTab(v: ViewState, w: number, height: number, top0: number): { rows: Row[]; box: Rect | null } {
+  const c = v.changes;
+  const shown = (c.data?.placements ?? []).filter((p) => v.filter.status === "all" || v.data.threads.find((t) => t.id === p.threadId)?.status !== "resolved").length;
+  const top = { value: v.tops.clist };
+  // the diff's lines start under the pane's border and its three lines of range, strip and threads
+  v.geom.diff = { x: (w < 100 ? 0 : listWidthOf(c, w)) + 1, y: top0 + 4 };
+  if (w < 100) {
+    let rows = pane(diffPane(v.data, c, w, height, shown), height);
+    if (c.focus === "list") rows = overlay(rows, pane(filesPane(v.data, c, Math.min(w - 4, Math.max(40, Math.floor(w * 0.58))), height, top), height), 0, 0);
+    v.tops.clist = top.value;
+    return { rows, box: null };
+  }
+  const listW = listWidthOf(c, w);
+  const list = filesPane(v.data, c, listW, height, top);
+  v.tops.clist = top.value;
+  return { rows: hcat([pane(list, height), pane(diffPane(v.data, c, w - listW, height, shown), height)]), box: null };
+}
+
 // --- the Drafts tab
 
 function draftHead(c: CommentDto, d: Data): Span[] {
@@ -480,25 +519,33 @@ function draftsTab(v: ViewState, w: number, height: number, top: number): { rows
 
 // --- boxes over the screen
 
+// the order of the approved mockup, read row by row: the groups first, then the keys of their own
+const MENU_ORDER = ["f", "r", "s", "g", "u", "e", "<Space>", "/", "n", "?"];
+const menuRank = (k: string) => (MENU_ORDER.includes(k) ? MENU_ORDER.indexOf(k) : MENU_ORDER.length);
+
 function menuBox(v: ViewState, w: number): Row[] {
-  const entries = v.next;
+  const entries = v.prefix.length === 1 ? [...v.next].sort((a, b) => menuRank(a.key) - menuRank(b.key)) : v.next;
   const colW = 23;
   const half = Math.ceil(entries.length / 2);
-  const cell = (e: { key: string; desc: string } | undefined): Span[] => {
+  const cell = (e: ViewState["next"][number] | undefined): Span[] => {
     if (!e) return [];
     const k = keyLabel(e.key);
     const group = e.desc.startsWith("+");
-    const room = Math.max(1, colW - k.length - 2);
-    const desc = e.desc.length > room ? `${e.desc.slice(0, room - 1)}…` : e.desc;
+    const mark = e.off === "browser" ? " ↗" : "";
+    const room = Math.max(1, colW - k.length - 2 - mark.length);
+    const desc = (e.desc.length > room ? `${e.desc.slice(0, room - 1)}…` : e.desc) + mark;
     const hit = `key:${[...v.prefix, e.key].join("")}`;
-    return [s(" "), { ...s(k, "wk"), hit }, { ...s(" "), hit }, { ...s(desc, ...(group ? (["wg"] as const) : [])), hit }];
+    const look: Cls[] = group ? ["wg"] : e.off === "later" ? ["bd"] : [];
+    return [s(" "), { ...s(k, ...(e.off === "later" ? (["bdt"] as Cls[]) : (["wk"] as Cls[]))), hit }, { ...s(" "), hit }, { ...s(desc, ...look), hit }];
   };
   const lines: Line[] = [];
   for (let i = 0; i < half; i++) {
-    const a = cell(entries[i]);
-    lines.push(line(...a, s(" ".repeat(Math.max(1, colW + 1 - spansWidth(a)))), ...cell(entries[half + i])));
+    const a = cell(entries[2 * i]);
+    lines.push(line(...a, s(" ".repeat(Math.max(1, colW + 1 - spansWidth(a)))), ...cell(entries[2 * i + 1])));
   }
-  lines.push(blank(), line(s(" a key runs it or opens its group · Esc closes", "dim")));
+  lines.push(blank());
+  if (entries.some((e) => e.off)) lines.push(line(s(" ↗ opens in the browser · grey: comes later", "dim")));
+  lines.push(line(s(" a key runs it or opens its group · Esc closes", "dim")));
   const title = v.prefix.map((t) => keyLabel(t)).join(" ");
   return pane({ w: Math.min(w - 2, 50), title: [s(title, "b")], lines, focus: true }, lines.length + 2);
 }
@@ -541,9 +588,8 @@ export function render(v: ViewState, w: number, h: number): Frame {
   let body: { rows: Row[]; box: Rect | null };
   if (!v.data.status) body = { rows: pane(emptyPane(w, v.connecting ?? "loading…"), height), box: null };
   else if (v.tab === "drafts") body = draftsTab(v, w, height, head.length);
-  else if (v.tab === "changes") {
-    body = { rows: pane({ w, hit: "focus:changes", title: [s("Changes", "b")], lines: [blank(), line(s(" Changes come with the diff widget. Until then, ", "dim"), s("stet open --browser", "b"), s(" shows them.", "dim"))], focus: true }, height), box: null };
-  } else body = roundTab(v, w, height, head.length);
+  else if (v.tab === "changes") body = changesTab(v, w, height, head.length);
+  else body = roundTab(v, w, height, head.length);
   v.toNews = false;
   let rows = [...head, ...body.rows, bar(footer(v, w), w)];
   if (v.prefix[0] === "<Space>" && !v.writing) {
@@ -582,6 +628,7 @@ const PLACE_NAMES: Record<string, string> = {
   thread: "The thread",
   drafts: "Drafts",
   changes: "Changes",
+  cfiles: "The files of the changes",
 };
 
 /** `?`: the keys of the place in focus, how to move around, and the keys that work everywhere. */
@@ -591,7 +638,7 @@ export function helpFor(scope: Scope): Line[] {
     for (const r of KEYS.filter((x) => x.scope === sc)) {
       const had = byId.get(r.id);
       if (had) had.keys.push(...r.keys);
-      else byId.set(r.id, { keys: [...r.keys], desc: r.desc });
+      else byId.set(r.id, { keys: [...r.keys], desc: r.off === "browser" ? `${r.desc} · opens in the browser` : r.off === "later" ? `${r.desc} · not in the terminal yet` : r.desc });
     }
     return [...byId.values()];
   };

@@ -6,7 +6,15 @@ import { connect } from "../client/server.ts";
 import type { Ctx } from "../core/context.ts";
 import type { CommentDto, ThreadDetail } from "../core/types.ts";
 import { stepFile, stepThread, stepUnread } from "../ui/nav.ts";
+import { hydratePartialDiff, parsePatchFiles } from "@pierre/diffs";
+import type { ActionTarget } from "../core/module.ts";
+import { foldedFiles, type FileRow } from "../ui/compare.ts";
+import { NOTHING, withSpan } from "../ui/reveal.ts";
+import { defaultCompare, shiftRef } from "../ui/state.ts";
+import { barSpans, isCollapsed, presetsOf, rangeTitle, refsOf, syncChanges, viewedChange, wholeBranch } from "./changes.ts";
 import { codeViews, fetchWide, scopesOf, threadCode, wideKey } from "./code.ts";
+import { FILE, GAP, GROUP } from "./diff/model.ts";
+import { flushTrace, trace } from "./trace.ts";
 import { Highlighter } from "./diff/highlight.ts";
 import { ComposerView } from "./composer.ts";
 import { KeyReader } from "./keys/input.ts";
@@ -124,6 +132,7 @@ export class App {
 
   async close(): Promise<void> {
     this.hl.close();
+    flushTrace();
     for (const t of [...this.timers, this.toastTimer, this.readTimer, this.reloadTimer, this.previewTimer, this.landedTimer]) clearTimeout(t);
     this.matcher.reset();
     this.texts.flush();
@@ -133,7 +142,7 @@ export class App {
 
   /** The diffs on screen, whose rows are painted again as their colours come. */
   private diffs() {
-    return [this.v.code.diff, this.v.draftCode.diff];
+    return [this.v.code.diff, this.v.draftCode.diff, this.v.changes.diff];
   }
 
   private redraw(): void {
@@ -229,12 +238,23 @@ export class App {
       this.guard(api.threads(r)),
       this.guard(api.drafts(r)),
       api.git(r).catch(() => null),
-      first ? api.cursors(r).catch(() => null) : Promise.resolve(null),
+      api.cursors(r).catch(() => null),
     ]);
     if (this.ended) return;
     const v = this.v;
     v.data = { ...v.data, status: status ?? v.data.status, threads: threads ?? v.data.threads, drafts: drafts ?? v.data.drafts };
     if (git) v.git = git;
+    if (cursors) {
+      v.changes.viewed = new Set(cursors.viewed);
+      v.changes.reviewed = cursors.reviewed;
+    }
+    if (v.changes.from !== null) {
+      if (v.tab === "changes") void this.loadChanges();
+      else {
+        v.changes.stale = true;
+        if (v.changes.data) syncChanges(v.data, v.changes, v.filter.status === "all");
+      }
+    }
     const latest = status?.versionsList?.[status.versionsList.length - 1];
     if (first && latest && latest.role === "agent" && latest.number > 1 && (cursors?.reviewed?.version ?? 0) < latest.number) v.banner = latest.number;
     if (v.selected === null || !v.data.threads.some((t) => t.id === v.selected)) v.selected = ordered(v.data, v.filter, null)[0]?.id ?? null;
@@ -345,6 +365,11 @@ export class App {
 
   private setSide(side: Side): void {
     const v = this.v;
+    if (v.tab === "changes" && side === "files") {
+      v.changes.side = "files";
+      v.changes.focus = "list";
+      return this.redraw();
+    }
     if (v.tab !== "round") v.tab = "round";
     v.side = side;
     v.followList = true;
@@ -457,14 +482,398 @@ export class App {
     v.tab = tab;
     clearTimeout(this.readTimer);
     if (tab === "drafts") this.showDraft();
-    if (tab === "changes") v.banner = null;
+    if (tab === "changes") {
+      v.banner = null;
+      const c = v.changes;
+      if (c.from === null) {
+        const r = wholeBranch(v.data);
+        c.from = r.from;
+        c.to = r.to;
+        void this.loadChanges();
+      } else if (c.stale) void this.loadChanges();
+    }
     this.redraw();
+  }
+
+  // --- the Changes tab
+
+  private syncChanges(): void {
+    syncChanges(this.v.data, this.v.changes, this.v.filter.status === "all");
+    this.redraw();
+  }
+
+  /** Shows the range `from..to` on the Changes tab. */
+  private openRange(from: string, to: string): void {
+    const c = this.v.changes;
+    const same = c.from === from && c.to === to && !!c.data;
+    c.from = from;
+    c.to = to;
+    this.setTab("changes");
+    if (same) return;
+    c.loading = `loading ${rangeTitle(this.v.data, c)}…`;
+    void this.loadChanges();
+  }
+
+  private loads = 0;
+
+  /** The range's files and threads, and its patch when its two ends changed. */
+  private async loadChanges(): Promise<void> {
+    const api = this.api;
+    const c = this.v.changes;
+    if (!api || c.from === null || c.to === null) return;
+    const seq = ++this.loads;
+    const t0 = performance.now();
+    try {
+      const data = await api.compare(this.review, c.from, c.to);
+      if (seq !== this.loads || this.ended) return;
+      const key = `${data.from.sha}-${data.to.sha}`;
+      const moved = key !== c.key;
+      if (moved) {
+        const text = await api.patch(data.from.sha, data.to.sha);
+        if (seq !== this.loads || this.ended) return;
+        c.base = parsePatchFiles(text, key).flatMap((p) => p.files);
+        c.key = key;
+        c.whole.clear();
+        c.reveals.clear();
+        c.open.clear();
+      }
+      c.data = data;
+      c.error = null;
+      c.loading = null;
+      c.stale = false;
+      this.syncChanges();
+      if (moved) c.diff.first();
+      trace({ ev: "changes", ms: performance.now() - t0, files: data.files.length });
+    } catch (e) {
+      if (seq !== this.loads) return;
+      c.error = (e as Error).message;
+      c.loading = null;
+      this.redraw();
+    }
+  }
+
+  /** The file the cursor of the diff is in, or the list's. */
+  private changesFile(): FileRow | undefined {
+    const c = this.v.changes;
+    const path = c.focus === "list" ? c.sel : (() => {
+      const i = c.diff.info();
+      return i?.item.kind === "file" ? i.item.key : null;
+    })();
+    return c.rows.find((r) => r.fd.name === path);
+  }
+
+  /** The list follows the file the diff's cursor is in. */
+  private followDiff(): void {
+    const c = this.v.changes;
+    const i = c.diff.info();
+    if (i?.item.kind === "file") c.sel = i.item.key;
+    this.redraw();
+  }
+
+  private goToFile(path: string, align: "top" | "nearest" = "top"): void {
+    const c = this.v.changes;
+    const i = c.diff.items.findIndex((x) => x.key === path);
+    if (i !== -1) c.diff.goTo(c.diff.itemRow(i), align);
+  }
+
+  private fold(open: boolean | "toggle", inList = false): void {
+    const c = this.v.changes;
+    const info = c.diff.info();
+    if (!inList && info?.thread !== null && info?.thread !== undefined) {
+      c.diff.toggleCard(info.thread, open === "toggle" ? undefined : open);
+      return this.redraw();
+    }
+    if (!inList && info?.item.kind === "group") return this.toggleGroup(info.item.key === "group:tests" ? "tests" : "generated", open);
+    const row = this.changesFile();
+    if (!row) return;
+    if (row.hidden && row.group) return this.toggleGroup(row.group, true);
+    const next = open === "toggle" ? isCollapsed(c, row.fd) : open;
+    c.open.set(row.fd.name, next);
+    this.syncChanges();
+    this.goToFile(row.fd.name, "nearest");
+  }
+
+  private foldAll(open: boolean): void {
+    const c = this.v.changes;
+    for (const r of c.rows) c.open.set(r.fd.name, open);
+    this.syncChanges();
+  }
+
+  private toggleGroup(g: "tests" | "generated", open: boolean | "toggle" = "toggle"): void {
+    const c = this.v.changes;
+    c.groups = { ...c.groups, [g]: open === "toggle" ? !c.groups[g] : open };
+    this.syncChanges();
+    const first = c.rows.find((r) => r.group === g);
+    if (first && c.groups[g]) this.goToFile(first.fd.name);
+    this.say(c.groups[g] ? `showing ${foldedFiles(g, c.rows.filter((r) => r.group === g).length)}` : "folded again");
+  }
+
+  /** `m`: viewed, through the server, so the web and other clients see it at once. */
+  private async toggleViewed(): Promise<void> {
+    const c = this.v.changes;
+    const row = this.changesFile();
+    if (!row || !this.api) return;
+    const { keys, on } = viewedChange(c, row.fd);
+    const next = new Set(c.viewed);
+    for (const k of keys) on ? next.add(k) : next.delete(k);
+    c.viewed = next;
+    c.open.delete(row.fd.name);
+    this.syncChanges();
+    this.goToFile(row.fd.name, "nearest");
+    this.say(on ? `${row.fd.name}: viewed, folded until it changes` : `${row.fd.name}: not viewed`);
+    if (keys.length) await this.guard(this.api.setViewed(this.review, keys, on));
+  }
+
+  /** Enter on a bar: its unchanged lines, once both texts of the file came. */
+  private async openBar(): Promise<void> {
+    const c = this.v.changes;
+    const info = c.diff.info();
+    const api = this.api;
+    if (!info || info.item.kind !== "file" || !api || !c.data) return;
+    const path = info.item.key;
+    const base = c.rows.find((r) => r.fd.name === path)?.fd;
+    if (!base) return;
+    const start = info.newNo;
+    const n = c.diff.rows.n[info.row]!;
+    if (!c.whole.has(path)) {
+      const oldPath = base.prevName ?? path;
+      const [a, b] = await Promise.all([
+        base.type === "new" ? null : this.guard(api.blob(c.data.from.sha, oldPath)),
+        base.type === "deleted" ? null : this.guard(api.blob(c.data.to.sha, path)),
+      ]);
+      const oldText = base.type === "new" ? "" : a?.contents;
+      const newText = base.type === "deleted" ? "" : b?.contents;
+      if (typeof oldText !== "string" || typeof newText !== "string") return this.say("the file's text could not be read", "error");
+      try {
+        c.whole.set(path, hydratePartialDiff("clone", base, { oldFile: { name: oldPath, contents: oldText }, newFile: { name: path, contents: newText } } as never));
+      } catch (e) {
+        return this.say((e as Error).message, "error");
+      }
+    }
+    let r = c.reveals.get(path) ?? NOTHING;
+    for (const span of barSpans(start, n)) r = withSpan(r, span);
+    c.reveals.set(path, r);
+    this.syncChanges();
+  }
+
+  private stepThread(dir: 1 | -1): void {
+    const c = this.v.changes;
+    const r = c.diff.nextCard(dir);
+    if (r === -1) return this.say("no threads on this diff");
+    c.diff.goTo(r, "center");
+    c.thread = c.diff.info()?.thread ?? null;
+    this.syncMarks();
+    this.followDiff();
+  }
+
+  /** The thread in focus is marked stronger in the gutter. */
+  private syncMarks(): void {
+    const c = this.v.changes;
+    for (const m of c.diff.marks.values()) for (const x of [...m.old, ...m.new]) x.strong = false;
+    for (const it of c.diff.items) {
+      if (it.kind !== "file") continue;
+      const m = c.diff.marks.get(it.key);
+      it.placed?.forEach((p) => {
+        if (p.threadId !== c.thread || !m) return;
+        for (const x of p.side === "deletions" ? m.old : m.new) if (x.start === p.range.start && x.end === p.range.end) x.strong = true;
+      });
+    }
+    c.diff.invalidate();
+  }
+
+  /** A thread from the diff opens on the Round tab; Esc there comes back here. */
+  private openThread(id: number): void {
+    const v = this.v;
+    v.changes.thread = id;
+    v.back = "changes";
+    if (!ordered(v.data, v.filter, null).some((t) => t.id === id)) v.filter = { status: "all", newOnly: false };
+    this.setTab("round");
+    this.select(id);
+    this.focus("code");
+  }
+
+  private enter(): void {
+    const c = this.v.changes;
+    const info = c.diff.info();
+    if (!info) return;
+    if (info.kind === FILE) return this.fold("toggle");
+    if (info.kind === GROUP) return this.toggleGroup(info.item.key === "group:tests" ? "tests" : "generated");
+    if (info.kind === GAP) return void this.openBar();
+    const id = c.diff.threadAt();
+    if (id !== null) return this.openThread(id);
+    this.say("no thread on this line: ] t goes to the next one");
+  }
+
+  private shiftRange(which: "from" | "to", dir: 1 | -1): void {
+    const c = this.v.changes;
+    const refs = refsOf(this.v.data);
+    const from = which === "from" ? shiftRef(refs, c.from ?? "base", dir) : (c.from ?? "base");
+    const to = which === "to" ? shiftRef(refs, c.to ?? "now", dir) : (c.to ?? "now");
+    if (from === c.from && to === c.to) return this.say(dir === 1 ? "the latest already" : "the earliest already");
+    if (from === to) return this.say("from and to would be the same version");
+    this.openRange(from, to);
+  }
+
+  private nextPreset(): void {
+    const c = this.v.changes;
+    const ps = presetsOf(this.v.data, c);
+    if (!ps.length) return;
+    const at = ps.findIndex((p) => p.from === c.from && p.to === c.to);
+    const p = ps[(at + 1) % ps.length]!;
+    this.say(p.label);
+    this.openRange(p.from, p.to);
+  }
+
+  private moveListFile(by: number | "first" | "last"): void {
+    const c = this.v.changes;
+    const paths = c.rows.map((r) => r.fd.name);
+    if (!paths.length) return;
+    const at = Math.max(0, paths.indexOf(c.sel ?? ""));
+    c.sel = paths[by === "first" ? 0 : by === "last" ? paths.length - 1 : Math.max(0, Math.min(paths.length - 1, at + by))]!;
+    this.goToFile(c.sel);
+    this.redraw();
+  }
+
+  /** Where the browser opens for the place in focus: the cursor's line of the range, a thread, or the review. */
+  private browserTarget(): ActionTarget {
+    const v = this.v;
+    if (v.tab === "changes") {
+      const c = v.changes;
+      const info = c.diff.info();
+      const path = info?.item.kind === "file" ? info.item.key : (c.sel ?? undefined);
+      const line = info && (info.newNo || info.oldNo) ? info.newNo || info.oldNo : undefined;
+      return { ...(path ? { path } : {}), ...(line ? { line } : {}), ...(c.from ? { from: c.from } : {}), ...(c.to ? { at: c.to } : {}) };
+    }
+    if (v.tab === "round" && v.selected !== null) return { thread: v.selected };
+    return {};
+  }
+
+  private async browser(what: string): Promise<void> {
+    if (!this.api) return;
+    const r = await this.guard(this.api.action(this.review, "browser.open", this.browserTarget()));
+    if (!r || r.launch.kind !== "url") return;
+    const url = r.launch.url;
+    try {
+      Bun.spawn(process.platform === "darwin" ? ["open", url] : ["xdg-open", url], { stdin: "ignore", stdout: "ignore", stderr: "ignore" }).unref();
+      this.say(`${what}: opened in the browser`);
+    } catch {
+      this.say(`${what}: ${url}`);
+    }
+  }
+
+  /** The Changes tab's keys; false for the others. */
+  private runChanges(id: string, n: number): boolean {
+    const v = this.v;
+    const c = v.changes;
+    const d = c.diff;
+    const move = (to: number, align: "nearest" | "top" | "center" = "nearest") => {
+      if (to === -1) return;
+      d.goTo(to, align);
+      this.followDiff();
+    };
+    const repeat = (step: () => number, align: "nearest" | "top" | "center" = "nearest") => {
+      let to = -1;
+      for (let i = 0; i < n; i++) {
+        const next = step();
+        if (next === -1) break;
+        to = next;
+        d.goTo(next, align);
+      }
+      if (to === -1) this.say("nothing further that way");
+      this.followDiff();
+    };
+    switch (id) {
+      case "diff.down":
+        return move(d.cursor + n), true;
+      case "diff.up":
+        return move(d.cursor - n), true;
+      case "diff.first":
+        return move(0, "top"), true;
+      case "diff.last":
+        return move(d.rows.len - 1), true;
+      case "diff.pageDown":
+      case "diff.pageUp":
+        d.page(id === "diff.pageDown" ? 1 : -1);
+        return this.followDiff(), true;
+      case "diff.nextChange":
+      case "diff.prevChange":
+        return repeat(() => d.nextChange(id === "diff.nextChange" ? 1 : -1)), true;
+      case "diff.nextHunk":
+      case "diff.prevHunk":
+        return repeat(() => d.nextHunk(id === "diff.nextHunk" ? 1 : -1)), true;
+      case "diff.nextFile":
+      case "diff.prevFile":
+        return repeat(() => d.nextFile(id === "diff.nextFile" ? 1 : -1), "top"), true;
+      case "diff.nextThread":
+      case "diff.prevThread":
+        return this.stepThread(id === "diff.nextThread" ? 1 : -1), true;
+      case "diff.center":
+        d.reveal("center");
+        return this.redraw(), true;
+      case "diff.open":
+      case "diff.close":
+      case "diff.toggle":
+        return this.fold(id === "diff.open" ? true : id === "diff.close" ? false : "toggle", c.focus === "list"), true;
+      case "diff.openAll":
+      case "diff.closeAll":
+        return this.foldAll(id === "diff.openAll"), true;
+      case "diff.right":
+      case "diff.left":
+        if (c.wrap) return this.say("w turns wrap off; then the code scrolls sideways"), true;
+        d.scrollSide((id === "diff.right" ? 8 : -8) * n);
+        return this.redraw(), true;
+      case "diff.enter":
+        return this.enter(), true;
+      case "diff.viewed":
+        return void this.toggleViewed(), true;
+      case "range.toNext":
+      case "range.toPrev":
+        return this.shiftRange("to", id === "range.toNext" ? 1 : -1), true;
+      case "range.fromNext":
+      case "range.fromPrev":
+        return this.shiftRange("from", id === "range.fromNext" ? 1 : -1), true;
+      case "range.preset":
+        return this.nextPreset(), true;
+      case "changes.files":
+        c.focus = "list";
+        return this.redraw(), true;
+      case "cfiles.down":
+      case "cfiles.up":
+        return this.moveListFile(id === "cfiles.down" ? n : -n), true;
+      case "cfiles.first":
+      case "cfiles.last":
+        return this.moveListFile(id === "cfiles.first" ? "first" : "last"), true;
+      case "cfiles.open": {
+        const row = c.rows.find((r) => r.fd.name === c.sel);
+        if (row?.hidden && row.group) this.toggleGroup(row.group, true);
+        if (c.sel) this.goToFile(c.sel);
+        c.focus = "diff";
+        return this.redraw(), true;
+      }
+      case "diff.wrap":
+        c.wrap = !c.wrap;
+        d.setWrap(c.wrap);
+        v.code.diff.setWrap(c.wrap);
+        v.draftCode.diff.setWrap(c.wrap);
+        return this.say(c.wrap ? "long lines wrap" : "long lines are cut: zl / zh scroll sideways"), true;
+      case "diff.layout":
+        c.layout = d.split ? "unified" : "split";
+        d.setLayout(c.layout);
+        return this.say(`${c.layout} diff`), true;
+      case "diff.tests":
+        return this.toggleGroup("tests"), true;
+    }
+    return false;
   }
 
   // --- actions
 
-  private run(id: string): void {
+  private run(id: string, n = 1): void {
     const v = this.v;
+    if (this.runChanges(id, n)) return;
+    const off = KEYS.find((r) => r.id === id)?.off;
+    if (off === "browser") return void this.browser(KEYS.find((r) => r.id === id)!.short ?? KEYS.find((r) => r.id === id)!.desc);
+    if (off === "later") return this.say(`${KEYS.find((r) => r.id === id)!.desc}: not in the terminal yet`);
     const half = Math.max(1, Math.floor(v.geom.page / 2));
     const cur = v.selected;
     const list = () => ordered(v.data, v.filter, cur);
@@ -505,6 +914,10 @@ export class App {
         if (v.selected !== null) this.focus("code");
         return;
       case "list.close":
+        if (v.tab === "changes") {
+          v.changes.focus = "diff";
+          return this.redraw();
+        }
         if (cols === 1 && v.detail) this.focus("code");
         return;
       case "list.reply":
@@ -534,6 +947,7 @@ export class App {
       }
       case "filter.resolved":
         v.filter = { ...v.filter, status: v.filter.status === "open" ? "all" : "open", newOnly: false };
+        if (v.changes.data) syncChanges(v.data, v.changes, v.filter.status === "all");
         return this.say(v.filter.status === "all" ? "showing all threads" : "showing open threads and drafts");
       case "filter.news":
         v.filter = { ...v.filter, newOnly: !v.filter.newOnly };
@@ -541,6 +955,10 @@ export class App {
         return this.say(v.filter.newOnly ? "showing only threads with news" : "showing every thread again");
       case "focus.next":
       case "focus.prev": {
+        if (v.tab === "changes") {
+          v.changes.focus = v.changes.focus === "list" ? "diff" : "list";
+          return this.redraw();
+        }
         if (v.tab !== "round") return;
         if (cols === 1) return this.focus(v.focus === "list" ? "code" : "list");
         const order = cols === 3 ? (["list", "code", "conv"] as const) : (["list", "code"] as const);
@@ -548,6 +966,10 @@ export class App {
         return this.focus(order[(at + (id === "focus.next" ? 1 : order.length - 1)) % order.length]!);
       }
       case "focus.left":
+        if (v.back === "changes" && !(cols === 3 && v.focus === "conv")) {
+          v.back = null;
+          return this.setTab("changes");
+        }
         return this.focus(cols === 3 && v.focus === "conv" ? "code" : "list");
       case "focus.right":
         return this.focus("conv");
@@ -629,8 +1051,10 @@ export class App {
         return this.setTab("round");
       case "tab.drafts":
         return this.setTab("drafts");
-      case "tab.changes":
-        return this.setTab("changes");
+      case "tab.changes": {
+        const r = defaultCompare(refsOf(v.data), v.changes.reviewed);
+        return this.openRange(r.from, r.to);
+      }
       case "submit":
         return this.setTab("drafts");
       case "refresh":
@@ -863,12 +1287,37 @@ export class App {
       v.draftSel = Number(arg);
       return this.showDraft();
     }
+    if (v.tab === "changes") return this.clickChanges(kind, arg, e);
     if (kind === "focus" && v.tab === "round") {
       if (arg === "list" || arg === "code" || arg === "conv") {
         if (arg !== "list" && v.selected === null) return;
         this.focus(arg === "conv" && v.geom.columns < 3 ? "code" : arg);
       }
     }
+  }
+
+  /** A click on the Changes tab: a file in the list, a row of the diff (a header folds, a bar opens, a card opens its thread). */
+  private clickChanges(kind: string, arg: string, e: MouseEvent): void {
+    const c = this.v.changes;
+    const g = this.v.geom.diff;
+    if (kind === "cfile" && (!g || e.x < g.x)) {
+      c.focus = "list";
+      c.sel = arg;
+      this.goToFile(arg);
+      return this.redraw();
+    }
+    if (kind === "focus" && arg === "clist") {
+      c.focus = "list";
+      return this.redraw();
+    }
+    if (!g) return;
+    const r = c.diff.rowAtLine(e.y - g.y);
+    c.focus = "diff";
+    if (r < 0) return this.redraw();
+    c.diff.goTo(r);
+    this.followDiff();
+    const k = c.diff.rows.kind[r];
+    if (k === FILE || k === GROUP || k === GAP || kind === "cthread") this.enter();
   }
 
   /** The wheel scrolls the column under the pointer, whichever has the focus. */
@@ -881,6 +1330,15 @@ export class App {
     let pane: Hit | null = null;
     for (const h of this.hits) if (h.y === e.y && h.x0 <= e.x && h.hit.startsWith("focus:") && (!pane || h.x0 > pane.x0)) pane = h;
     const name = pane?.hit.slice(6);
+    if (name === "cdiff") {
+      v.changes.diff.scroll(by);
+      this.followDiff();
+      return;
+    }
+    if (name === "clist") {
+      v.tops.clist = Math.max(0, v.tops.clist + by);
+      return this.redraw();
+    }
     const top = (k: keyof typeof v.tops) => (v.tops[k] = Math.max(0, Math.min(v.tops[k], 100_000) + by));
     if (name === "list") {
       v.followList = false;
@@ -935,13 +1393,24 @@ export class App {
       if (at < v.choice.options.length) this.pick(at);
       return;
     }
+    const sc = scopeOf(v);
+    if ((sc === "changes" || sc === "cfiles") && !this.matcher.prefix.length && /^[0-9]$/.test(token) && (token !== "0" || v.count)) {
+      v.count += token;
+      return this.redraw();
+    }
+    if (token === "<Esc>" && v.count) {
+      v.count = "";
+      return this.redraw();
+    }
     if (token === "<BS>" && this.matcher.prefix.length) {
       this.matcher.back();
     } else {
       const m = this.matcher.feed(token, this.scopes());
       if ("fire" in m) {
         this.syncPrefix();
-        return this.run(m.fire.id);
+        const n = m.fire.count ? Math.max(1, Number(v.count) || 1) : 1;
+        v.count = "";
+        return this.run(m.fire.id, n);
       }
     }
     this.syncPrefix();
