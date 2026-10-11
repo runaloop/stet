@@ -1,0 +1,514 @@
+/**
+ * The whole screen as rows, from the app's state: a pure function, so frames can be tested as text. Columns by width:
+ * three from 150 cells (list, code, conversation), two from 100 (list, thread), else one with the list slid over it.
+ */
+import type { CommentDto, GitStateDto, ThreadDetail } from "../core/types.ts";
+import { codeLines, threadCode, type CodeView } from "./code.ts";
+import { bar, hcat, overlay, pane, type Pane, type Row } from "./grid.ts";
+import { keyLabel } from "./keys/table.ts";
+import { ordered, type Data, type ListFilter } from "./model.ts";
+import { blank, key, line, plural, s, spansWidth, wrap, type Line, type Span } from "./text.ts";
+import { bannerLine, footerLine, headerLine, type Hint, type Tab, type Toast } from "./views/bars.ts";
+import { LIST_TITLE, listLines, listWidth } from "./views/list.ts";
+import {
+  codePart,
+  conversation,
+  messagesNote,
+  PREVIEW_HINT,
+  rule,
+  stripLines,
+  THREAD_HINT,
+  threadHead,
+  threadTitle,
+} from "./views/thread.ts";
+
+export type Focus = "list" | "code" | "conv";
+
+/** What the composer writes: a reply to a thread, a draft's new text, or the summary of the whole review. */
+export type Writing = { kind: "reply"; thread: number } | { kind: "edit"; comment: number; thread: number } | { kind: "summary" };
+
+export interface Choice {
+  title: string;
+  text: string;
+  options: { value: string; label: string }[];
+  at: number;
+}
+
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface ViewState {
+  data: Data;
+  git: GitStateDto | null;
+  /** A version the agent handed over that you have not looked at. */
+  banner: number | null;
+  tab: Tab;
+  focus: Focus;
+  /** On a narrow screen: the list slid in over the thread. */
+  listOpen: boolean;
+  filter: ListFilter;
+  selected: number | null;
+  /** The selected thread, once fetched. */
+  detail: ThreadDetail | null;
+  /** Messages that were unread when the thread was first shown: the NEW rule stays over them. */
+  fresh: ReadonlySet<number>;
+  view: CodeView | null;
+  tops: { list: number; code: number; conv: number; thread: number; drafts: number; draft: number; help: number };
+  /** Scroll the conversation to its NEW rule on the next frame. */
+  toNews: boolean;
+  draftSel: number | null;
+  draftDetail: ThreadDetail | null;
+  summary: string;
+  guide: boolean;
+  writing: Writing | null;
+  composerText: string;
+  /** Keys typed of a binding not complete yet: `<Space>` opens the menu. */
+  prefix: string[];
+  next: { key: string; desc: string }[];
+  choice: Choice | null;
+  help: Line[] | null;
+  toast: Toast | null;
+  connecting: string | null;
+  now: number;
+  /** Set by the last frame: where { and } go, and how many rows a page has. */
+  geom: { starts: number[]; page: number; columns: 1 | 2 | 3 };
+}
+
+export function initialView(): ViewState {
+  return {
+    data: { status: null, threads: [], drafts: [], now: null, online: true },
+    git: null,
+    banner: null,
+    tab: "round",
+    focus: "list",
+    listOpen: false,
+    filter: { status: "open", newOnly: false },
+    selected: null,
+    detail: null,
+    fresh: new Set(),
+    view: null,
+    tops: { list: 0, code: 0, conv: 0, thread: 0, drafts: 0, draft: 0, help: 0 },
+    toNews: false,
+    draftSel: null,
+    draftDetail: null,
+    summary: "",
+    guide: false,
+    writing: null,
+    composerText: "",
+    prefix: [],
+    next: [],
+    choice: null,
+    help: null,
+    toast: null,
+    connecting: null,
+    now: Date.now(),
+    geom: { starts: [], page: 10, columns: 2 },
+  };
+}
+
+export const columnsFor = (w: number): 1 | 2 | 3 => (w >= 150 ? 3 : w >= 100 ? 2 : 1);
+
+/** The scope keys go to: the focused column, the composer, a box over the screen. */
+export function scopeOf(v: ViewState): "list" | "code" | "conv" | "thread" | "drafts" | "changes" | "composer" | "choice" | "help" | "menu" {
+  if (v.help) return "help";
+  if (v.choice) return "choice";
+  if (v.writing) return "composer";
+  if (v.prefix[0] === "<Space>") return "menu";
+  if (v.tab === "drafts") return "drafts";
+  if (v.tab === "changes") return "changes";
+  const cols = v.geom.columns;
+  if (cols === 1) return v.listOpen ? "list" : "thread";
+  if (v.focus === "list") return "list";
+  return cols === 3 ? v.focus : "thread";
+}
+
+const CHIPS: Record<ReturnType<typeof scopeOf>, string> = {
+  list: "THREADS",
+  code: "CODE",
+  conv: "CONVERSATION",
+  thread: "THREAD",
+  drafts: "DRAFTS",
+  changes: "CHANGES",
+  composer: "REPLY",
+  choice: "QUESTION",
+  help: "KEYS",
+  menu: "MENU",
+};
+
+const HINTS: Record<ReturnType<typeof scopeOf>, Hint[]> = {
+  list: [["j k", "move"], ["Enter", "l", "into the thread"], ["J K", "file"], ["n", "unread"], ["Tab", "column"], ["Space", "menu"], ["?", "keys"], ["q", "quit"]],
+  code: [["j k", "scroll"], ["] t", "[ t", "next / prev thread"], ["n", "unread"], ["Tab", "next column"], ["h", "list"], ["r", "reply"], ["x", "resolve"], ["t", "diff / then / at"], ["Space", "menu"], ["?", "all keys"]],
+  conv: [["j k", "scroll"], ["{ }", "message"], ["r", "reply"], ["x", "resolve"], ["h", "code"], ["] t", "[ t", "next / prev thread"], ["Tab", "next column"], ["Space", "menu"], ["?", "all keys"]],
+  thread: [["j k", "scroll"], ["] t", "[ t", "next / prev thread"], ["n", "unread"], ["h", "list"], ["r", "reply"], ["x", "resolve"], ["t", "diff / then / at"], ["{ }", "message"], ["Space", "menu"], ["?", "keys"]],
+  drafts: [["j k", "move"], ["Enter", "its thread"], ["e", "edit"], ["d d", "discard"], ["c", "summary"], ["S", "request changes"], ["A", "approve"], ["g", "guide"], ["Esc", "back"]],
+  changes: [["Esc", "back to the round"], ["s", "drafts"], ["?", "keys"]],
+  composer: [["type the message"], ["Ctrl+S", "save as draft"], ["Ctrl+G", "send now"], ["Esc", "or"], ["j j", "leave, the text stays"], ["Ctrl+C", "quit"]],
+  choice: [["j k", "choose"], ["Enter", "confirm"], ["Esc", "cancel"]],
+  help: [["j k", "scroll"], ["Esc", "close"]],
+  menu: [["press a key from the box"], ["Esc", "close"], ["Backspace", "up a level"]],
+};
+
+function composerHints(v: ViewState): Hint[] {
+  if (v.writing?.kind === "edit") return [["type the message"], ["Ctrl+S", "save"], ["Esc", "or"], ["j j", "leave, the text stays"], ["Ctrl+C", "quit"]];
+  if (v.writing?.kind === "summary") return [["type the summary"], ["Ctrl+S", "keep it"], ["Esc", "or"], ["j j", "leave, the text stays"], ["Ctrl+C", "quit"]];
+  return HINTS.composer;
+}
+
+function footer(v: ViewState, w: number): Line {
+  const scope = scopeOf(v);
+  if (v.prefix.length && scope !== "menu") {
+    const hints: Hint[] = [[`${keyLabel(v.prefix.join(""))} …`], ...v.next.map((n) => [keyLabel(n.key), n.desc] as Hint)];
+    return footerLine(w, { chip: CHIPS[scope], hints, toast: null });
+  }
+  const chip = scope === "composer" ? (v.writing?.kind === "edit" ? "DRAFT" : v.writing?.kind === "summary" ? "SUMMARY" : "REPLY") : CHIPS[scope];
+  const hints = scope === "composer" ? composerHints(v) : scope === "thread" && v.geom.columns === 1 ? NARROW_HINTS : HINTS[scope];
+  return footerLine(w, { chip, hints, toast: v.toast });
+}
+
+const NARROW_HINTS: Hint[] = [["h", "list"], ["j k", "scroll"], ["] t", "next"], ["r", "reply"], ["x", "resolve"], ["?", "keys"]];
+
+/** `lines` from `top`, `height` of them; the top is clamped so the window never runs past the end. */
+function window(lines: Line[], top: number, height: number): { top: number; lines: Line[] } {
+  const t = Math.max(0, Math.min(Math.max(0, lines.length - height), top));
+  return { top: t, lines: lines.slice(t, t + height) };
+}
+
+/** The list's top so the selected thread's rows stay in sight, a row of margin around them. */
+function follow(ids: (number | null)[], selected: number | null, top: number, height: number): number {
+  const first = ids.indexOf(selected);
+  if (first === -1) return top;
+  const last = first + 1;
+  if (first - 1 < top) return Math.max(0, first - 2);
+  if (last + 1 >= top + height) return last + 2 - height;
+  return top;
+}
+
+// --- the composer box
+
+function composerTitle(v: ViewState): Span[] {
+  const w = v.writing!;
+  if (w.kind === "reply") return [s(`Reply to #${w.thread} ·`, "cf"), s(" "), s("draft", "cft")];
+  if (w.kind === "edit") return [s(`Edit the draft on #${w.thread}`, "cf")];
+  return [s("Summary for the whole review", "cf")];
+}
+
+function composerBottom(v: ViewState): Span[] {
+  const kept = [key("Esc"), s(" "), s("leave, text kept", "cf")];
+  if (v.writing?.kind === "reply") return [key("Ctrl+S"), s(" "), s("save draft ·", "cf"), s(" "), key("Ctrl+G"), s(" "), s("send now ·", "cf"), s(" "), ...kept];
+  return [key("Ctrl+S"), s(" "), s(v.writing?.kind === "summary" ? "keep ·" : "save ·", "cf"), s(" "), ...kept];
+}
+
+/** The box as lines of the pane it sits in, and where its text goes inside it. */
+function composerBox(v: ViewState, inner: number): { lines: Line[]; text: { dx: number; dy: number; w: number; h: number } } {
+  const boxW = Math.max(10, inner - 1);
+  const textW = boxW - 4;
+  const text = wrap(v.composerText, textW);
+  const rows = Math.max(3, Math.min(8, text.length + 1));
+  const box = pane({ w: boxW, title: composerTitle(v), bottom: composerBottom(v), lines: text.slice(0, rows).map((t) => line(s(` ${t}`))), border: "cf", focus: true }, rows + 2);
+  return { lines: box.map((r) => ({ spans: [s(" "), ...r] })), text: { dx: 3, dy: 1, w: textW, h: rows } };
+}
+
+interface Placed {
+  lines: Line[];
+  box: { dx: number; dy: number; w: number; h: number } | null;
+  top: number;
+}
+
+/**
+ * A column's content in `height` rows from `top`, with a box (the composer) after it when there is room, else pinned
+ * to the bottom while the content scrolls above it; `pinned` lines sit at the bottom when there is no box.
+ */
+function place(content: Line[], top: number, height: number, inner: number, v: ViewState, withBox: boolean, pinned: Line[] = []): Placed {
+  if (withBox) {
+    const b = composerBox(v, inner);
+    const room = height - b.lines.length;
+    const gap = content.length && content[content.length - 1]!.spans.length ? 1 : 0;
+    if (content.length + gap <= room) {
+      const lines = [...content, ...(gap ? [blank()] : []), ...b.lines];
+      return { lines, box: { ...b.text, dy: b.text.dy + content.length + gap }, top: 0 };
+    }
+    const w = window(content, top, Math.max(1, room));
+    return { lines: [...w.lines, ...Array(Math.max(0, room - w.lines.length)).fill(blank()), ...b.lines], box: { ...b.text, dy: b.text.dy + Math.max(1, room) }, top: w.top };
+  }
+  if (pinned.length) {
+    const room = Math.max(1, height - pinned.length);
+    const w = window(content, top, room);
+    return { lines: [...w.lines, ...Array(Math.max(0, room - w.lines.length)).fill(blank()), ...pinned], box: null, top: w.top };
+  }
+  const w = window(content, top, height);
+  return { lines: w.lines, box: null, top: w.top };
+}
+
+// --- the Round tab
+
+function position(v: ViewState): Span[] {
+  if (v.selected === null) return [];
+  const list = ordered(v.data, v.filter, v.selected);
+  const at = list.findIndex((t) => t.id === v.selected);
+  return at === -1 ? [] : [s(`${at + 1} of ${list.length}`, "dim")];
+}
+
+function listPane(v: ViewState, w: number, height: number, focus: boolean): Pane {
+  const l = listLines(v.data, v.filter, v.selected, focus, w - 2);
+  v.tops.list = follow(l.ids, v.selected, v.tops.list, height - 2);
+  const win = window(l.lines, v.tops.list, height - 2);
+  v.tops.list = win.top;
+  return { w, title: LIST_TITLE, lines: win.lines, focus };
+}
+
+function emptyPane(w: number, text: string, focus = false, title: Span[] = []): Pane {
+  return { w, title, lines: [blank(), line(s(` ${text}`, "dim"))], focus };
+}
+
+interface ThreadPanes {
+  panes: Pane[];
+  box: { pane: number; dx: number; dy: number; w: number; h: number } | null;
+}
+
+function threadPanes(v: ViewState, cols: 1 | 2 | 3, widths: number[], height: number): ThreadPanes {
+  const d = v.detail;
+  const inner = height - 2;
+  const focusThread = v.focus !== "list" && !(cols === 1 && v.listOpen);
+  const right = focusThread ? position(v) : [s("preview", "dim")];
+  if (v.selected === null || !d || d.thread.id !== v.selected) {
+    const text = v.selected === null ? (v.data.threads.length ? "No thread selected." : "No threads yet. Comment on code in the browser or with `stet comment add`.") : `loading thread #${v.selected}…`;
+    return { panes: widths.map((w, i) => emptyPane(w, i === 0 ? text : "", false, i === 0 ? [s(v.selected === null ? "Thread" : `#${v.selected}`, "b")] : [s("Conversation")])), box: null };
+  }
+  const writing = v.writing?.kind === "reply" && v.writing.thread === d.thread.id;
+  if (cols === 3) {
+    const [codeW, convW] = widths as [number, number];
+    const part = codePart(d, v.view, codeW - 2);
+    const codeLinesAll = [...threadHead(d, part.view, codeW - 2), ...part.lines];
+    const code = place(codeLinesAll, v.tops.code, inner, codeW - 2, v, false);
+    v.tops.code = code.top;
+    const conv = conversation(d, v.fresh, convW - 2, v.now);
+    const convAll = [blank(), ...conv.lines];
+    if (v.toNews && conv.newAt !== null) v.tops.conv = conv.newAt;
+    const c = place(convAll, v.tops.conv, inner, convW - 2, v, writing, v.focus === "conv" || v.focus === "code" ? [THREAD_HINT, blank()] : [PREVIEW_HINT, blank()]);
+    v.tops.conv = c.top;
+    if (v.focus === "conv") v.geom.starts = conv.starts.map((x) => x + 1);
+    else v.geom.starts = [];
+    return {
+      panes: [
+        { w: codeW, title: threadTitle(d), right, lines: code.lines, focus: v.focus === "code" },
+        { w: convW, title: [s("Conversation")], right: messagesNote(d, conv.fresh), lines: c.lines, focus: v.focus === "conv" },
+      ],
+      box: c.box ? { pane: 1, ...c.box } : null,
+    };
+  }
+  const w = widths[0]!;
+  const narrow = cols === 1;
+  const part = codePart(d, v.view, w - 2);
+  const head = narrow ? stripLines(d, w - 2) : threadHead(d, part.view, w - 2);
+  const codeRows = narrow ? part.lines.slice(1) : part.lines;
+  const conv = conversation(d, v.fresh, w - 2, v.now);
+  const ruleText = `${narrow ? "" : "Conversation · "}${plural(d.comments.length, "message")}${conv.fresh ? ` · ${conv.fresh} new` : ""}`;
+  const before = [...head, ...codeRows, blank(), rule(ruleText, w - 2)];
+  const all = [...before, ...conv.lines];
+  if (v.toNews && conv.newAt !== null) v.tops.thread = before.length + conv.newAt;
+  const hint = focusThread ? [blank(), narrow ? blank() : THREAD_HINT] : [blank(), PREVIEW_HINT];
+  const t = place(writing ? all : [...all, ...hint], v.tops.thread, inner, w - 2, v, writing);
+  v.tops.thread = t.top;
+  v.geom.starts = conv.starts.map((x) => x + before.length);
+  return { panes: [{ w, title: threadTitle(d, !narrow), right, lines: t.lines, focus: focusThread }], box: t.box ? { pane: 0, ...t.box } : null };
+}
+
+function roundTab(v: ViewState, w: number, height: number, top: number): { rows: Row[]; box: Rect | null; over: Row[][] } {
+  const cols = columnsFor(w);
+  v.geom.columns = cols;
+  const listW = Math.min(w - 40, Math.max(40, Math.min(Math.floor(w * 0.3), listWidth(v.data, v.filter))));
+  if (cols === 1) {
+    const t = threadPanes(v, 1, [w], height);
+    let rows = pane(t.panes[0]!, height);
+    const box = t.box ? { x: 1 + t.box.dx, y: top + 1 + t.box.dy, w: t.box.w, h: t.box.h } : null;
+    if (v.listOpen) rows = overlay(rows, pane(listPane(v, Math.min(w - 4, Math.max(40, Math.floor(w * 0.58))), height, true), height), 0, 0);
+    return { rows, box: v.listOpen ? null : box, over: [] };
+  }
+  const list = listPane(v, listW, height, v.focus === "list");
+  const rest = w - listW;
+  const widths = cols === 3 ? [Math.round(rest * 0.57), rest - Math.round(rest * 0.57)] : [rest];
+  const t = threadPanes(v, cols, widths, height);
+  const all = [list, ...t.panes];
+  const xs = all.map((_, i) => all.slice(0, i).reduce((n, p) => n + p.w, 0));
+  const box = t.box ? { x: xs[t.box.pane + 1]! + 1 + t.box.dx, y: top + 1 + t.box.dy, w: t.box.w, h: t.box.h } : null;
+  return { rows: hcat(all.map((p) => pane(p, height))), box, over: [] };
+}
+
+// --- the Drafts tab
+
+function draftHead(c: CommentDto, d: Data): Span[] {
+  const t = d.threads.find((x) => x.id === c.threadId);
+  const at = t ? (t.region ? `${t.path} · area` : `${t.anchor.path ?? t.path}:${(t.anchor.range ?? t.range).start}`) : "";
+  return [s(" "), s(`#${c.threadId}`, "b"), s(" "), s(at, "dim"), s(" "), s(c.parentId === null ? " new thread " : " reply ", "tdr"), ...(c.resolves ? [s(" ✓ resolves", "ok")] : [])];
+}
+
+function draftsLeft(v: ViewState, w: number): { lines: Line[]; ids: (number | null)[] } {
+  const d = v.data;
+  const latest = d.status?.versions ?? 0;
+  const lines: Line[] = [line(s(" The agent sees drafts only when you send them.", "dim")), blank()];
+  const ids: (number | null)[] = [null, null];
+  if (!d.drafts.length) {
+    lines.push(line(s(" No drafts.", "dim")), blank());
+    ids.push(null, null);
+  }
+  for (const c of d.drafts) {
+    const fill = c.id === v.draftSel ? { fill: ["sel" as const] } : {};
+    lines.push({ spans: draftHead(c, d), ...fill }, { spans: [s("   "), s(c.body.split("\n")[0] || (c.restore ? "asks to restore lines" : ""), "dim")], ...fill });
+    ids.push(c.id, c.id);
+  }
+  lines.push(blank(), line(s(" Summary", "dim"), s(" "), key("c")));
+  ids.push(null, null);
+  for (const part of v.summary.trim() ? wrap(v.summary, w - 4) : ["(none)"]) {
+    lines.push(line(s("   "), s(part, ...(v.summary.trim() ? [] : (["dim"] as const)))));
+    ids.push(null);
+  }
+  const n = d.drafts.length;
+  lines.push(
+    blank(),
+    n ? line(s(" "), key("S"), s(" "), s("Request changes", "b"), s(` · send ${plural(n, "comment")}`, "dim")) : line(s(" "), key("S"), s(" "), s("Request changes · no drafts", "dim")),
+    line(s(" "), key("A"), s(" "), s(`✓ Approve${latest ? ` v${latest}` : ""}`, "ok")),
+    line(s(` [${v.guide ? "x" : " "}] `), s(`ask the agent for a guide to v${latest + 1}`, n ? "dim" : "bd"), s(" "), key("g")),
+  );
+  ids.push(null, null, null, null);
+  return { lines, ids };
+}
+
+function draftRight(v: ViewState, w: number): { title: Span[]; lines: Line[] } {
+  const c = v.data.drafts.find((x) => x.id === v.draftSel);
+  if (!c) return { title: [s("Draft", "b")], lines: [] };
+  const d = v.draftDetail;
+  if (!d || d.thread.id !== c.threadId) return { title: [s(`#${c.threadId}`, "b")], lines: [blank(), line(s(` loading thread #${c.threadId}…`, "dim"))] };
+  const code = threadCode(d, null);
+  const marked = code.rows.map((r, i) => (r.marked ? i : -1)).filter((i) => i >= 0);
+  const from = Math.max(0, (marked[0] ?? 0) - 1);
+  const to = Math.min(code.rows.length, (marked[marked.length - 1] ?? code.rows.length - 1) + 2);
+  const near = { ...code, rows: marked.length ? code.rows.slice(from, to) : code.rows };
+  const rows = codeLines(near, w, null);
+  const msg = conversation({ ...d, comments: [c], events: [] }, new Set(), w, v.now).lines;
+  return { title: threadTitle(d, false), lines: [blank(), ...rows, blank(), ...msg] };
+}
+
+function draftsTab(v: ViewState, w: number, height: number, top: number): { rows: Row[]; box: Rect | null } {
+  const inner = height - 2;
+  const narrow = w < 100;
+  const leftW = narrow ? w : Math.max(40, Math.min(60, Math.floor(w * 0.38)));
+  const left = draftsLeft(v, leftW - 2);
+  v.tops.drafts = follow(left.ids, v.draftSel, v.tops.drafts, inner);
+  const summaryBox = v.writing?.kind === "summary" || (narrow && v.writing?.kind === "edit");
+  const l = place(left.lines, v.tops.drafts, inner, leftW - 2, v, summaryBox);
+  v.tops.drafts = l.top;
+  const n = v.data.drafts.length;
+  const panes: Pane[] = [{ w: leftW, title: [s("Your review", "b"), s(` · ${plural(n, "draft")}`, "dim")], lines: l.lines, focus: true }];
+  let box: Rect | null = l.box ? { x: 1 + l.box.dx, y: top + 1 + l.box.dy, w: l.box.w, h: l.box.h } : null;
+  if (!narrow) {
+    const rw = w - leftW;
+    const r = draftRight(v, rw - 2);
+    const editing = v.writing?.kind === "edit";
+    const p = place(r.lines, v.tops.draft, inner, rw - 2, v, editing);
+    v.tops.draft = p.top;
+    const right = n ? [key("e"), s(" edit · ", "dim"), key("d d"), s(" discard", "dim")] : [];
+    panes.push({ w: rw, title: r.title, right, lines: p.lines });
+    if (p.box) box = { x: leftW + 1 + p.box.dx, y: top + 1 + p.box.dy, w: p.box.w, h: p.box.h };
+  }
+  return { rows: hcat(panes.map((p) => pane(p, height))), box };
+}
+
+// --- boxes over the screen
+
+function menuBox(v: ViewState, w: number): Row[] {
+  const entries = v.next;
+  const colW = 23;
+  const half = Math.ceil(entries.length / 2);
+  const cell = (e: { key: string; desc: string } | undefined): Span[] => {
+    if (!e) return [];
+    const k = keyLabel(e.key);
+    const group = e.desc.startsWith("+");
+    const room = Math.max(1, colW - k.length - 2);
+    const desc = e.desc.length > room ? `${e.desc.slice(0, room - 1)}…` : e.desc;
+    return [s(" "), s(k, "wk"), s(" "), s(desc, ...(group ? (["wg"] as const) : []))];
+  };
+  const lines: Line[] = [];
+  for (let i = 0; i < half; i++) {
+    const a = cell(entries[i]);
+    lines.push(line(...a, s(" ".repeat(Math.max(1, colW + 1 - spansWidth(a)))), ...cell(entries[half + i])));
+  }
+  lines.push(blank(), line(s(" a key runs it or opens its group · Esc closes", "dim")));
+  const title = v.prefix.map((t) => keyLabel(t)).join(" ");
+  return pane({ w: Math.min(w - 2, 50), title: [s(title, "b")], lines, focus: true }, lines.length + 2);
+}
+
+function choiceBox(c: Choice, w: number): Row[] {
+  const bw = Math.min(w - 4, 66);
+  const lines: Line[] = wrap(c.text, bw - 4).map((t) => line(s(` ${t}`)));
+  lines.push(blank());
+  c.options.forEach((o, i) => {
+    const parts = wrap(o.label, bw - 9);
+    const fill = i === c.at ? { fill: ["sel" as const] } : {};
+    parts.forEach((p, k) => lines.push({ spans: k ? [s(`      ${p}`)] : [s(" "), s(String(i + 1), "b"), s(`  ${p}`)], ...fill }));
+  });
+  lines.push(blank(), line(s(" "), key("j k"), s(" "), ...c.options.slice(0, 9).flatMap((_, i) => [key(String(i + 1)), s(" ")]), s("choose · "), key("Enter"), s(" confirm · "), key("Esc"), s(" cancel")));
+  return pane({ w: bw, title: [s(c.title, "b")], lines, focus: true }, lines.length + 2);
+}
+
+function helpBox(v: ViewState, w: number, height: number): Row[] {
+  const lines = v.help ?? [];
+  const bw = Math.min(w - 4, Math.max(40, ...lines.map((l) => spansWidth(l.spans) + 3)));
+  const rows = Math.min(height, lines.length + 2);
+  v.tops.help = Math.max(0, Math.min(v.tops.help, lines.length - (rows - 2)));
+  const more = lines.length - v.tops.help - (rows - 2);
+  return pane({ w: bw, title: [s("Keys", "b")], right: more > 0 ? [s(`${more} more ↓`, "dim")] : [], lines: lines.slice(v.tops.help), focus: true }, rows);
+}
+
+// --- the screen
+
+export interface Frame {
+  rows: Row[];
+  /** Where the composer's text field goes, when one is open. */
+  box: Rect | null;
+}
+
+export function render(v: ViewState, w: number, h: number): Frame {
+  const head: Row[] = [bar(headerLine(v.data, v.git, v.tab, w, v.connecting), w)];
+  if (v.banner !== null && w >= 100 && v.data.status) head.push(bar(bannerLine(v.banner, w), w));
+  const height = Math.max(3, h - head.length - 1);
+  v.geom.page = Math.max(1, height - 2);
+  let body: { rows: Row[]; box: Rect | null };
+  if (!v.data.status) body = { rows: pane(emptyPane(w, v.connecting ?? "loading…"), height), box: null };
+  else if (v.tab === "drafts") body = draftsTab(v, w, height, head.length);
+  else if (v.tab === "changes") {
+    body = { rows: pane({ w, title: [s("Changes", "b")], lines: [blank(), line(s(" Changes come with the diff widget. Until then, ", "dim"), s("stet open --browser", "b"), s(" shows them.", "dim"))], focus: true }, height), box: null };
+  } else body = roundTab(v, w, height, head.length);
+  v.toNews = false;
+  let rows = [...head, ...body.rows, bar(footer(v, w), w)];
+  if (v.prefix[0] === "<Space>" && !v.writing) {
+    const m = menuBox(v, w);
+    rows = overlay(rows, m, Math.max(head.length, head.length + height - m.length - 1), Math.max(0, w - (m[0] ? spansWidth(m[0]) : 0) - 1));
+  }
+  if (v.choice) {
+    const c = choiceBox(v.choice, w);
+    rows = overlay(rows, c, head.length + Math.max(0, Math.floor((height - c.length) * 0.45)), Math.max(0, Math.floor((w - spansWidth(c[0]!)) / 2)));
+  }
+  if (v.help) {
+    const b = helpBox(v, w, height);
+    rows = overlay(rows, b, head.length + Math.max(0, Math.floor((height - b.length) / 3)), Math.max(0, Math.floor((w - spansWidth(b[0]!)) / 2)));
+  }
+  return { rows: rows.slice(0, h), box: v.choice || v.help ? null : body.box };
+}
+
+/** The keys of the focused place and the global ones, for `?`. */
+export function helpLines(scopeRows: { title: string; rows: { keys: string[]; desc: string }[] }[]): Line[] {
+  const out: Line[] = [];
+  for (const g of scopeRows) {
+    if (!g.rows.length) continue;
+    if (out.length) out.push(blank());
+    out.push(line(s(` ${g.title}`, "b")));
+    for (const r of g.rows) out.push(line(s(`  ${r.keys.map(keyLabel).join("  ").padEnd(18)}`, "wk"), s(` ${r.desc}`)));
+  }
+  out.push(blank(), line(s("  Ctrl+C quits from anywhere", "dim")));
+  return out;
+}
+

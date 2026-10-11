@@ -37,6 +37,13 @@ export class KeyMatcher {
     return this.buffer;
   }
 
+  /** Backspace in the Space menu: one level up. */
+  back(): void {
+    this.buffer = this.buffer.slice(0, -1);
+    clearTimeout(this.timer);
+    this.timer = undefined;
+  }
+
   reset(): void {
     this.buffer = [];
     clearTimeout(this.timer);
@@ -79,7 +86,7 @@ export class KeyMatcher {
       const t = tokens(c.keys);
       const key = t[this.buffer.length];
       if (key === undefined || out.has(key)) continue;
-      out.set(key, t.length === this.buffer.length + 1 ? c.row.desc : `+${LEADER_GROUPS[[...this.buffer, key].join("")] ?? "more"}`);
+      out.set(key, t.length === this.buffer.length + 1 ? (c.row.short ?? c.row.desc) : `+${LEADER_GROUPS[[...this.buffer, key].join("")] ?? "more"}`);
     }
     return [...out.entries()].map(([key, desc]) => ({ key, desc }));
   }

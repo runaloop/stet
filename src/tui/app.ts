@@ -3,69 +3,47 @@ import { clientApi, type Api } from "../client/api.ts";
 import { subscribe, type Live, type Subscription } from "../client/live.ts";
 import { connect } from "../client/server.ts";
 import type { Ctx } from "../core/context.ts";
-import type { CommentDto } from "../core/types.ts";
+import type { CommentDto, ThreadDetail } from "../core/types.ts";
 import { stepFile, stepThread, stepUnread } from "../ui/nav.ts";
-import { ComposerView, composerHeight } from "./composer.ts";
-import { footerLine, headerLine, type Toast } from "./frame.ts";
+import { codeViews } from "./code.ts";
+import { ComposerView } from "./composer.ts";
 import { KeyReader } from "./keys/input.ts";
 import { KeyMatcher, rowsIn } from "./keys/match.ts";
-import { KEYS, keyLabel, type Scope } from "./keys/table.ts";
-import { NO_DATA, ordered, threadGroups, type Data, type ListFilter } from "./model.ts";
-import { draftsPage } from "./pages/drafts.ts";
-import { threadPage } from "./pages/thread.ts";
-import { threadsPage } from "./pages/threads.ts";
-import { Screen, type Frame, type Overlay } from "./screen.ts";
-import { line, plural, s, wrap, type Line } from "./text.ts";
+import { KEYS, type Scope } from "./keys/table.ts";
+import { ordered, threadGroups } from "./model.ts";
+import { helpLines, initialView, render, scopeOf, type Writing } from "./render.ts";
+import { Screen } from "./screen.ts";
+import { plural } from "./text.ts";
 import { Texts, textsPath } from "./texts.ts";
-
-type Page = { name: "threads" } | { name: "thread"; id: number; from: "threads" | "drafts" } | { name: "drafts"; from: "threads" | "thread" };
-
-/** What the composer writes: a reply to a thread, a draft's new text, or the summary of the whole review. */
-type Writing = { kind: "reply"; thread: number } | { kind: "edit"; comment: number; thread: number } | { kind: "summary" };
-
-interface Choice {
-  title: string;
-  text: string;
-  options: { value: string; label: string }[];
-  at: number;
-  done: (value: string | null) => void;
-}
+import type { Toast } from "./views/bars.ts";
 
 const TOAST_MS = 4000;
 const READ_AFTER_MS = 800;
 const RELOAD_MS = 150;
+const PREVIEW_MS = 60;
 const JJ_MS = 300;
+const CACHE = 24;
 
 const textKey = (w: Writing) => (w.kind === "reply" ? `reply:${w.thread}` : w.kind === "edit" ? `edit:${w.comment}` : "summary");
 
-class App {
-  private data: Data = NO_DATA;
-  private page: Page = { name: "threads" };
-  private filter: ListFilter = { status: "open", newOnly: false };
-  private selected: number | null = null;
-  private listTop = 0;
-  private threadTop = 0;
-  private toNews = false;
-  /** Messages that were unread when the thread was opened: the `new` rule stays over them while it is open. */
-  private fresh: { thread: number; ids: Set<number> } | null = null;
-  private draftSel: number | null = null;
-  private draftsTop = 0;
-  private toast: Toast | null = null;
-  private choice: Choice | null = null;
-  private help: { top: number; lines: Line[] } | null = null;
-  private writing: Writing | null = null;
-  private connecting: string | null = "connecting…";
+export class App {
+  readonly v = initialView();
   private api: Api | null = null;
   private sub: Subscription | null = null;
+  /** Threads fetched lately, so moving back and forth in the list shows them at once. */
+  private readonly cache = new Map<number, ThreadDetail>();
+  /** The thread whose new messages are latched in `v.fresh`. */
+  private freshFor: number | null = null;
   private timers = new Set<ReturnType<typeof setTimeout>>();
   private toastTimer: ReturnType<typeof setTimeout> | undefined;
   private readTimer: ReturnType<typeof setTimeout> | undefined;
   private reloadTimer: ReturnType<typeof setTimeout> | undefined;
+  private previewTimer: ReturnType<typeof setTimeout> | undefined;
+  private choiceDone: ((value: string | null) => void) | null = null;
   private lastJ = 0;
-  private size = { w: 80, h: 24 };
   private readonly keys = new KeyReader();
   private readonly matcher = new KeyMatcher(KEYS, (row) => this.run(row.id));
-  private readonly screen: Screen;
+  readonly screen: Screen;
   private readonly composer: ComposerView;
   private readonly texts: Texts;
   private ended = false;
@@ -77,12 +55,16 @@ class App {
     private readonly finish: (result: { code: number } | { error: unknown }) => void,
   ) {
     this.texts = new Texts(textsPath(ctx.repo.commonDir, review));
+    this.v.summary = this.texts.get("summary");
     this.screen = new Screen(renderer, (w, h) => {
       try {
-        return this.frame(w, h);
+        this.v.now = Date.now();
+        const f = render(this.v, w, h);
+        if (this.composer.place(f.box)) this.later(0, () => this.redraw());
+        return f.rows;
       } catch (e) {
         this.end({ error: e });
-        return { header: line(), body: [], footer: line(), overlay: null };
+        return [];
       }
     });
     renderer.root.add(this.screen);
@@ -98,6 +80,7 @@ class App {
   }
 
   async start(): Promise<void> {
+    this.v.connecting = "connecting to the server…";
     this.redraw();
     await this.connect();
   }
@@ -109,7 +92,7 @@ class App {
   }
 
   async close(): Promise<void> {
-    for (const t of [...this.timers, this.toastTimer, this.readTimer, this.reloadTimer]) clearTimeout(t);
+    for (const t of [...this.timers, this.toastTimer, this.readTimer, this.reloadTimer, this.previewTimer]) clearTimeout(t);
     this.matcher.reset();
     this.texts.flush();
     await this.sub?.close();
@@ -129,10 +112,10 @@ class App {
   }
 
   private say(text: string, tone: Toast["tone"] = "info"): void {
-    this.toast = { text, tone };
+    this.v.toast = { text, tone };
     clearTimeout(this.toastTimer);
     this.toastTimer = setTimeout(() => {
-      this.toast = null;
+      this.v.toast = null;
       this.redraw();
     }, TOAST_MS);
     this.redraw();
@@ -153,19 +136,17 @@ class App {
   private async connect(): Promise<void> {
     await this.sub?.close();
     this.sub = null;
-    this.connecting = "connecting to the server…";
-    this.redraw();
     let server;
     try {
       server = await connect(this.ctx);
     } catch (e) {
-      this.connecting = "no server";
+      this.v.connecting = "no server";
       this.say((e as Error).message, "error");
       return;
     }
     if (this.ended) return;
     this.api = clientApi(server);
-    this.connecting = null;
+    this.v.connecting = null;
     await this.reload();
     if (this.ended) return;
     const live: Live = {
@@ -173,19 +154,26 @@ class App {
         this.say("the server was replaced by another build: reconnecting");
         void this.connect();
       },
-      change: () => this.reloadSoon(),
+      change: (_seq, events) => {
+        if (events.some((e) => e.type === "version.created" && e.role === "agent")) this.v.banner = (this.v.data.status?.versions ?? 0) + 1;
+        this.reloadSoon();
+      },
       store: () => this.reloadSoon(),
       now: (n) => {
-        this.data = { ...this.data, now: n };
+        this.v.data = { ...this.v.data, now: n };
+        this.redraw();
+      },
+      git: (g) => {
+        this.v.git = g;
         this.redraw();
       },
       connection: (up) => {
-        this.data = { ...this.data, online: up };
+        this.v.data = { ...this.v.data, online: up };
         if (up) this.reloadSoon();
         else this.redraw();
       },
     };
-    this.sub = subscribe(server, this.review, this.data.status?.lastSeq ?? 0, live);
+    this.sub = subscribe(server, this.review, this.v.data.status?.lastSeq ?? 0, live);
   }
 
   private reloadSoon(): void {
@@ -197,138 +185,176 @@ class App {
     const api = this.api;
     if (!api) return;
     const r = this.review;
-    const page = this.page;
-    const [status, threads, drafts, detail] = await Promise.all([
+    const first = !this.v.data.status;
+    this.cache.clear();
+    const [status, threads, drafts, git, cursors] = await Promise.all([
       this.guard(api.review(r)),
       this.guard(api.threads(r)),
       this.guard(api.drafts(r)),
-      page.name === "thread" ? this.guard(api.thread(r, page.id)) : Promise.resolve(null),
+      api.git(r).catch(() => null),
+      first ? api.cursors(r).catch(() => null) : Promise.resolve(null),
     ]);
     if (this.ended) return;
-    this.data = {
-      ...this.data,
-      status: status ?? this.data.status,
-      threads: threads ?? this.data.threads,
-      drafts: drafts ?? this.data.drafts,
-    };
-    if (detail && this.page.name === "thread" && this.page.id === detail.thread.id) this.showDetail(detail);
+    const v = this.v;
+    v.data = { ...v.data, status: status ?? v.data.status, threads: threads ?? v.data.threads, drafts: drafts ?? v.data.drafts };
+    if (git) v.git = git;
+    const latest = status?.versionsList?.[status.versionsList.length - 1];
+    if (first && latest && latest.role === "agent" && latest.number > 1 && (cursors?.reviewed?.version ?? 0) < latest.number) v.banner = latest.number;
+    if (v.selected === null || !v.data.threads.some((t) => t.id === v.selected)) v.selected = ordered(v.data, v.filter, null)[0]?.id ?? null;
+    if (v.draftSel === null || !v.data.drafts.some((c) => c.id === v.draftSel)) v.draftSel = v.data.drafts[0]?.id ?? null;
+    await Promise.all([this.fetchThread(v.selected), v.tab === "drafts" ? this.fetchThread(this.selectedDraft()?.threadId ?? null) : null]);
     this.redraw();
   }
 
-  private showDetail(d: NonNullable<Data["detail"]>): void {
-    if (this.fresh?.thread !== d.thread.id) {
-      this.fresh = { thread: d.thread.id, ids: new Set(d.comments.filter((c) => c.unread).map((c) => c.id)) };
-      this.toNews = this.fresh.ids.size > 0;
+  /** Fetches a thread into the cache and shows it when it is still the one selected (or the selected draft's). */
+  private async fetchThread(id: number | null): Promise<void> {
+    if (id === null || !this.api) return;
+    const d = await this.guard(this.api.thread(this.review, id));
+    if (!d || this.ended) return;
+    this.cache.delete(id);
+    this.cache.set(id, d);
+    while (this.cache.size > CACHE) this.cache.delete(this.cache.keys().next().value!);
+    if (this.v.selected === id) this.show(d);
+    if (this.selectedDraft()?.threadId === id) this.v.draftDetail = d;
+    this.redraw();
+  }
+
+  private show(d: ThreadDetail): void {
+    const v = this.v;
+    if (this.freshFor !== d.thread.id) {
+      this.freshFor = d.thread.id;
+      v.fresh = new Set(d.comments.filter((c) => c.unread).map((c) => c.id));
+      v.toNews = v.fresh.size > 0;
     }
-    this.data = { ...this.data, detail: d };
+    v.detail = d;
+    if (v.view && !codeViews(d).includes(v.view)) v.view = null;
+    this.markReadSoon();
+  }
+
+  /** A thread you went into is read after a moment, as the web marks it; a preview in the list is not. */
+  private markReadSoon(): void {
     clearTimeout(this.readTimer);
-    if (!d.thread.unread) return;
+    const d = this.v.detail;
+    if (!d || !d.thread.unread || !this.inThread()) return;
     const id = d.thread.id;
     this.readTimer = setTimeout(async () => {
-      if (this.page.name !== "thread" || this.page.id !== id || !this.api) return;
+      if (this.v.selected !== id || !this.inThread() || !this.api) return;
       if (!(await this.guard(this.api.read(this.review, id)))) return;
-      this.data = {
-        ...this.data,
-        threads: this.data.threads.map((t) => (t.id === id ? { ...t, unread: false } : t)),
-        detail: this.data.detail?.thread.id === id ? { ...this.data.detail, thread: { ...this.data.detail.thread, unread: false } } : this.data.detail,
-      };
+      const v = this.v;
+      v.data = { ...v.data, threads: v.data.threads.map((t) => (t.id === id ? { ...t, unread: false } : t)) };
+      if (v.detail?.thread.id === id) v.detail = { ...v.detail, thread: { ...v.detail.thread, unread: false } };
       this.reloadSoon();
     }, READ_AFTER_MS);
   }
 
-  // --- pages
-
-  private openThread(id: number | null, from?: "threads" | "drafts"): void {
-    if (id === null) return;
-    const back = from ?? (this.page.name === "thread" ? this.page.from : this.page.name === "drafts" ? "drafts" : "threads");
-    if (this.page.name === "thread" && this.page.id === id) return;
-    this.page = { name: "thread", id, from: back };
-    this.selected = id;
-    this.threadTop = 0;
-    this.toNews = false;
-    if (this.data.detail?.thread.id !== id) this.data = { ...this.data, detail: null };
-    clearTimeout(this.readTimer);
-    this.redraw();
-    const api = this.api;
-    if (!api) return;
-    void this.guard(api.thread(this.review, id)).then((d) => {
-      if (!d || this.page.name !== "thread" || this.page.id !== id) return;
-      this.showDetail(d);
-      this.redraw();
-    });
+  private inThread(): boolean {
+    const v = this.v;
+    if (v.tab !== "round") return false;
+    return v.geom.columns === 1 ? !v.listOpen : v.focus !== "list";
   }
 
-  private goBack(): void {
-    const p = this.page;
-    clearTimeout(this.readTimer);
-    if (p.name === "thread" && p.from === "drafts") this.page = { name: "drafts", from: "threads" };
-    else if (p.name === "drafts" && p.from === "thread" && this.data.detail) {
-      this.page = { name: "thread", id: this.data.detail.thread.id, from: "threads" };
-      this.showDetail(this.data.detail);
-    } else this.page = { name: "threads" };
+  // --- moving around
+
+  /** Moves the list's cursor; the thread shows at once when fetched lately, else after a short pause. */
+  private select(id: number | null): void {
+    const v = this.v;
+    if (id === null || id === v.selected) return;
+    v.selected = id;
+    v.view = null;
+    v.tops.code = v.tops.conv = v.tops.thread = 0;
+    const cached = this.cache.get(id);
+    if (cached) this.show(cached);
+    else clearTimeout(this.readTimer);
+    clearTimeout(this.previewTimer);
+    this.previewTimer = setTimeout(() => void this.fetchThread(id), cached ? RELOAD_MS * 4 : PREVIEW_MS);
     this.redraw();
   }
 
-  private goDrafts(): void {
-    if (this.page.name === "drafts") return;
-    this.page = { name: "drafts", from: this.page.name === "thread" ? "thread" : "threads" };
-    clearTimeout(this.readTimer);
+  private focus(f: "list" | "code" | "conv"): void {
+    const v = this.v;
+    v.focus = f;
+    if (v.geom.columns === 1) v.listOpen = f === "list";
+    this.markReadSoon();
     this.redraw();
-  }
-
-  private bodyHeight(): number {
-    return Math.max(1, this.size.h - 2 - (this.composer.open ? composerHeight(this.size.h) : 0));
   }
 
   private listIds(): number[] {
-    return ordered(this.data, this.filter, null).map((t) => t.id);
+    return ordered(this.v.data, this.v.filter, this.v.selected).map((t) => t.id);
   }
 
   private moveList(by: number | "first" | "last"): void {
     const ids = this.listIds();
     if (!ids.length) return;
-    const at = Math.max(0, ids.indexOf(this.selected ?? -1));
+    const at = Math.max(0, ids.indexOf(this.v.selected ?? -1));
     const to = by === "first" ? 0 : by === "last" ? ids.length - 1 : Math.max(0, Math.min(ids.length - 1, at + by));
-    this.selected = ids[to]!;
-    this.redraw();
-  }
-
-  private draftIds(): number[] {
-    return this.data.drafts.map((c) => c.id);
-  }
-
-  private moveDraft(by: number): void {
-    const ids = this.draftIds();
-    if (!ids.length) return;
-    const at = Math.max(0, ids.indexOf(this.draftSel ?? -1));
-    this.draftSel = ids[Math.max(0, Math.min(ids.length - 1, at + by))]!;
-    this.redraw();
+    this.select(ids[to]!);
   }
 
   private selectedDraft(): CommentDto | null {
-    return this.data.drafts.find((c) => c.id === this.draftSel) ?? this.data.drafts[0] ?? null;
+    return this.v.data.drafts.find((c) => c.id === this.v.draftSel) ?? null;
   }
 
-  private current(): number | null {
-    return this.page.name === "thread" ? this.page.id : this.selected;
+  private moveDraft(by: number): void {
+    const ids = this.v.data.drafts.map((c) => c.id);
+    if (!ids.length) return;
+    const at = Math.max(0, ids.indexOf(this.v.draftSel ?? -1));
+    this.v.draftSel = ids[Math.max(0, Math.min(ids.length - 1, at + by))]!;
+    this.showDraft();
+  }
+
+  private showDraft(): void {
+    const c = this.selectedDraft();
+    this.v.tops.draft = 0;
+    const cached = c ? this.cache.get(c.threadId) : undefined;
+    this.v.draftDetail = cached ?? null;
+    if (c && !cached) void this.fetchThread(c.threadId);
+    this.redraw();
+  }
+
+  private scrollKey(): "code" | "conv" | "thread" {
+    const v = this.v;
+    return v.geom.columns === 3 ? (v.focus === "conv" ? "conv" : "code") : "thread";
   }
 
   private scroll(by: number | "top" | "bottom"): void {
-    this.threadTop = by === "top" ? 0 : by === "bottom" ? Number.MAX_SAFE_INTEGER : Math.max(0, this.threadTop + by);
+    const k = this.scrollKey();
+    const tops = this.v.tops;
+    tops[k] = by === "top" ? 0 : by === "bottom" ? Number.MAX_SAFE_INTEGER : Math.max(0, Math.min(tops[k], 100_000) + by);
+    this.redraw();
+  }
+
+  private message(dir: 1 | -1): void {
+    const v = this.v;
+    const starts = v.geom.starts;
+    if (!starts.length) return;
+    const k = this.scrollKey();
+    const top = v.tops[k];
+    const next = dir === 1 ? starts.find((x) => x > top) : [...starts].reverse().find((x) => x < top);
+    if (next === undefined) return this.say(dir === 1 ? "the last message" : "the first message");
+    v.tops[k] = next;
+    this.redraw();
+  }
+
+  private setTab(tab: "round" | "changes" | "drafts"): void {
+    const v = this.v;
+    v.tab = tab;
+    clearTimeout(this.readTimer);
+    if (tab === "drafts") this.showDraft();
+    if (tab === "changes") v.banner = null;
     this.redraw();
   }
 
   // --- actions
 
   private run(id: string): void {
-    const half = Math.max(1, Math.floor(this.bodyHeight() / 2));
-    const cur = this.current();
-    const list = () => ordered(this.data, this.filter, cur);
+    const v = this.v;
+    const half = Math.max(1, Math.floor(v.geom.page / 2));
+    const cur = v.selected;
+    const list = () => ordered(v.data, v.filter, cur);
+    const cols = v.geom.columns;
     switch (id) {
       case "quit":
         return this.end({ code: 0 });
-      case "back":
-        return this.goBack();
       case "list.down":
         return this.moveList(1);
       case "list.up":
@@ -338,41 +364,58 @@ class App {
       case "list.last":
         return this.moveList("last");
       case "list.pageDown":
-        return this.moveList(half);
+        return this.moveList(Math.max(1, Math.floor(half / 2)));
       case "list.pageUp":
-        return this.moveList(-half);
+        return this.moveList(-Math.max(1, Math.floor(half / 2)));
       case "list.open":
-        return this.openThread(this.selected, "threads");
+        if (v.selected !== null) this.focus("code");
+        return;
+      case "list.close":
+        if (cols === 1 && v.detail) this.focus("code");
+        return;
+      case "list.reply":
+        if (v.selected === null) return;
+        this.focus(cols === 3 ? "conv" : "code");
+        return this.write({ kind: "reply", thread: v.selected });
       case "list.nextFile":
       case "list.prevFile":
-        this.selected = stepFile(threadGroups(this.data, this.filter, null), this.selected, id === "list.nextFile" ? 1 : -1);
-        return this.redraw();
+      case "thread.nextFile":
+      case "thread.prevFile": {
+        const next = stepFile(threadGroups(v.data, v.filter, cur), cur, id.endsWith("nextFile") ? 1 : -1);
+        if (next === cur) return this.say(id.endsWith("nextFile") ? "the last file" : "the first file");
+        return this.select(next);
+      }
       case "unread.next":
       case "unread.prev": {
         const next = stepUnread(list(), cur, id === "unread.next" ? 1 : -1);
         if (next === null) return this.say("no unread threads");
-        return this.openThread(next);
+        return this.select(next);
       }
-      case "filter.resolved":
-        this.filter = { ...this.filter, status: this.filter.status === "open" ? "all" : "open", newOnly: false };
-        this.say(this.filter.status === "all" ? "showing all threads" : "showing open threads and drafts");
-        return;
-      case "filter.news":
-        this.filter = { ...this.filter, newOnly: !this.filter.newOnly };
-        this.say(this.filter.newOnly ? "showing only threads with news" : "showing every thread again");
-        return;
       case "thread.next":
       case "thread.prev": {
         const next = stepThread(list(), cur, id === "thread.next" ? 1 : -1);
         if (next === cur) return this.say(id === "thread.next" ? "the last thread" : "the first thread");
-        return this.openThread(next);
+        return this.select(next);
       }
-      case "thread.nextFile":
-      case "thread.prevFile": {
-        const next = stepFile(threadGroups(this.data, this.filter, cur), cur, id === "thread.nextFile" ? 1 : -1);
-        if (next === cur) return this.say(id === "thread.nextFile" ? "the last file" : "the first file");
-        return this.openThread(next);
+      case "filter.resolved":
+        v.filter = { ...v.filter, status: v.filter.status === "open" ? "all" : "open", newOnly: false };
+        return this.say(v.filter.status === "all" ? "showing all threads" : "showing open threads and drafts");
+      case "filter.news":
+        v.filter = { ...v.filter, newOnly: !v.filter.newOnly };
+        if (v.tab !== "round") this.setTab("round");
+        return this.say(v.filter.newOnly ? "showing only threads with news" : "showing every thread again");
+      case "focus.next":
+      case "focus.prev": {
+        if (v.tab !== "round") return;
+        if (cols === 1) return this.focus(v.listOpen ? "code" : "list");
+        const order = cols === 3 ? (["list", "code", "conv"] as const) : (["list", "code"] as const);
+        const at = Math.max(0, order.indexOf(v.focus as never));
+        return this.focus(order[(at + (id === "focus.next" ? 1 : order.length - 1)) % order.length]!);
       }
+      case "focus.left":
+        return this.focus(cols === 3 && v.focus === "conv" ? "code" : "list");
+      case "focus.right":
+        return this.focus("conv");
       case "scroll.down":
         return this.scroll(1);
       case "scroll.up":
@@ -385,8 +428,24 @@ class App {
         return this.scroll("top");
       case "scroll.bottom":
         return this.scroll("bottom");
+      case "msg.next":
+        return this.message(1);
+      case "msg.prev":
+        return this.message(-1);
+      case "code.view": {
+        const d = v.detail;
+        if (!d) return;
+        const views = codeViews(d);
+        if (views.length < 2) return this.say("the thread's code has one view only");
+        const at = views.indexOf(v.view ?? views[0]!);
+        v.view = views[(at + 1) % views.length]!;
+        v.tops.code = v.tops.thread = 0;
+        return this.redraw();
+      }
+      case "code.more":
+        return this.say("all changes and the whole file come with the diff widget");
       case "thread.reply":
-        if (this.page.name === "thread") this.write({ kind: "reply", thread: this.page.id });
+        if (v.selected !== null) this.write({ kind: "reply", thread: v.selected });
         return;
       case "thread.resolve":
         return void this.resolve();
@@ -398,8 +457,11 @@ class App {
         return this.moveDraft(-1);
       case "drafts.open": {
         const c = this.selectedDraft();
-        if (c) this.openThread(c.threadId, "drafts");
-        return;
+        if (!c) return;
+        v.tab = "round";
+        if (!ordered(v.data, v.filter, c.threadId).some((t) => t.id === c.threadId)) v.filter = { status: "all", newOnly: false };
+        this.select(c.threadId);
+        return this.focus("code");
       }
       case "drafts.edit": {
         const c = this.selectedDraft();
@@ -409,40 +471,51 @@ class App {
       case "drafts.discard":
         return void this.discard();
       case "drafts.summary":
-        return this.write({ kind: "summary" });
+        return this.write({ kind: "summary" }, v.summary);
       case "drafts.approve":
         return void this.approve();
+      case "drafts.changes":
+        return void (v.data.drafts.length ? this.requestChanges() : this.approve());
+      case "drafts.guide":
+        if (!v.data.drafts.length) return this.say("a guide goes with Request changes: there are no drafts", "error");
+        v.guide = !v.guide;
+        return this.redraw();
+      case "tab.round":
+        return this.setTab("round");
+      case "tab.drafts":
+        return this.setTab("drafts");
+      case "tab.changes":
+        return this.setTab("changes");
       case "submit":
-        if (this.page.name !== "drafts") return this.goDrafts();
-        return void (this.data.drafts.length ? this.requestChanges() : this.approve());
-      case "drafts":
-        return this.goDrafts();
+        return this.setTab("drafts");
       case "refresh":
         return void this.refreshNow();
       case "help":
         return this.openHelp();
       case "help.down":
       case "help.up":
-        if (this.help) this.help.top = Math.max(0, Math.min(this.help.lines.length - 1, this.help.top + (id === "help.down" ? 1 : -1)));
+        v.tops.help = Math.max(0, v.tops.help + (id === "help.down" ? 1 : -1));
         return this.redraw();
       case "help.close":
-        this.help = null;
+        v.help = null;
         return this.redraw();
       case "choice.down":
-      case "choice.up":
-        if (this.choice) this.choice.at = (this.choice.at + (id === "choice.down" ? 1 : this.choice.options.length - 1)) % this.choice.options.length;
+      case "choice.up": {
+        const c = v.choice;
+        if (c) c.at = (c.at + (id === "choice.down" ? 1 : c.options.length - 1)) % c.options.length;
         return this.redraw();
+      }
       case "choice.pick":
-        return this.pick(this.choice?.at ?? 0);
+        return this.pick(v.choice?.at ?? 0);
       case "choice.cancel":
         return this.pick(null);
     }
   }
 
   private async resolve(): Promise<void> {
-    const d = this.data.detail;
-    if (!d || !this.api || this.page.name !== "thread" || d.thread.id !== this.page.id) return;
-    if (d.thread.draft) return this.say("a draft thread cannot be resolved: discard it on the drafts page (s)", "error");
+    const d = this.v.detail;
+    if (!d || !this.api || d.thread.id !== this.v.selected) return;
+    if (d.thread.draft) return this.say("a draft thread cannot be resolved: discard it on the Drafts tab (s)", "error");
     if (d.thread.status === "resolved") return this.say(`#${d.thread.id} is resolved already · X reopens it`);
     if (await this.guard(this.api.resolve(this.review, d.thread.id, null))) {
       this.say(`resolved #${d.thread.id} · X reopens it`);
@@ -451,8 +524,8 @@ class App {
   }
 
   private async reopen(): Promise<void> {
-    const d = this.data.detail;
-    if (!d || !this.api || this.page.name !== "thread" || d.thread.id !== this.page.id) return;
+    const d = this.v.detail;
+    if (!d || !this.api || d.thread.id !== this.v.selected) return;
     if (d.thread.status === "open") return this.say(`#${d.thread.id} is open`);
     if (await this.guard(this.api.reopen(this.review, d.thread.id))) {
       this.say(`reopened #${d.thread.id}`);
@@ -463,13 +536,14 @@ class App {
   private async discard(): Promise<void> {
     const c = this.selectedDraft();
     if (!c || !this.api) return;
-    const ids = this.draftIds();
+    const ids = this.v.data.drafts.map((x) => x.id);
     const r = await this.guard(this.api.discardDraft(this.review, c.id));
     if (!r) return;
-    this.draftSel = ids[ids.indexOf(c.id) + 1] ?? ids[ids.indexOf(c.id) - 1] ?? null;
+    this.v.draftSel = ids[ids.indexOf(c.id) + 1] ?? ids[ids.indexOf(c.id) - 1] ?? null;
     this.texts.set(`edit:${c.id}`, "");
     this.say(r.threadDeleted ? `discarded the draft thread #${r.thread}` : `discarded the draft reply on #${r.thread}`);
     await this.reload();
+    this.showDraft();
   }
 
   private async refreshNow(): Promise<void> {
@@ -480,23 +554,22 @@ class App {
     await this.reload();
   }
 
-  private ask(title: string, text: string, options: Choice["options"]): Promise<string | null> {
+  private ask(title: string, text: string, options: { value: string; label: string }[]): Promise<string | null> {
     return new Promise((done) => {
-      this.choice = { title, text, options, at: 0, done };
+      this.v.choice = { title, text, options, at: 0 };
+      this.choiceDone = done;
       this.redraw();
     });
   }
 
   private pick(at: number | null): void {
-    const c = this.choice;
-    if (!c) return;
-    this.choice = null;
+    const c = this.v.choice;
+    const done = this.choiceDone;
+    if (!c || !done) return;
+    this.v.choice = null;
+    this.choiceDone = null;
     this.redraw();
-    c.done(at === null ? null : (c.options[at]?.value ?? null));
-  }
-
-  private summary(): string {
-    return this.texts.get("summary");
+    done(at === null ? null : (c.options[at]?.value ?? null));
   }
 
   private settled(ids: number[]): string {
@@ -504,24 +577,26 @@ class App {
   }
 
   private async afterSubmit(): Promise<void> {
+    this.v.summary = "";
+    this.v.guide = false;
     this.texts.set("summary", "");
-    this.page = { name: "threads" };
+    this.v.tab = "round";
     await this.reload();
   }
 
   private async requestChanges(): Promise<void> {
     if (!this.api) return;
-    if (this.data.drafts.length === 0) return this.say("no drafts to submit", "error");
-    const r = await this.guard(this.api.submit(this.review, this.summary()));
+    if (this.v.data.drafts.length === 0) return this.say("no drafts to submit", "error");
+    const r = await this.guard(this.api.submit(this.review, this.v.summary, this.v.guide ? { guide: true } : {}));
     if (!r) return;
-    this.say(`changes requested: ${plural(r.comments, "comment")} in ${plural(r.threads.length, "thread")} went to the agent${this.settled(r.settled)}`);
+    this.say(`changes requested: ${plural(r.comments, "comment")} in ${plural(r.threads.length, "thread")} went to the agent${this.settled(r.settled)}${r.guide ? ", with a request for a guide to the next version" : ""}`);
     await this.afterSubmit();
   }
 
   /** As the web approves: drafts go along as nits if you say so, and you pick what happens to the other open threads. */
   private async approve(): Promise<void> {
     if (!this.api) return;
-    const mine = this.data.drafts;
+    const mine = this.v.data.drafts;
     if (mine.length > 0) {
       const how = await this.ask(`Approve with ${plural(mine.length, "draft")}?`, "Approving says this version is done. The drafts can go with it as nits, or as a request for changes and a new round.", [
         { value: "nits", label: "Approve; drafts go as nits (the agent fixes them without a new round)" },
@@ -531,18 +606,22 @@ class App {
       if (how === "changes") return this.requestChanges();
     }
     const inReview = new Set(mine.map((c) => c.threadId));
-    const open = this.data.threads.filter((t) => t.status === "open" && !t.draft && !inReview.has(t.id));
+    const open = this.v.data.threads.filter((t) => t.status === "open" && !t.draft && !inReview.has(t.id));
     let keep: "keep" | "resolve" | undefined;
     if (open.length > 0) {
       const list = open.slice(0, 5).map((t) => `#${t.id} ${t.title.split("\n")[0]}`).join("; ");
-      const how = await this.ask(`${plural(open.length, "thread")} still open`, `Approve and leave ${open.length === 1 ? "it" : "them"} open, or resolve ${open.length === 1 ? "it" : "them all"} first: ${list}${open.length > 5 ? ` and ${open.length - 5} more` : ""}`, [
-        { value: "keep", label: "Approve anyway" },
-        { value: "resolve", label: "Resolve all and approve" },
-      ]);
+      const how = await this.ask(
+        `${plural(open.length, "thread")} still open`,
+        `Approve and leave ${open.length === 1 ? "it" : "them"} open, or resolve ${open.length === 1 ? "it" : "them all"} first: ${list}${open.length > 5 ? ` and ${open.length - 5} more` : ""}`,
+        [
+          { value: "keep", label: "Approve anyway" },
+          { value: "resolve", label: "Resolve all and approve" },
+        ],
+      );
       if (how === null) return;
       keep = how as "keep" | "resolve";
     }
-    const r = await this.guard(this.api.submit(this.review, this.summary(), { verdict: "approved", open: keep }));
+    const r = await this.guard(this.api.submit(this.review, this.v.summary, { verdict: "approved", open: keep }));
     if (!r) return;
     const nits = r.comments ? `; ${plural(r.comments, "comment")} went to the agent as nits` : "";
     this.say(`approved v${r.version}${nits}${r.resolved.length ? `; resolved ${plural(r.resolved.length, "thread")}` : ""}${this.settled(r.settled)}`);
@@ -552,32 +631,38 @@ class App {
   // --- composer
 
   private write(w: Writing, initial = ""): void {
+    const v = this.v;
     const key = textKey(w);
-    const d = this.data.detail;
+    const d = v.detail;
     const draftThread = w.kind === "reply" && d?.thread.id === w.thread && d.thread.draft;
-    const title =
-      w.kind === "reply" ? `reply to #${w.thread} · ^S save draft · ^G send now · esc leave` : w.kind === "edit" ? `edit the draft on #${w.thread} · ^S save · esc leave` : "summary for the whole review · ^S keep · esc leave";
     const placeholder = w.kind === "reply" ? (draftThread ? "Add to this draft thread…" : "Reply to the thread…") : w.kind === "edit" ? "" : "Optional summary for the whole review";
-    this.writing = w;
+    v.writing = w;
     this.matcher.reset();
-    this.composer.show(title, placeholder, this.texts.get(key) || initial, (text) => this.texts.set(key, text));
-    if (this.page.name === "thread") this.threadTop = Number.MAX_SAFE_INTEGER;
+    v.prefix = [];
+    v.composerText = this.texts.get(key) || initial;
+    this.composer.show(placeholder, v.composerText, (text) => {
+      v.composerText = text;
+      this.texts.set(key, text);
+      this.redraw();
+    });
+    v.tops.conv = v.tops.thread = Number.MAX_SAFE_INTEGER;
     this.redraw();
   }
 
   private leave(): void {
     this.composer.hide();
-    this.writing = null;
+    this.v.writing = null;
     this.redraw();
   }
 
   private async send(mode: "draft" | "now"): Promise<void> {
-    const w = this.writing;
+    const w = this.v.writing;
     const api = this.api;
     if (!w || !api) return;
     const text = this.composer.text;
     const key = textKey(w);
     if (w.kind === "summary") {
+      this.v.summary = text;
       this.texts.set(key, text);
       this.leave();
       return this.say(text.trim() ? "summary kept: it goes out with the review (S)" : "no summary");
@@ -588,7 +673,8 @@ class App {
       this.texts.set(key, "");
       this.leave();
       this.say("draft saved");
-      return this.reload();
+      await this.reload();
+      return this.showDraft();
     }
     const r = await this.guard(api.reply(this.review, w.thread, { body: text, draft: mode === "draft" }));
     if (!r) return;
@@ -596,15 +682,27 @@ class App {
     this.leave();
     this.say(mode === "draft" ? "draft reply saved · the agent sees it after you submit the review (S)" : "reply sent to the agent");
     await this.reload();
-    this.scroll("bottom");
+    this.v.tops.conv = this.v.tops.thread = Number.MAX_SAFE_INTEGER;
+    this.redraw();
   }
 
   // --- keys
 
   private scopes(): Scope[] {
-    if (this.help) return ["help"];
-    if (this.choice) return ["choice"];
-    return [this.page.name, "global"];
+    const sc = scopeOf(this.v);
+    if (sc === "menu") return [this.lastScope(), "global"];
+    if (sc === "help" || sc === "choice" || sc === "composer") return [sc];
+    return [sc, "global"];
+  }
+
+  /** The column under the Space menu. */
+  private lastScope(): Scope {
+    const v = this.v;
+    if (v.tab !== "round") return v.tab;
+    const cols = v.geom.columns;
+    if (cols === 1) return v.listOpen ? "list" : "thread";
+    if (v.focus === "list") return "list";
+    return cols === 3 ? v.focus : "thread";
   }
 
   private key(k: KeyEvent): void {
@@ -614,14 +712,28 @@ class App {
     if (token === null) return;
     if (this.composer.open) return this.composerKey(k, token);
     k.preventDefault();
-    if (this.choice && /^[1-9]$/.test(token)) {
+    const v = this.v;
+    if (v.choice && /^[1-9]$/.test(token)) {
       const at = Number(token) - 1;
-      if (at < this.choice.options.length) this.pick(at);
+      if (at < v.choice.options.length) this.pick(at);
       return;
     }
-    const m = this.matcher.feed(token, this.scopes());
-    if ("fire" in m) this.run(m.fire.id);
-    else this.redraw();
+    if (token === "<BS>" && this.matcher.prefix.length) {
+      this.matcher.back();
+    } else {
+      const m = this.matcher.feed(token, this.scopes());
+      if ("fire" in m) {
+        this.syncPrefix();
+        return this.run(m.fire.id);
+      }
+    }
+    this.syncPrefix();
+    this.redraw();
+  }
+
+  private syncPrefix(): void {
+    this.v.prefix = [...this.matcher.prefix];
+    this.v.next = this.v.prefix.length ? this.matcher.next(this.scopes()) : [];
   }
 
   private composerKey(k: KeyEvent, token: string): void {
@@ -637,121 +749,31 @@ class App {
     if (!row) return;
     k.preventDefault();
     if (row.id === "composer.leave") this.leave();
-    else void this.send(row.id === "composer.now" ? "now" : "draft");
+    else void this.send(row.id === "composer.now" && this.v.writing?.kind === "reply" ? "now" : "draft");
   }
 
   private openHelp(): void {
-    const scope = this.page.name;
-    const lines: Line[] = [];
-    const seen = new Set<string>();
-    for (const sc of [scope, "global"] as const) {
-      const rows = KEYS.filter((r) => r.scope === sc);
-      if (!rows.length) continue;
-      if (lines.length) lines.push(line());
-      lines.push(line(s(sc === "global" ? "Everywhere" : `This page`, { bold: true })));
-      const byDesc = new Map<string, string[]>();
-      for (const r of rows) {
-        const labels = r.keys.filter((x) => !seen.has(`${sc}:${x}`)).map(keyLabel);
-        r.keys.forEach((x) => seen.add(`${sc}:${x}`));
-        byDesc.set(r.desc, [...(byDesc.get(r.desc) ?? []), ...labels]);
+    const scope = this.lastScope();
+    const group = (sc: Scope) => {
+      const byId = new Map<string, { keys: string[]; desc: string }>();
+      for (const r of KEYS.filter((x) => x.scope === sc)) {
+        const had = byId.get(r.id);
+        if (had) had.keys.push(...r.keys);
+        else byId.set(r.id, { keys: [...r.keys], desc: r.desc });
       }
-      for (const [desc, labels] of byDesc) lines.push(line(s(`  ${labels.join(" ").padEnd(14)}`, { bold: true }), s(` ${desc}`)));
-    }
-    lines.push(line(), line(s("  Ctrl+C quits from anywhere", { tone: "muted" })));
-    this.help = { top: 0, lines };
+      return [...byId.values()];
+    };
+    const names: Record<string, string> = { list: "The thread list", code: "The code", conv: "The conversation", thread: "The thread", drafts: "Drafts", changes: "Changes" };
+    this.v.help = helpLines([
+      { title: names[scope] ?? scope, rows: group(scope) },
+      { title: "Everywhere", rows: group("global") },
+    ]);
+    this.v.tops.help = 0;
     this.redraw();
-  }
-
-  // --- frame
-
-  private frame(w: number, h: number): Frame {
-    this.size = { w, h };
-    const bodyH = this.bodyHeight();
-    const header = headerLine(this.data, w, this.connecting);
-    const body = this.body(w, bodyH);
-    const footer = footerLine(w, { toast: this.toast, prefix: this.prefix(), next: this.matcher.prefix.length ? this.matcher.next(this.scopes()) : [], hints: this.hints() });
-    return { header, body, footer, overlay: this.overlay(w, h) };
-  }
-
-  private prefix(): string | null {
-    const p = this.matcher.prefix;
-    return p.length ? keyLabel(p.join("")) : null;
-  }
-
-  private hints(): string[] {
-    if (this.composer.open) {
-      const w = this.writing;
-      return w?.kind === "reply" ? ["^S save draft", "^G send now", "esc leave (text kept)"] : w?.kind === "edit" ? ["^S save", "esc leave (text kept)"] : ["^S keep", "esc leave"];
-    }
-    const out: string[] = [];
-    for (const sc of this.scopes()) for (const r of KEYS) if (r.scope === sc && r.hint) out.push(r.hint);
-    return out;
-  }
-
-  private window(lines: Line[], top: number, height: number): { top: number; lines: Line[] } {
-    const max = Math.max(0, lines.length - height);
-    const t = Math.max(0, Math.min(max, top));
-    return { top: t, lines: lines.slice(t, t + height) };
-  }
-
-  /** The list's window: the selected line stays in sight with a line of margin. */
-  private follow(ids: (number | null)[], selected: number | null, top: number, height: number): number {
-    const at = ids.indexOf(selected);
-    if (at === -1) return top;
-    if (at - 1 < top) return Math.max(0, at - 2);
-    if (at + 1 >= top + height) return at + 2 - height;
-    return top;
-  }
-
-  private body(w: number, height: number): Line[] {
-    if (this.connecting && !this.data.status) return [line(), line(s(`  ${this.connecting}`, { tone: "muted" }))];
-    if (!this.data.status) return [line(), line(s("  loading…", { tone: "muted" }))];
-    const p = this.page;
-    if (p.name === "threads") {
-      const ids = this.listIds();
-      if (this.selected === null || !ids.includes(this.selected)) this.selected = ids[0] ?? null;
-      const page = threadsPage(this.data, this.filter, this.selected, w);
-      this.listTop = this.follow(page.ids, this.selected, this.listTop, height);
-      const v = this.window(page.lines, this.listTop, height);
-      this.listTop = v.top;
-      return v.lines;
-    }
-    if (p.name === "drafts") {
-      const ids = this.draftIds();
-      if (this.draftSel === null || !ids.includes(this.draftSel)) this.draftSel = ids[0] ?? null;
-      const page = draftsPage(this.data, this.draftSel, this.summary(), w);
-      this.draftsTop = this.follow(page.ids, this.draftSel, this.draftsTop, height);
-      const v = this.window(page.lines, this.draftsTop, height);
-      this.draftsTop = v.top;
-      return v.lines;
-    }
-    const d = this.data.detail;
-    if (!d || d.thread.id !== p.id) return [line(), line(s(`  loading thread #${p.id}…`, { tone: "muted" }))];
-    const page = threadPage(d, this.fresh?.thread === d.thread.id ? this.fresh.ids : new Set(), w);
-    if (this.toNews && page.newAt !== null) this.threadTop = Math.max(0, page.newAt - 1);
-    this.toNews = false;
-    const v = this.window(page.lines, this.threadTop, height);
-    this.threadTop = v.top;
-    return v.lines;
-  }
-
-  private overlay(w: number, h: number): Overlay | null {
-    if (this.help) {
-      const rows = Math.max(1, h - 4);
-      this.help.top = Math.max(0, Math.min(this.help.top, this.help.lines.length - rows));
-      return { title: `keys · ${this.page.name === "threads" ? "threads" : this.page.name === "thread" ? "thread" : "drafts"}`, lines: this.help.lines, top: this.help.top };
-    }
-    const c = this.choice;
-    if (!c) return null;
-    const inner = Math.min(w - 8, 72);
-    const lines: Line[] = wrap(c.text, inner).map((x) => line(s(x, { tone: "muted" })));
-    lines.push(line());
-    c.options.forEach((o, i) => lines.push({ spans: [s(` ${i + 1} `, { bold: true }), s(o.label)], selected: i === c.at }));
-    return { title: c.title, lines, top: 0 };
   }
 }
 
-/** The terminal UI on a review, until q on the threads page, Ctrl+C or a signal; the terminal is restored on every way out. */
+/** The terminal UI on a review, until q in the list, Ctrl+C or a signal; the terminal is restored on every way out. */
 export async function runTui(ctx: Ctx, review: number): Promise<number> {
   const renderer = await createCliRenderer({ exitOnCtrlC: true, useMouse: false, autoFocus: false });
   let settle!: (r: { code: number } | { error: unknown }) => void;
@@ -763,6 +785,7 @@ export async function runTui(ctx: Ctx, review: number): Promise<number> {
   renderer.on("destroy", () => app.end({ code: 0 }));
   void app.start().catch(crash);
   const r = await result;
+  const frames = app.screen.frames;
   try {
     await app.close();
   } finally {
@@ -770,6 +793,7 @@ export async function runTui(ctx: Ctx, review: number): Promise<number> {
     process.off("uncaughtException", crash);
     process.off("unhandledRejection", crash);
   }
+  if (process.env.STET_TUI_FRAMES) await Bun.write(process.env.STET_TUI_FRAMES, String(frames));
   if ("error" in r) throw r.error;
   return r.code;
 }

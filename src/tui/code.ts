@@ -1,9 +1,9 @@
 /**
  * A thread's code as plain rows: the server's diff of its lines from when it was written to now, or its lines at one
- * step, with a few lines around. A stand-in for the diff widget of phase 3, which takes over behind `codeLines`.
+ * end, with a few lines around. A stand-in for the diff widget of phase 3, which takes over behind `codeLines`.
  */
 import type { Excerpt, ThreadDetail, TimelineStepDto } from "../core/types.ts";
-import { clean, clip, line, rangeText, s, type Line, type Span } from "./text.ts";
+import { chop, clean, filled, line, rangeText, s, spread, type Line, type Span } from "./text.ts";
 
 export interface CodeRow {
   kind: "ctx" | "add" | "del" | "gap";
@@ -14,9 +14,16 @@ export interface CodeRow {
   marked: boolean;
 }
 
+/** Diff: how the lines changed from when the thread was written; Then: as written; At: as they are at the last step. */
+export type CodeView = "diff" | "then" | "at";
+
 export interface Code {
+  view: CodeView;
+  /** What the rows show, after the file's name. */
   title: string;
   rows: CodeRow[];
+  /** Two columns of line numbers: the rows are a diff. */
+  diff: boolean;
 }
 
 const inRange = (n: number | null, r: { start: number; end: number } | null) => n !== null && !!r && n >= r.start && n <= r.end;
@@ -41,7 +48,7 @@ export function patchRows(patch: string, then: TimelineStepDto["range"], now: Ti
     const text = raw.slice(1);
     if (mark === "+") rows.push({ kind: "add", old: null, new: n, text, marked: inRange(n++, now) });
     else if (mark === "-") rows.push({ kind: "del", old: o, new: null, text, marked: inRange(o++, then) });
-    else if (mark === " ") rows.push({ kind: "ctx", old: o++, new: n++, text, marked: inRange(n - 1, now) || inRange(o - 1, then) });
+    else if (mark === " ") rows.push({ kind: "ctx", old: o++, new: n++, text, marked: inRange(n - 1, now) });
   }
   return rows;
 }
@@ -53,42 +60,79 @@ function excerptRows(e: Excerpt): CodeRow[] {
   });
 }
 
-/** What the thread's page shows of its code. */
-export function threadCode(d: ThreadDetail): Code {
+/** The views the thread's data can show, the default first. */
+export function codeViews(d: ThreadDetail): CodeView[] {
+  const first = d.timeline[0]!;
+  const last = d.timeline[d.timeline.length - 1]!;
+  const out: CodeView[] = [];
+  if (d.code.interdiff && patchRows(d.code.interdiff, first.range, last.range).length) out.push("diff");
+  if (d.code.now && last.range) out.push("at");
+  if (d.code.then) out.push("then");
+  return out;
+}
+
+const lines = (r: { start: number; end: number } | null) => (r && r.start !== r.end ? `lines ${rangeText(r)}` : `line ${rangeText(r)}`);
+
+/** What the thread shows of its code in `view`, or in its default view when that one has nothing. */
+export function threadCode(d: ThreadDetail, view: CodeView | null): Code {
   const t = d.thread;
   const first = d.timeline[0]!;
   const last = d.timeline[d.timeline.length - 1]!;
-  if (t.region) return { title: `an area of the image ${t.path}: \`stet open ${t.id} --browser\` shows it`, rows: [] };
-  if (d.code.interdiff) {
-    const rows = patchRows(d.code.interdiff, first.range, last.range);
-    if (rows.length) return { title: `lines ${rangeText(last.range)} · how they changed from ${first.label} to ${last.label}`, rows };
+  const views = codeViews(d);
+  const v = view && views.includes(view) ? view : views[0];
+  if (t.region) return { view: "at", title: `an area of the image: \`stet open ${t.id} --browser\` shows it`, rows: [], diff: false };
+  if (v === "diff") {
+    return { view: v, title: `${lines(last.range)} · how they changed from ${first.label} to ${last.label}`, rows: patchRows(d.code.interdiff!, first.range, last.range), diff: true };
   }
-  if (d.code.now && last.range) {
-    const title = last.index === 0 ? `lines ${rangeText(last.range)} at ${last.label}, when the thread started` : `lines ${rangeText(last.range)} at ${last.label} · unchanged since ${first.label}`;
-    return { title, rows: excerptRows(d.code.now) };
+  if (v === "at") {
+    const since = last.index === 0 ? "" : views.includes("diff") ? "" : ` · unchanged since ${first.label}`;
+    return { view: v, title: `${lines(last.range)} at ${last.label}${since}`, rows: excerptRows(d.code.now!), diff: false };
   }
-  if (d.code.then) {
-    return { title: `the commented code is gone at ${last.label} (${last.reason ?? "outdated"}) · as it was at ${first.label}`, rows: excerptRows(d.code.then) };
+  if (v === "then") {
+    const gone = !d.code.now || !last.range ? `gone at ${last.label} (${last.reason ?? "outdated"}) · ` : "";
+    return { view: v, title: `${gone}${lines(first.range)} as written on ${first.label}`, rows: excerptRows(d.code.then!), diff: false };
   }
-  return { title: "the thread's code could not be read", rows: [] };
+  return { view: "at", title: "the thread's code could not be read", rows: [], diff: false };
 }
 
-/** The rows as screen lines: line numbers, a bar on the thread's lines, + and − in their colours. Long lines are cut. */
-export function codeLines(code: Code, w: number): Line[] {
+export function counts(code: Code): { add: number; del: number } {
+  return { add: code.rows.filter((r) => r.kind === "add").length, del: code.rows.filter((r) => r.kind === "del").length };
+}
+
+/** The file's header over its code: the path, what the rows show, −N +M. */
+export function fileHeader(path: string, code: Code, w: number): Line {
+  const c = counts(code);
+  const right: Span[] = [];
+  if (c.del) right.push(s(`−${c.del}`, "delc"));
+  if (c.add) right.push(...(c.del ? [s(" ")] : []), s(`+${c.add}`, "addc"));
+  return { spans: spread([s(" "), s(path, "fh"), s(` · ${code.title}`, "dim")], right, w) };
+}
+
+/**
+ * The rows as screen lines: line numbers, ▌ on the thread's lines, diff rows painted across the width, long lines
+ * wrapped. `mark` is the row put under the thread's last line: "▲ thread #1 · v2".
+ */
+export function codeLines(code: Code, w: number, mark: Span[] | null): Line[] {
   const numbers = code.rows.flatMap((r) => [r.old ?? 0, r.new ?? 0]);
-  const digits = Math.max(2, String(Math.max(0, ...numbers)).length);
-  const twoColumns = code.rows.some((r) => r.kind !== "ctx" || r.old !== null);
-  const num = (v: number | null) => (v === null ? " ".repeat(digits) : String(v).padStart(digits));
-  return code.rows.map((r) => {
-    if (r.kind === "gap") return line(s(`${" ".repeat(digits * (twoColumns ? 2 : 1) + (twoColumns ? 1 : 0) + 1)}⋯`, { tone: "muted" }));
-    const tone = r.kind === "add" ? "add" : r.kind === "del" ? "del" : undefined;
-    const gutter = twoColumns ? `${num(r.old)} ${num(r.new)}` : num(r.new);
-    const spans: Span[] = [
-      s(r.marked ? "▌" : " ", { tone: "warn" }),
-      s(gutter, { tone: r.marked ? "warn" : "muted", bold: r.marked }),
-      s(r.kind === "add" ? " + " : r.kind === "del" ? " - " : "   ", { tone }),
-      s(clean(r.text), { tone, bold: r.marked && !tone }),
-    ];
-    return { spans: clip(spans, w) };
+  const side = Math.max(3, String(Math.max(0, ...numbers)).length + 1);
+  const num = (v: number | null) => (v === null ? " ".repeat(side) : String(v).padStart(side));
+  const lastMarked = code.rows.reduce((at, r, i) => (r.marked ? i : at), -1);
+  const room = Math.max(1, w - side * 2 - 3);
+  const out: Line[] = [];
+  code.rows.forEach((r, i) => {
+    if (r.kind === "gap") {
+      out.push(line(s(`${" ".repeat(side * 2 - 1)}⋯`, "ln")));
+      return;
+    }
+    const field = code.diff ? `${num(r.old)}${num(r.new)}` : `${" ".repeat(side)}${num(r.new)}`;
+    const head: Span[] = r.marked ? [s("▌", "mk"), s(field.slice(1), "ln")] : [s(field, "ln")];
+    const sign = r.kind === "add" ? "+" : r.kind === "del" ? "-" : " ";
+    const fill = r.kind === "add" ? (["add"] as const) : r.kind === "del" ? (["del"] as const) : null;
+    chop(clean(r.text), room).forEach((part, k) => {
+      const spans = [...(k === 0 ? head : [s(" ".repeat(side * 2), "ln")]), s(` ${k === 0 ? sign : " "} ${part}`)];
+      out.push(fill ? filled([...fill], ...spans) : { spans });
+    });
+    if (i === lastMarked && mark) out.push(line(s(" ".repeat(side * 2), "ln"), s("   "), ...mark));
   });
+  return out;
 }

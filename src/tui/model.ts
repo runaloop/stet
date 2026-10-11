@@ -1,4 +1,4 @@
-import type { CommentDto, NowStateDto, ReviewStatusDto, ThreadDetail, ThreadSummary } from "../core/types.ts";
+import type { CommentDto, NowStateDto, ReviewStatusDto, ThreadSummary } from "../core/types.ts";
 import { applyFilters, DEFAULT_FILTERS } from "../ui/filters.ts";
 import { DEFAULT_TEST_GLOBS, parseList } from "../ui/fold.ts";
 import { CORE_PRESETS, orderOf } from "../ui/order.ts";
@@ -10,14 +10,12 @@ export interface Data {
   status: ReviewStatusDto | null;
   threads: ThreadSummary[];
   drafts: CommentDto[];
-  /** The thread open on the thread page. */
-  detail: ThreadDetail | null;
   /** The worktree against the server's pin of "now", from the event stream. */
   now: NowStateDto | null;
   online: boolean;
 }
 
-export const NO_DATA: Data = { status: null, threads: [], drafts: [], detail: null, now: null, online: true };
+export const NO_DATA: Data = { status: null, threads: [], drafts: [], now: null, online: true };
 
 export interface ListFilter {
   status: "open" | "all";

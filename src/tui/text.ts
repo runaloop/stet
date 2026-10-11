@@ -1,35 +1,40 @@
-/** What the pages draw: lines of styled spans, cut to the screen's width. No OpenTUI here; `screen.ts` paints them. */
+/** What the views draw: lines of spans styled by meaning, cut to the screen's width. No OpenTUI here; `screen.ts` paints them. */
 
-/** A colour by meaning; the screen maps it to the terminal's own palette, so light and dark themes both read. */
-export type Tone = "accent" | "ok" | "bad" | "warn" | "info" | "muted" | "agent" | "add" | "del";
+/** A style by meaning, as the approved mockups name them; `style.ts` gives each its colours. */
+export type Cls =
+  | "b" | "dim" | "bd" | "bdt" | "bf" | "bft" | "hdr" | "info" | "state" | "sel" | "seli" | "cur"
+  | "add" | "addw" | "del" | "delw" | "addc" | "delc" | "ln" | "mk" | "key" | "tab" | "tabin" | "chip" | "chips" | "seg"
+  | "fon" | "mod" | "tchg" | "tyou" | "tag" | "tout" | "tdr" | "tok" | "tq" | "tbad" | "ok" | "bad" | "new" | "acc" | "fh"
+  | "rule" | "cf" | "cft" | "wk" | "wg" | "ftr" | "fk" | "you" | "agentc" | "warn";
 
 export interface Span {
   text: string;
-  tone?: Tone;
-  bold?: boolean;
-  dim?: boolean;
-  italic?: boolean;
-  underline?: boolean;
+  c?: Cls[];
 }
 
 export interface Line {
   spans: Span[];
-  /** The cursor's row: drawn inverted across the whole width. */
-  selected?: boolean;
+  /** Styles of the whole row, padding included: a selected row, a diff row, a strip. */
+  fill?: Cls[];
 }
 
-export type Style = Omit<Span, "text">;
-
-export const s = (text: string, style: Style = {}): Span => ({ text, ...style });
+export const s = (text: string, ...c: Cls[]): Span => (c.length ? { text, c } : { text });
 export const line = (...spans: (Span | string)[]): Line => ({ spans: spans.map((x) => (typeof x === "string" ? { text: x } : x)) });
+export const filled = (fill: Cls[], ...spans: (Span | string)[]): Line => ({ ...line(...spans), fill });
 export const blank = (): Line => ({ spans: [] });
+/** A key as a chip: ` Esc `. */
+export const key = (k: string): Span => s(` ${k} `, "key");
 
 export function width(text: string): number {
   return Bun.stringWidth(text);
 }
 
-export function plain(l: Line): string {
-  return l.spans.map((x) => x.text).join("");
+export function spansWidth(spans: Span[]): number {
+  return spans.reduce((n, x) => n + width(x.text), 0);
+}
+
+export function plain(l: Line | Span[]): string {
+  return ("spans" in l ? l.spans : l).map((x) => x.text).join("");
 }
 
 /** Text as one screen line: tabs to spaces, control characters out. */
@@ -59,7 +64,7 @@ export function truncate(text: string, w: number, more = false): string {
 
 /** The spans cut to `w` cells, the last one ending in `…` when something was left out. */
 export function clip(spans: Span[], w: number): Span[] {
-  if (spans.reduce((n, x) => n + width(x.text), 0) <= w) return spans;
+  if (spansWidth(spans) <= w) return spans;
   const out: Span[] = [];
   let left = w;
   for (const x of spans) {
@@ -75,13 +80,20 @@ export function clip(spans: Span[], w: number): Span[] {
   return out;
 }
 
-/** Spans on the left, spans on the right, filling `w` cells; the left side gives way first. */
+/** The line as exactly `w` cells: cut with `…`, or padded in the row's own styles. */
+export function fit(l: Line, w: number): Span[] {
+  const spans = clip(l.spans, w).map((x) => (l.fill ? { text: x.text, c: [...l.fill, ...(x.c ?? [])] } : x));
+  const used = spansWidth(spans);
+  if (used < w) spans.push({ text: " ".repeat(w - used), ...(l.fill ? { c: l.fill } : {}) });
+  return spans;
+}
+
+/** Spans on the left, spans on the right, filling `w` cells with at least one space between; the left side gives way. */
 export function spread(left: Span[], right: Span[], w: number): Span[] {
-  const rw = right.reduce((n, x) => n + width(x.text), 0);
+  const rw = spansWidth(right);
   if (rw >= w) return clip(right, w);
-  const l = clip(left, w - rw - 1);
-  const lw = l.reduce((n, x) => n + width(x.text), 0);
-  return [...l, { text: " ".repeat(w - lw - rw) }, ...right];
+  const l = clip(left, Math.max(0, w - rw - 1));
+  return [...l, { text: " ".repeat(Math.max(1, w - spansWidth(l) - rw)) }, ...right];
 }
 
 /** Words of `text` in lines of at most `w` cells; a word longer than a line is broken. Newlines stay. */
@@ -118,6 +130,21 @@ export function wrap(text: string, w: number): string[] {
     }
     out.push(cur.trimEnd());
   }
+  return out;
+}
+
+/** Text cut into pieces of at most `w` cells, as code wraps: no word breaks, spaces kept. */
+export function chop(text: string, w: number): string[] {
+  const out: string[] = [];
+  let cur = "";
+  for (const ch of text) {
+    if (width(cur + ch) > Math.max(1, w)) {
+      out.push(cur);
+      cur = "";
+    }
+    cur += ch;
+  }
+  out.push(cur);
   return out;
 }
 

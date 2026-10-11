@@ -1,76 +1,84 @@
-import { BoxRenderable, RGBA, TextareaRenderable, type CliRenderer } from "@opentui/core";
+import { RGBA, TextareaRenderable, type CliRenderer } from "@opentui/core";
+import type { Rect } from "./render.ts";
+import { BG, FG } from "./style.ts";
 
-/** The rows the composer takes at the bottom of a screen this high, its border included. */
-export function composerHeight(rows: number): number {
-  return Math.max(5, Math.min(12, Math.floor(rows / 3)));
-}
-
-/** A multi-line text field over the bottom of the page, above the footer; hidden while nobody writes. */
+/** The composer's text field, laid over the box the frame draws for it; hidden while nobody writes. */
 export class ComposerView {
-  private readonly box: BoxRenderable;
   private readonly field: TextareaRenderable;
   private changed: ((text: string) => void) | null = null;
+  private rect: Rect | null = null;
+  private shown = false;
 
-  constructor(private readonly renderer: CliRenderer) {
-    this.box = new BoxRenderable(renderer, {
+  constructor(renderer: CliRenderer) {
+    this.field = new TextareaRenderable(renderer, {
       id: "composer",
       position: "absolute",
       left: 0,
-      bottom: 1,
-      width: "100%",
-      height: composerHeight(renderer.height),
+      top: 0,
+      width: 10,
+      height: 3,
       zIndex: 10,
-      border: true,
-      borderStyle: "rounded",
-      borderColor: RGBA.fromIndex(6),
-      backgroundColor: RGBA.defaultBackground(),
-      titleColor: RGBA.fromIndex(6),
       visible: false,
-      paddingLeft: 1,
-      paddingRight: 1,
-    });
-    this.field = new TextareaRenderable(renderer, {
-      id: "composer-text",
-      width: "100%",
-      flexGrow: 1,
       wrapMode: "word",
-      textColor: RGBA.defaultForeground(),
-      focusedTextColor: RGBA.defaultForeground(),
-      backgroundColor: RGBA.defaultBackground(),
-      focusedBackgroundColor: RGBA.defaultBackground(),
-      placeholderColor: RGBA.fromIndex(8),
+      textColor: RGBA.fromHex(FG),
+      focusedTextColor: RGBA.fromHex(FG),
+      backgroundColor: RGBA.fromHex(BG),
+      focusedBackgroundColor: RGBA.fromHex(BG),
+      placeholderColor: RGBA.fromHex("#7f8b85"),
       // A blinking cursor would draw frames while nothing happens.
       cursorStyle: { style: "block", blinking: false },
       onContentChange: () => this.changed?.(this.field.plainText),
     });
-    this.box.add(this.field);
-    renderer.root.add(this.box);
-    renderer.on("resize", (_w: number, h: number) => (this.box.height = composerHeight(h)));
+    renderer.root.add(this.field);
   }
 
   get open(): boolean {
-    return this.box.visible;
+    return this.shown;
   }
 
   get text(): string {
     return this.field.plainText;
   }
 
-  show(title: string, placeholder: string, text: string, changed: (text: string) => void): void {
+  show(placeholder: string, text: string, changed: (text: string) => void): void {
     this.changed = null;
-    this.box.title = ` ${title} `;
     this.field.placeholder = placeholder;
     this.field.setText(text);
     this.field.gotoBufferEnd();
     this.changed = changed;
-    this.box.visible = true;
+    this.shown = true;
+    this.rect = null;
     this.field.focus();
   }
 
   hide(): void {
     this.changed = null;
     this.field.blur();
-    this.box.visible = false;
+    this.field.visible = false;
+    this.shown = false;
+    this.rect = null;
+  }
+
+  /** Moves the field onto the box; true when it moved, so the frame is drawn again with it in place. */
+  place(r: Rect | null): boolean {
+    if (!this.open) return false;
+    if (!r) {
+      if (!this.rect) return false;
+      this.field.visible = false;
+      this.rect = null;
+      return true;
+    }
+    const same = this.rect && this.rect.x === r.x && this.rect.y === r.y && this.rect.w === r.w && this.rect.h === r.h;
+    if (same) return false;
+    this.rect = r;
+    this.field.visible = true;
+    this.field.left = r.x;
+    this.field.top = r.y;
+    this.field.width = r.w;
+    this.field.height = r.h;
+    // focus does not take on a hidden renderable
+    this.field.focus();
+    return true;
   }
 
   /** Takes back the `j` just typed when a second `j` turns the pair into Esc. */
