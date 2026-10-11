@@ -317,7 +317,7 @@ function threadPanes(v: ViewState, cols: 1 | 2 | 3, widths: number[], height: nu
   return { panes: [{ w, title: threadTitle(d, !narrow), right, lines: t.lines, focus: focusThread }], box: t.box ? { pane: 0, ...t.box } : null };
 }
 
-function roundTab(v: ViewState, w: number, height: number, top: number): { rows: Row[]; box: Rect | null; over: Row[][] } {
+function roundTab(v: ViewState, w: number, height: number, top: number): { rows: Row[]; box: Rect | null } {
   const cols = columnsFor(w);
   v.geom.columns = cols;
   const listW = Math.min(w - 40, Math.max(40, Math.min(Math.floor(w * 0.3), listWidth(v.data, v.filter))));
@@ -326,7 +326,7 @@ function roundTab(v: ViewState, w: number, height: number, top: number): { rows:
     let rows = pane(t.panes[0]!, height);
     const box = t.box ? { x: 1 + t.box.dx, y: top + 1 + t.box.dy, w: t.box.w, h: t.box.h } : null;
     if (v.listOpen) rows = overlay(rows, pane(listPane(v, Math.min(w - 4, Math.max(40, Math.floor(w * 0.58))), height, true), height), 0, 0);
-    return { rows, box: v.listOpen ? null : box, over: [] };
+    return { rows, box: v.listOpen ? null : box };
   }
   const list = listPane(v, listW, height, v.focus === "list");
   const rest = w - listW;
@@ -335,7 +335,7 @@ function roundTab(v: ViewState, w: number, height: number, top: number): { rows:
   const all = [list, ...t.panes];
   const xs = all.map((_, i) => all.slice(0, i).reduce((n, p) => n + p.w, 0));
   const box = t.box ? { x: xs[t.box.pane + 1]! + 1 + t.box.dx, y: top + 1 + t.box.dy, w: t.box.w, h: t.box.h } : null;
-  return { rows: hcat(all.map((p) => pane(p, height))), box, over: [] };
+  return { rows: hcat(all.map((p) => pane(p, height))), box };
 }
 
 // --- the Drafts tab
