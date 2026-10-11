@@ -22,10 +22,12 @@
   "dependencies": {
     "@opentui/core": "0.5.16",
     "@pierre/diffs": "1.4.3",
+    "@pierre/theme": "2.0.0",
     "@preact/signals": "2.11.2",
     "diff": "9.0.0",
     "markdown-it": "15.0.2",
-    "preact": "10.29.8"
+    "preact": "10.29.8",
+    "shiki": "4.4.3"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "20.14.5",

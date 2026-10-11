@@ -1,0 +1,212 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`unified at 80 cells: removed lines above added ones, line numbers on both sides, the card under the thread's last line 1`] = `
+"
+▾ src/auth.ts                                                         [ ] viewed
+  1    - const KEY = process.env.API_KEY ?? "";
+     1 + import { timingSafeEqual } from "node:crypto";
+     2 +
+     3 + const KEY = Buffer.from(process.env.API_KEY ?? "");
+  2  4
+  3  5   export function authorized(req: Request): boolean {
+  4    -   const given = req.headers.get("x-api-key") ?? "";
+  5    -   return given === KEY;
+▌    6 +   const given = Buffer.from(req.headers.get("x-api-key") ?? "");
+▌    7 +   return given.length === KEY.length && timingSafeEqual(given, KEY);
+         ▲ #1  your turn  a message
+  6  8   }
+▾ src/db.ts                                                           [ ] viewed
+     1 + import { Database } from "bun:sqlite";
+     2 +
+     3 + export const db = new Database("limits.db");
+     4 + db.run("create table if not exists hits (key text, at int, a_rather_lon
+         g_column_name_to_wrap text, another_one int)");
+         ▲ #3  your turn  a message
+
+
+
+
+"
+`;
+
+exports[`split once each side gets 72 cells: the old line left of the new one 1`] = `
+"
+▾ src/auth.ts                                                                                                                                                   [ ] viewed
+  1 - const KEY = process.env.API_KEY ?? "";                                        │  1 + import { timingSafeEqual } from "node:crypto";
+                                                                                    │  2 +
+                                                                                    │  3 + const KEY = Buffer.from(process.env.API_KEY ?? "");
+  2                                                                                 │  4
+  3   export function authorized(req: Request): boolean {                           │  5   export function authorized(req: Request): boolean {
+  4 -   const given = req.headers.get("x-api-key") ?? "";                           │▌ 6 +   const given = Buffer.from(req.headers.get("x-api-key") ?? "");
+  5 -   return given === KEY;                                                       │▌ 7 +   return given.length === KEY.length && timingSafeEqual(given, KEY);
+      ▲ #1  your turn  a message
+  6   }                                                                             │  8   }
+▾ src/db.ts                                                                                                                                                     [ ] viewed
+                                                                                    │  1 + import { Database } from "bun:sqlite";
+                                                                                    │  2 +
+                                                                                    │  3 + export const db = new Database("limits.db");
+                                                                                    │  4 + db.run("create table if not exists hits (key text, at int, a_rather_long_column
+                                                                                    │      _name_to_wrap text, another_one int)");
+      ▲ #3  your turn  a message
+
+
+
+"
+`;
+
+exports[`wrap breaks a long line under its gutter; without wrap it is cut with › and scrolls sideways 1`] = `
+"
+▾ src/auth.ts                                               [ ] viewed
+  1    - const KEY = process.env.API_KEY ?? "";
+     1 + import { timingSafeEqual } from "node:crypto";
+     2 +
+     3 + const KEY = Buffer.from(process.env.API_KEY ?? "");
+  2  4
+  3  5   export function authorized(req: Request): boolean {
+  4    -   const given = req.headers.get("x-api-key") ?? "";
+  5    -   return given === KEY;
+▌    6 +   const given = Buffer.from(req.headers.get("x-api-key") ?? "
+         ");
+▌    7 +   return given.length === KEY.length && timingSafeEqual(given
+         , KEY);
+         ▲ #1  your turn  a message
+  6  8   }
+▾ src/db.ts                                                 [ ] viewed
+     1 + import { Database } from "bun:sqlite";
+     2 +
+     3 + export const db = new Database("limits.db");
+     4 + db.run("create table if not exists hits (key text, at int, a_
+         rather_long_column_name_to_wrap text, another_one int)");
+         ▲ #3  your turn  a message
+
+
+
+
+
+
+
+
+"
+`;
+
+exports[`wrap breaks a long line under its gutter; without wrap it is cut with › and scrolls sideways 2`] = `
+"
+▾ src/auth.ts                                               [ ] viewed
+  1    - const KEY = process.env.API_KEY ?? "";
+     1 + import { timingSafeEqual } from "node:crypto";
+     2 +
+     3 + const KEY = Buffer.from(process.env.API_KEY ?? "");
+  2  4
+  3  5   export function authorized(req: Request): boolean {
+  4    -   const given = req.headers.get("x-api-key") ?? "";
+  5    -   return given === KEY;
+▌    6 +   const given = Buffer.from(req.headers.get("x-api-key") ?? ›
+▌    7 +   return given.length === KEY.length && timingSafeEqual(give›
+         ▲ #1  your turn  a message
+  6  8   }
+▾ src/db.ts                                                 [ ] viewed
+     1 + import { Database } from "bun:sqlite";
+     2 +
+     3 + export const db = new Database("limits.db");
+     4 + db.run("create table if not exists hits (key text, at int, a›
+         ▲ #3  your turn  a message
+
+
+
+
+
+
+
+
+
+
+
+"
+`;
+
+exports[`cards open and closed: the open card is taller and pushes the lines below it down 1`] = `
+"
+▾ src/auth.ts                                                         [ ] viewed
+  1    - const KEY = process.env.API_KEY ?? "";
+     1 + import { timingSafeEqual } from "node:crypto";
+     2 +
+     3 + const KEY = Buffer.from(process.env.API_KEY ?? "");
+  2  4
+  3  5   export function authorized(req: Request): boolean {
+  4    -   const given = req.headers.get("x-api-key") ?? "";
+  5    -   return given === KEY;
+▌    6 +   const given = Buffer.from(req.headers.get("x-api-key") ?? "");
+▌    7 +   return given.length === KEY.length && timingSafeEqual(given, KEY);
+         ▲ #1  your turn  a message
+  6  8   }
+▾ src/db.ts                                                           [ ] viewed
+     1 + import { Database } from "bun:sqlite";
+     2 +
+     3 + export const db = new Database("limits.db");
+     4 + db.run("create table if not exists hits (key text, at int, a_rather_lon
+         g_column_name_to_wrap text, another_one int)");
+         ▲ #3  your turn  a message
+
+
+
+
+
+
+
+
+
+
+"
+`;
+
+exports[`cards open and closed: the open card is taller and pushes the lines below it down 2`] = `
+"
+▾ src/auth.ts                                                         [ ] viewed
+  1    - const KEY = process.env.API_KEY ?? "";
+     1 + import { timingSafeEqual } from "node:crypto";
+     2 +
+     3 + const KEY = Buffer.from(process.env.API_KEY ?? "");
+  2  4
+  3  5   export function authorized(req: Request): boolean {
+  4    -   const given = req.headers.get("x-api-key") ?? "";
+  5    -   return given === KEY;
+▌    6 +   const given = Buffer.from(req.headers.get("x-api-key") ?? "");
+▌    7 +   return given.length === KEY.length && timingSafeEqual(given, KEY);
+         ╭─ #1
+         │ a message
+         ╰─
+  6  8   }
+▾ src/db.ts                                                           [ ] viewed
+     1 + import { Database } from "bun:sqlite";
+     2 +
+     3 + export const db = new Database("limits.db");
+     4 + db.run("create table if not exists hits (key text, at int, a_rather_lon
+         g_column_name_to_wrap text, another_one int)");
+         ▲ #3  your turn  a message
+
+
+
+
+
+
+
+
+"
+`;
+
+exports[`a folded file is its header; the cursor and the view keep their line when a file above folds 1`] = `
+"
+▸ src/auth.ts                                                         [ ] viewed
+▾ src/db.ts                                                           [ ] viewed
+     1 + import { Database } from "bun:sqlite";
+     2 +
+     3 + export const db = new Database("limits.db");
+     4 + db.run("create table if not exists hits (key text, at int, a_rather_lon
+         g_column_name_to_wrap text, another_one int)");
+         ▲ #3  your turn  a message
+
+
+
+
+"
+`;

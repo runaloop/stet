@@ -69,6 +69,8 @@ export const LOOKS: Record<Cls, Look> = {
   fk: { bg: FOCUS, fg: BG, bold: true },
   you: { fg: "#79c0ff", bold: true },
   agentc: { fg: "#d2a8ff", bold: true },
+  hunk: { bg: "#141c19" },
+  void: { bg: "#131917" },
 };
 
 /** The classes of a span in order: a later one wins for a colour it sets. */
