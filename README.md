@@ -95,6 +95,7 @@ All commands print JSON when piped or with `--json`, except `stet export`, which
 | `stet init [--base <ref>\|empty]` | start a review for the current branch (done automatically on first use); `--base empty` shows every file as new, e.g. to review a repository's first commit |
 | `stet status` | versions, thread counts, UI URL; `settled`: threads resolved with a message since the agent's latest version |
 | `stet serve [--open] [--stop]` | the web UI; `--open` runs it in the background and opens the browser |
+| `stet tui [--review <id>]` | experimental: review in the terminal, in columns as in the web: the threads, a thread's code and conversation, replies, resolve, drafts and submit. It talks to the same server as the web UI, starting it when none of this build runs |
 | `stet version create [--label] [--at <commit>] [--guide <file>]` | snapshot the working tree (or the index) as the next version, or make a commit one; `--guide` (experimental) stores the agent's guide to it: numbered steps in Markdown, each ending in its lines (`path:a-b`, or a path for the file's whole change), shown in the Changes page's Guide tab. A path or range the version does not have refuses the version |
 | `stet guide [N]` | print a version's guide (the latest version's by default) |
 | `stet versions diff <a> <b>` | files and thread placements between two refs (`base`, `N`, `latest`, `now`, `empty`, sha) |
