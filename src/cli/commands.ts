@@ -116,6 +116,7 @@ ${areas ? "              --region <x,y,w,h> in place of --range: an area of an i
 `,
     Tools: `  serve [--port <n>] [--open] [--print-url]     local web UI; --open (or --detach) starts it on its own and
         [--detach] [--foreground] [--stop]      returns, so it outlives the shell; --stop stops it
+  tui [--review <id>]                           review in the terminal: threads, replies, drafts, submit
   open <id> [--print]                           jump to the editor at the thread
   open [<id>] --browser [--print]               the thread, or without one the review, in the browser;
                                                 starts the server when none of this build runs
@@ -591,6 +592,25 @@ const commands: Record<string, Command> = {
         branch: str(p, "branch"),
         json: bool(p, "json"),
       });
+    },
+  },
+
+  tui: {
+    options: { review: { type: "string" } },
+    async run(p) {
+      if (!process.stdin.isTTY || !process.stdout.isTTY) throw usage("stet tui needs a terminal");
+      const id = str(p, "review");
+      const ctx = await context(p, "reviewer");
+      try {
+        const review = id ? reviewById(ctx.store, int(id, "--review")) : await requireReview(ctx, str(p, "branch"));
+        const { prepareNative } = await import("../tui/native.ts");
+        const native = prepareNative();
+        if (!native.ok) throw new StetError(native.message, 1, "native");
+        const { runTui } = await import("../tui/app.ts");
+        return await runTui(ctx, review.id);
+      } finally {
+        ctx.store.close();
+      }
     },
   },
 
