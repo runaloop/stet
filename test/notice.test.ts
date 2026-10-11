@@ -21,6 +21,8 @@ test("NOTICE lists every package bundled into the binary", async () => {
     minify: true,
     splitting: true,
     metafile: true,
+    // as `bun build --compile` does: OpenTUI imports only the native package of the platform it runs on
+    define: { "process.platform": JSON.stringify(process.platform), "process.arch": JSON.stringify(process.arch) },
   });
   expect(build.success).toBe(true);
   const bundled = new Set<string>();

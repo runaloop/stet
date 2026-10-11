@@ -85,6 +85,11 @@ mdurl                         Copyright (c) 2015 Vitaly Puzrin, Alex Kocharin.
 linkify-it                    Copyright (c) 2015 Vitaly Puzrin.
 uc.micro                      Copyright Mathias Bynens <https://mathiasbynens.be/>
 punycode.js                   Copyright Mathias Bynens <https://mathiasbynens.be/>
+@opentui/core, @opentui/core-darwin-arm64, @opentui/core-darwin-x64, @opentui/core-linux-arm64,
+@opentui/core-linux-arm64-musl, @opentui/core-linux-x64, @opentui/core-linux-x64-musl,
+@opentui/core-win32-arm64, @opentui/core-win32-x64
+                              Copyright (c) 2025 opentui
+web-tree-sitter               Copyright (c) 2018-2024 Max Brunsfeld
 
 The TextMate grammars in @shikijs/langs and the color themes in @shikijs/themes are collected from
 many upstream projects, each under its own license; the list with sources and licenses is at
