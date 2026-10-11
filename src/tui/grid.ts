@@ -49,8 +49,7 @@ export function hcat(cols: Row[][]): Row[] {
 
 interface Cell {
   ch: string;
-  c?: Cls[];
-  hit?: string;
+  span: Span;
   /** 0 for the right half of a wide character. */
   w: number;
 }
@@ -61,20 +60,21 @@ function cells(row: Row): Cell[] {
     for (const ch of x.text) {
       const cw = width(ch);
       if (cw === 0) continue;
-      out.push({ ch, c: x.c, hit: x.hit, w: cw });
-      if (cw === 2) out.push({ ch: "", c: x.c, hit: x.hit, w: 0 });
+      out.push({ ch, span: x, w: cw });
+      if (cw === 2) out.push({ ch: "", span: x, w: 0 });
     }
   }
   return out;
 }
 
+const sameLook = (a: Span, b: Span) => (a.c?.join(" ") ?? "") === (b.c?.join(" ") ?? "") && a.hit === b.hit && a.fg === b.fg && a.fs === b.fs;
+
 function spansOf(list: Cell[]): Row {
   const out: Row = [];
   for (const cell of list) {
     const last = out[out.length - 1];
-    const key = cell.c?.join(" ") ?? "";
-    if (last && (last.c?.join(" ") ?? "") === key && last.hit === cell.hit) last.text += cell.ch;
-    else out.push({ text: cell.ch, ...(cell.c ? { c: cell.c } : {}), ...(cell.hit ? { hit: cell.hit } : {}) });
+    if (last && sameLook(last, cell.span)) last.text += cell.ch;
+    else out.push({ ...cell.span, text: cell.ch });
   }
   return out;
 }

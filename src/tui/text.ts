@@ -12,6 +12,10 @@ export interface Span {
   c?: Cls[];
   /** What a click on it does: `thread:12`, `side:files`, `key:<Space>ur`, `focus:conv`; see `app.ts`. */
   hit?: string;
+  /** A syntax colour, over the classes' own: `#rrggbb`. */
+  fg?: string;
+  /** Its font style: 1 italic, 2 bold, 4 underline. */
+  fs?: number;
 }
 
 export interface Line {
@@ -106,7 +110,7 @@ export function fit(l: Line, w: number): Span[] {
   const spans = clip(l.spans, w).map((x) => {
     const c = l.fill ? [...l.fill, ...(x.c ?? [])] : x.c;
     const hit = x.hit ?? l.hit;
-    return { text: x.text, ...(c ? { c } : {}), ...(hit ? { hit } : {}) };
+    return { text: x.text, ...(c ? { c } : {}), ...(hit ? { hit } : {}), ...(x.fg ? { fg: x.fg } : {}), ...(x.fs ? { fs: x.fs } : {}) };
   });
   const used = spansWidth(spans);
   if (used < w) spans.push({ text: " ".repeat(w - used), ...(l.fill ? { c: l.fill } : {}), ...(l.hit ? { hit: l.hit } : {}) });

@@ -1,5 +1,6 @@
-import { RGBA, TextareaRenderable, type CliRenderer } from "@opentui/core";
+import { TextareaRenderable, type CliRenderer } from "@opentui/core";
 import type { Rect } from "./render.ts";
+import { color } from "./screen.ts";
 import { BG, FG } from "./style.ts";
 
 /** The composer's text field, laid over the box the frame draws for it; hidden while nobody writes. */
@@ -20,11 +21,11 @@ export class ComposerView {
       zIndex: 10,
       visible: false,
       wrapMode: "word",
-      textColor: RGBA.fromHex(FG),
-      focusedTextColor: RGBA.fromHex(FG),
-      backgroundColor: RGBA.fromHex(BG),
-      focusedBackgroundColor: RGBA.fromHex(BG),
-      placeholderColor: RGBA.fromHex("#7f8b85"),
+      textColor: color(FG),
+      focusedTextColor: color(FG),
+      backgroundColor: color(BG),
+      focusedBackgroundColor: color(BG),
+      placeholderColor: color("#7f8b85"),
       // A blinking cursor would draw frames while nothing happens.
       cursorStyle: { style: "block", blinking: false },
       onContentChange: () => this.changed?.(this.field.plainText),

@@ -1,7 +1,8 @@
 import { Renderable, RGBA, TextAttributes, type OptimizedBuffer, type RenderContext } from "@opentui/core";
+import { colorMode, nearest256, type ColorMode } from "./diff/colors.ts";
 import type { Row } from "./grid.ts";
 import { look } from "./style.ts";
-import { width, type Cls } from "./text.ts";
+import { width, type Span } from "./text.ts";
 
 interface Paint {
   fg: RGBA;
@@ -9,17 +10,30 @@ interface Paint {
   attrs: number;
 }
 
+const colors = new Map<string, RGBA>();
+
+/** A colour of ours as the terminal takes it. */
+export function color(hex: string, mode: ColorMode = colorMode()): RGBA {
+  const k = `${mode}${hex}`;
+  let c = colors.get(k);
+  if (!c) colors.set(k, (c = mode === "256" ? RGBA.fromIndex(nearest256(hex)) : RGBA.fromHex(hex)));
+  return c;
+}
+
 const paints = new Map<string, Paint>();
 
-function paintOf(c: readonly Cls[] | undefined): Paint {
-  const k = c?.join(" ") ?? "";
+/** How a span is painted: its classes' look, its syntax colour over it, in the colours the terminal has. */
+export function paintOf(x: Pick<Span, "c" | "fg" | "fs">, mode: ColorMode): Paint {
+  const k = `${mode} ${x.c?.join(" ") ?? ""} ${x.fg ?? ""} ${x.fs ?? 0}`;
   let p = paints.get(k);
   if (!p) {
-    const l = look(c);
+    const l = look(x.c);
+    const fs = x.fs ?? 0;
     p = {
-      fg: RGBA.fromHex(l.fg),
-      bg: RGBA.fromHex(l.bg),
-      attrs: (l.bold ? TextAttributes.BOLD : 0) | (l.italic ? TextAttributes.ITALIC : 0) | (l.underline ? TextAttributes.UNDERLINE : 0),
+      fg: color(x.fg ?? l.fg, mode),
+      bg: color(l.bg, mode),
+      attrs:
+        (l.bold || fs & 2 ? TextAttributes.BOLD : 0) | (l.italic || fs & 1 ? TextAttributes.ITALIC : 0) | (l.underline || fs & 4 ? TextAttributes.UNDERLINE : 0),
     };
     paints.set(k, p);
   }
@@ -60,12 +74,15 @@ function drawText(buf: OptimizedBuffer, text: string, x: number, y: number, p: P
 export class Screen extends Renderable {
   /** Frames painted, for the idle check. */
   frames = 0;
+  readonly mode: ColorMode;
 
   constructor(
     ctx: RenderContext,
     private readonly rows: (w: number, h: number) => Row[],
+    mode: ColorMode = colorMode(),
   ) {
     super(ctx, { id: "screen", width: "100%", height: "100%", position: "absolute", left: 0, top: 0, zIndex: 0 });
+    this.mode = mode;
   }
 
   protected renderSelf(buf: OptimizedBuffer): void {
@@ -73,12 +90,12 @@ export class Screen extends Renderable {
     const w = this.width;
     const h = this.height;
     const rows = this.rows(w, h);
-    buf.fillRect(0, 0, w, h, paintOf(undefined).bg);
+    buf.fillRect(0, 0, w, h, paintOf({}, this.mode).bg);
     rows.slice(0, h).forEach((row, y) => {
       let x = 0;
       for (const span of row) {
         if (x >= w) break;
-        x = drawText(buf, span.text, x, y, paintOf(span.c));
+        x = drawText(buf, span.text, x, y, paintOf(span, this.mode));
       }
     });
   }
