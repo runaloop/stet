@@ -15,6 +15,8 @@ const ACCEPTED_SEMGREP: { rule: string; path: string; why: string }[] = [
   { rule: "node_logic_bypass", path: "web/components/Blame.tsx", why: "picks which compare a blame link opens from the origin the server sent; navigation in the reviewer's own page, not an access decision" },
   { rule: "node_insecure_random_generator", path: "scripts/guide/lib.ts", why: "picks a debugging port for a local headless Firefox that takes the guide screenshots; not a secret" },
   { rule: "node_timing_attack", path: "web/state.ts", why: "compares location.hash, not a secret" },
+  { rule: "node_timing_attack", path: "src/tui/app.ts", why: "compares the key tokens typed in the terminal UI, not a secret" },
+  { rule: "regex_dos", path: "src/tui/keys/normalize.ts", why: "/[a-z]/, /^F\\d{1,2}$/ and /^\\p{L}$/u on the name of one key: linear, no nested quantifiers" },
 ];
 
 type Outcome = "ok" | "fail" | "skipped";
