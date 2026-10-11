@@ -7,7 +7,7 @@ export type Tab = "round" | "changes" | "drafts";
 
 function tabs(d: Data, tab: Tab, narrow: boolean): Span[] {
   const turn = d.status?.counts.needsReviewer ?? 0;
-  const one = (id: Tab, name: string) => (id === tab ? s(` ${name} `, "tab") : s(` ${name} `));
+  const one = (id: Tab, name: string): Span => ({ ...(id === tab ? s(` ${name} `, "tab") : s(` ${name} `)), hit: `tab:${id}` });
   const out = [one("round", `Round${turn ? ` ${turn}` : ""}`), s(" "), one("changes", "Changes"), s(" "), one("drafts", `Drafts${d.drafts.length ? ` ${d.drafts.length}` : ""}`)];
   return narrow ? out : [...out, s("  "), key("?"), s(" ")];
 }

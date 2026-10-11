@@ -1,5 +1,5 @@
 import { writeFileSync } from "node:fs";
-import { createCliRenderer, type CliRenderer, type KeyEvent } from "@opentui/core";
+import { createCliRenderer, type CliRenderer, type KeyEvent, type MouseEvent } from "@opentui/core";
 import { clientApi, type Api } from "../client/api.ts";
 import { subscribe, type Live, type Subscription } from "../client/live.ts";
 import { connect } from "../client/server.ts";
@@ -10,9 +10,11 @@ import { codeViews } from "./code.ts";
 import { ComposerView } from "./composer.ts";
 import { KeyReader } from "./keys/input.ts";
 import { KeyMatcher, rowsIn } from "./keys/match.ts";
-import { KEYS, type Scope } from "./keys/table.ts";
+import { KEYS, tokens, type Scope } from "./keys/table.ts";
 import { ordered, threadGroups } from "./model.ts";
-import { helpLines, initialView, render, scopeOf, type Writing } from "./render.ts";
+import { columnOf, helpFor, initialView, render, scopeOf, type Writing } from "./render.ts";
+import { hitAt, hitsOf, type Hit } from "./grid.ts";
+import { fileOf, type Side } from "./views/list.ts";
 import { Screen } from "./screen.ts";
 import { plural } from "./text.ts";
 import { Texts, textsPath } from "./texts.ts";
@@ -24,6 +26,8 @@ const RELOAD_MS = 150;
 const PREVIEW_MS = 60;
 const JJ_MS = 300;
 const CACHE = 24;
+const LANDED_MS = 1500;
+const WHEEL_ROWS = 3;
 
 /** A file the frame count is written to after every frame, for the idle check of the tests. */
 const FRAMES = process.env.STET_TUI_FRAMES;
@@ -45,6 +49,8 @@ export class App {
   private previewTimer: ReturnType<typeof setTimeout> | undefined;
   private choiceDone: ((value: string | null) => void) | null = null;
   private lastJ = 0;
+  private hits: Hit[] = [];
+  private landedTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly keys = new KeyReader();
   private readonly matcher = new KeyMatcher(KEYS, (row) => this.run(row.id));
   readonly screen: Screen;
@@ -66,6 +72,7 @@ export class App {
         const f = render(this.v, w, h);
         if (this.composer.place(f.box)) this.later(0, () => this.redraw());
         if (FRAMES) writeFileSync(FRAMES, String(this.screen.frames));
+        this.hits = hitsOf(f.rows);
         return f.rows;
       } catch (e) {
         this.end({ error: e });
@@ -82,6 +89,16 @@ export class App {
       }
     });
     renderer.on("resize", () => this.redraw());
+    this.screen.onMouseDown = (e: MouseEvent) => this.guarded(() => this.click(e));
+    this.screen.onMouseScroll = (e: MouseEvent) => this.guarded(() => this.wheel(e));
+  }
+
+  private guarded(fn: () => void): void {
+    try {
+      fn();
+    } catch (e) {
+      this.end({ error: e });
+    }
   }
 
   async start(): Promise<void> {
@@ -97,7 +114,7 @@ export class App {
   }
 
   async close(): Promise<void> {
-    for (const t of [...this.timers, this.toastTimer, this.readTimer, this.reloadTimer, this.previewTimer]) clearTimeout(t);
+    for (const t of [...this.timers, this.toastTimer, this.readTimer, this.reloadTimer, this.previewTimer, this.landedTimer]) clearTimeout(t);
     this.matcher.reset();
     this.texts.flush();
     await this.sub?.close();
@@ -207,7 +224,18 @@ export class App {
     if (first && latest && latest.role === "agent" && latest.number > 1 && (cursors?.reviewed?.version ?? 0) < latest.number) v.banner = latest.number;
     if (v.selected === null || !v.data.threads.some((t) => t.id === v.selected)) v.selected = ordered(v.data, v.filter, null)[0]?.id ?? null;
     if (v.draftSel === null || !v.data.drafts.some((c) => c.id === v.draftSel)) v.draftSel = v.data.drafts[0]?.id ?? null;
-    await Promise.all([this.fetchThread(v.selected), v.tab === "drafts" ? this.fetchThread(this.selectedDraft()?.threadId ?? null) : null]);
+    await Promise.all([this.fetchThread(v.selected), v.tab === "drafts" ? this.fetchThread(this.selectedDraft()?.threadId ?? null) : null, v.files ? this.loadFiles() : null]);
+    this.redraw();
+  }
+
+  /** The review's changed files for the Files tab: from the base to the latest version, or to "now" before one. */
+  private async loadFiles(): Promise<void> {
+    if (!this.api) return;
+    const n = this.v.data.status?.versions ?? 0;
+    const files = await this.guard(this.api.compare(this.review, "base", n ? String(n) : "now"));
+    if (!files || this.ended) return;
+    this.v.files = files;
+    if (!this.v.fileSel || !files.files.some((f) => f.path === this.v.fileSel)) this.v.fileSel = files.files[0]?.path ?? null;
     this.redraw();
   }
 
@@ -265,6 +293,7 @@ export class App {
     const v = this.v;
     if (id === null || id === v.selected) return;
     v.selected = id;
+    v.followList = true;
     v.view = null;
     v.tops.code = v.tops.conv = v.tops.thread = 0;
     const cached = this.cache.get(id);
@@ -281,6 +310,58 @@ export class App {
     if (v.geom.columns === 1) v.listOpen = f === "list";
     this.markReadSoon();
     this.redraw();
+  }
+
+  private setSide(side: Side): void {
+    const v = this.v;
+    if (v.tab !== "round") v.tab = "round";
+    v.side = side;
+    v.followList = true;
+    v.tops.list = 0;
+    if (side === "files") {
+      const here = v.data.threads.find((t) => t.id === v.selected);
+      if (here) v.fileSel = fileOf(here);
+      if (!v.files) void this.loadFiles();
+    }
+    this.focus("list");
+  }
+
+  private filePaths(): string[] {
+    return this.v.files?.files.map((f) => f.path) ?? [];
+  }
+
+  /** Puts the Files cursor on a file; the right side shows its first thread, or what the file is when it has none. */
+  private selectFile(path: string | undefined): void {
+    const v = this.v;
+    if (!path) return;
+    v.fileSel = path;
+    v.followList = true;
+    const first = ordered(v.data, { status: "all", newOnly: false }, null).find((t) => fileOf(t) === path);
+    if (first) this.select(first.id);
+    this.redraw();
+  }
+
+  private moveFile(by: number | "first" | "last"): void {
+    const paths = this.filePaths();
+    if (!paths.length) return;
+    const at = Math.max(0, paths.indexOf(this.v.fileSel ?? ""));
+    this.selectFile(paths[by === "first" ? 0 : by === "last" ? paths.length - 1 : Math.max(0, Math.min(paths.length - 1, at + by))]);
+  }
+
+  /** J and K land in another file: its header row is marked for a moment and a toast names it. */
+  private land(id: number): void {
+    const v = this.v;
+    const t = v.data.threads.find((x) => x.id === id);
+    if (!t) return;
+    const path = fileOf(t);
+    const n = ordered(v.data, v.filter, id).filter((x) => fileOf(x) === path).length;
+    v.landed = path;
+    clearTimeout(this.landedTimer);
+    this.landedTimer = setTimeout(() => {
+      v.landed = null;
+      this.redraw();
+    }, LANDED_MS);
+    this.say(`${path} · ${plural(n, "thread")}`);
   }
 
   private listIds(): number[] {
@@ -372,6 +453,23 @@ export class App {
         return this.moveList(Math.max(1, Math.floor(half / 2)));
       case "list.pageUp":
         return this.moveList(-Math.max(1, Math.floor(half / 2)));
+      case "files.down":
+        return this.moveFile(1);
+      case "files.up":
+        return this.moveFile(-1);
+      case "files.first":
+        return this.moveFile("first");
+      case "files.last":
+        return this.moveFile("last");
+      case "files.open": {
+        const path = v.fileSel;
+        if (!path || !v.data.threads.some((t) => fileOf(t) === path)) return this.say("no threads in this file");
+        return this.focus("code");
+      }
+      case "side.files":
+        return this.setSide("files");
+      case "side.threads":
+        return this.setSide("threads");
       case "list.open":
         if (v.selected !== null) this.focus("code");
         return;
@@ -387,8 +485,9 @@ export class App {
       case "thread.nextFile":
       case "thread.prevFile": {
         const next = stepFile(threadGroups(v.data, v.filter, cur), cur, id.endsWith("nextFile") ? 1 : -1);
-        if (next === cur) return this.say(id.endsWith("nextFile") ? "the last file" : "the first file");
-        return this.select(next);
+        if (next === cur || next === null) return this.say(id.endsWith("nextFile") ? "the last file" : "the first file");
+        this.select(next);
+        return this.land(next);
       }
       case "unread.next":
       case "unread.prev": {
@@ -691,23 +790,95 @@ export class App {
     this.redraw();
   }
 
+  // --- mouse
+
+  private click(e: MouseEvent): void {
+    if (e.button !== 0) return;
+    const hit = hitAt(this.hits, e.x, e.y);
+    const v = this.v;
+    if (v.help) {
+      if (!hit?.startsWith("focus:help") && !hit?.startsWith("key:")) v.help = null;
+      else if (hit.startsWith("key:")) return this.runKeys(hit.slice(4));
+      return this.redraw();
+    }
+    if (!hit) return;
+    const [kind, arg = ""] = [hit.slice(0, hit.indexOf(":")), hit.slice(hit.indexOf(":") + 1)];
+    if (kind === "key") return this.runKeys(arg);
+    // While a box asks or the composer is open, only its own chips answer a click.
+    if (v.choice || this.composer.open) return;
+    this.matcher.reset();
+    this.syncPrefix();
+    if (kind === "tab") return this.setTab(arg as "round" | "changes" | "drafts");
+    if (kind === "side") return this.setSide(arg as Side);
+    if (kind === "thread") {
+      if (v.focus !== "list" || (v.geom.columns === 1 && !v.listOpen)) this.focus("list");
+      return this.select(Number(arg));
+    }
+    if (kind === "file") {
+      this.focus("list");
+      return this.selectFile(arg);
+    }
+    if (kind === "draft") {
+      v.draftSel = Number(arg);
+      return this.showDraft();
+    }
+    if (kind === "focus" && v.tab === "round") {
+      if (arg === "list" || arg === "code" || arg === "conv") {
+        if (arg !== "list" && v.selected === null) return;
+        this.focus(arg === "conv" && v.geom.columns < 3 ? "code" : arg);
+      }
+    }
+  }
+
+  /** The wheel scrolls the column under the pointer, whichever has the focus. */
+  private wheel(e: MouseEvent): void {
+    const dir = e.scroll?.direction;
+    if (dir !== "up" && dir !== "down") return;
+    const by = (dir === "down" ? 1 : -1) * WHEEL_ROWS;
+    const v = this.v;
+    // The pane is named by its left border: the first `focus:` target left of the pointer on its row.
+    let pane: Hit | null = null;
+    for (const h of this.hits) if (h.y === e.y && h.x0 <= e.x && h.hit.startsWith("focus:") && (!pane || h.x0 > pane.x0)) pane = h;
+    const name = pane?.hit.slice(6);
+    const top = (k: keyof typeof v.tops) => (v.tops[k] = Math.max(0, Math.min(v.tops[k], 100_000) + by));
+    if (name === "list") {
+      v.followList = false;
+      top("list");
+    } else if (name === "code") top(v.geom.columns === 3 ? "code" : "thread");
+    else if (name === "conv") top("conv");
+    else if (name === "drafts") top("drafts");
+    else if (name === "draft") top("draft");
+    else if (name === "help") top("help");
+    else return;
+    this.redraw();
+  }
+
+  /** A key chip clicked: its keys run as if typed. */
+  private runKeys(keys: string): void {
+    if (this.composer.open) {
+      const row = rowsIn(KEYS, ["composer"]).find((c) => c.keys === keys)?.row;
+      if (row?.id === "composer.leave") this.leave();
+      else if (row) void this.send(row.id === "composer.now" && this.v.writing?.kind === "reply" ? "now" : "draft");
+      return;
+    }
+    if (this.v.choice && /^[1-9]$/.test(keys)) return this.pick(Number(keys) - 1);
+    if (!this.v.prefix.length || !keys.startsWith(this.v.prefix.join(""))) this.matcher.reset();
+    else keys = keys.slice(this.v.prefix.join("").length);
+    for (const token of tokens(keys)) {
+      const m = this.matcher.feed(token, this.scopes());
+      this.syncPrefix();
+      if ("fire" in m) this.run(m.fire.id);
+    }
+    this.redraw();
+  }
+
   // --- keys
 
   private scopes(): Scope[] {
     const sc = scopeOf(this.v);
-    if (sc === "menu") return [this.lastScope(), "global"];
+    if (sc === "menu") return [columnOf(this.v), "global"];
     if (sc === "help" || sc === "choice" || sc === "composer") return [sc];
     return [sc, "global"];
-  }
-
-  /** The column under the Space menu. */
-  private lastScope(): Scope {
-    const v = this.v;
-    if (v.tab !== "round") return v.tab;
-    const cols = v.geom.columns;
-    if (cols === 1) return v.listOpen ? "list" : "thread";
-    if (v.focus === "list") return "list";
-    return cols === 3 ? v.focus : "thread";
   }
 
   private key(k: KeyEvent): void {
@@ -758,21 +929,7 @@ export class App {
   }
 
   private openHelp(): void {
-    const scope = this.lastScope();
-    const group = (sc: Scope) => {
-      const byId = new Map<string, { keys: string[]; desc: string }>();
-      for (const r of KEYS.filter((x) => x.scope === sc)) {
-        const had = byId.get(r.id);
-        if (had) had.keys.push(...r.keys);
-        else byId.set(r.id, { keys: [...r.keys], desc: r.desc });
-      }
-      return [...byId.values()];
-    };
-    const names: Record<string, string> = { list: "The thread list", code: "The code", conv: "The conversation", thread: "The thread", drafts: "Drafts", changes: "Changes" };
-    this.v.help = helpLines([
-      { title: names[scope] ?? scope, rows: group(scope) },
-      { title: "Everywhere", rows: group("global") },
-    ]);
+    this.v.help = helpFor(columnOf(this.v));
     this.v.tops.help = 0;
     this.redraw();
   }
@@ -780,7 +937,8 @@ export class App {
 
 /** The terminal UI on a review, until q in the list, Ctrl+C or a signal; the terminal is restored on every way out. */
 export async function runTui(ctx: Ctx, review: number): Promise<number> {
-  const renderer = await createCliRenderer({ exitOnCtrlC: true, useMouse: false, autoFocus: false });
+  // Clicks and the wheel only: reporting every move would draw frames while the pointer wanders.
+  const renderer = await createCliRenderer({ exitOnCtrlC: true, useMouse: true, enableMouseMovement: false, autoFocus: false });
   let settle!: (r: { code: number } | { error: unknown }) => void;
   const result = new Promise<{ code: number } | { error: unknown }>((resolve) => (settle = resolve));
   const app = new App(renderer, ctx, review, settle);

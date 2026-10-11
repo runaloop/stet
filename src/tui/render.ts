@@ -2,14 +2,14 @@
  * The whole screen as rows, from the app's state: a pure function, so frames can be tested as text. Columns by width:
  * three from 150 cells (list, code, conversation), two from 100 (list, thread), else one with the list slid over it.
  */
-import type { CommentDto, GitStateDto, ThreadDetail } from "../core/types.ts";
+import type { CommentDto, CompareDto, GitStateDto, ThreadDetail } from "../core/types.ts";
 import { codeLines, nearThread, threadCode, type CodeView } from "./code.ts";
 import { bar, hcat, overlay, pane, type Pane, type Row } from "./grid.ts";
-import { keyLabel } from "./keys/table.ts";
+import { KEYS, keyLabel, type Scope } from "./keys/table.ts";
 import { ordered, type Data, type ListFilter } from "./model.ts";
 import { blank, key, line, plural, s, spansWidth, wrap, type Line, type Span } from "./text.ts";
 import { bannerLine, footerLine, headerLine, type Hint, type Tab, type Toast } from "./views/bars.ts";
-import { LIST_TITLE, listLines, listWidth } from "./views/list.ts";
+import { fileCounts, fileOf, filesLines, listLines, listWidth, sideTitle, type Side } from "./views/list.ts";
 import {
   codePart,
   conversation,
@@ -50,6 +50,15 @@ export interface ViewState {
   focus: Focus;
   /** On a narrow screen: the list slid in over the thread. */
   listOpen: boolean;
+  /** The left column's tab. */
+  side: Side;
+  /** The review's changed files, once the Files tab asked for them. */
+  files: CompareDto | null;
+  fileSel: string | null;
+  /** The file J or K just landed in: its header row is marked for a moment. */
+  landed: string | null;
+  /** The list scrolls to keep the selected thread in sight; the wheel scrolls it freely until the next move. */
+  followList: boolean;
   filter: ListFilter;
   selected: number | null;
   /** The selected thread, once fetched. */
@@ -86,6 +95,11 @@ export function initialView(): ViewState {
     tab: "round",
     focus: "list",
     listOpen: false,
+    side: "threads",
+    files: null,
+    fileSel: null,
+    landed: null,
+    followList: true,
     filter: { status: "open", newOnly: false },
     selected: null,
     detail: null,
@@ -113,21 +127,32 @@ export function initialView(): ViewState {
 export const columnsFor = (w: number): 1 | 2 | 3 => (w >= 150 ? 3 : w >= 100 ? 2 : 1);
 
 /** The scope keys go to: the focused column, the composer, a box over the screen. */
-export function scopeOf(v: ViewState): "list" | "code" | "conv" | "thread" | "drafts" | "changes" | "composer" | "choice" | "help" | "menu" {
+export type Place = "list" | "files" | "search" | "code" | "conv" | "thread" | "drafts" | "changes" | "composer" | "choice" | "help" | "menu";
+
+const listScope = (v: ViewState): "list" | "files" | "search" => (v.side === "threads" ? "list" : v.side);
+
+export function scopeOf(v: ViewState): Place {
   if (v.help) return "help";
   if (v.choice) return "choice";
   if (v.writing) return "composer";
   if (v.prefix[0] === "<Space>") return "menu";
+  return columnOf(v);
+}
+
+/** The column in focus, under any box over it. */
+export function columnOf(v: ViewState): "list" | "files" | "search" | "code" | "conv" | "thread" | "drafts" | "changes" {
   if (v.tab === "drafts") return "drafts";
   if (v.tab === "changes") return "changes";
   const cols = v.geom.columns;
-  if (cols === 1) return v.listOpen ? "list" : "thread";
-  if (v.focus === "list") return "list";
+  if (cols === 1) return v.listOpen ? listScope(v) : "thread";
+  if (v.focus === "list") return listScope(v);
   return cols === 3 ? v.focus : "thread";
 }
 
-const CHIPS: Record<ReturnType<typeof scopeOf>, string> = {
+const CHIPS: Record<Place, string> = {
   list: "THREADS",
+  files: "FILES",
+  search: "SEARCH",
   code: "CODE",
   conv: "CONVERSATION",
   thread: "THREAD",
@@ -139,11 +164,13 @@ const CHIPS: Record<ReturnType<typeof scopeOf>, string> = {
   menu: "MENU",
 };
 
-const HINTS: Record<ReturnType<typeof scopeOf>, Hint[]> = {
-  list: [["j k", "move"], ["Enter", "l", "into the thread"], ["J K", "file"], ["n", "unread"], ["Tab", "column"], ["Space", "menu"], ["?", "keys"], ["q", "quit"]],
-  code: [["j k", "scroll"], ["] t", "[ t", "next / prev thread"], ["n", "unread"], ["Tab", "next column"], ["h", "list"], ["r", "reply"], ["x", "resolve"], ["t", "diff / then / at"], ["Space", "menu"], ["?", "all keys"]],
-  conv: [["j k", "scroll"], ["{ }", "message"], ["r", "reply"], ["x", "resolve"], ["h", "code"], ["] t", "[ t", "next / prev thread"], ["Tab", "next column"], ["Space", "menu"], ["?", "all keys"]],
-  thread: [["j k", "scroll"], ["] t", "[ t", "next / prev thread"], ["n", "unread"], ["h", "list"], ["r", "reply"], ["x", "resolve"], ["t", "diff / then / at"], ["{ }", "message"], ["Space", "menu"], ["?", "keys"]],
+const HINTS: Record<Place, Hint[]> = {
+  list: [["j k", "thread"], ["J K", "file"], ["Enter", "l", "into the thread"], ["n", "unread"], ["Space e", "files"], ["Tab", "column"], ["Space", "menu"], ["?", "keys"], ["q", "quit"]],
+  files: [["j k", "file"], ["Enter", "l", "into its first thread"], ["Space s t", "threads"], ["Tab", "column"], ["Space", "menu"], ["?", "keys"], ["q", "quit"]],
+  search: [["Space s t", "threads"], ["Space e", "files"], ["?", "keys"], ["q", "quit"]],
+  code: [["j k", "scroll"], ["] t", "[ t", "thread"], ["J K", "file"], ["n", "unread"], ["Tab", "next column"], ["h", "list"], ["r", "reply"], ["x", "resolve"], ["t", "diff / then / at"], ["Space", "menu"], ["?", "all keys"]],
+  conv: [["j k", "scroll"], ["{ }", "message"], ["] t", "[ t", "thread"], ["J K", "file"], ["r", "reply"], ["x", "resolve"], ["h", "code"], ["Tab", "next column"], ["Space", "menu"], ["?", "all keys"]],
+  thread: [["j k", "scroll"], ["] t", "[ t", "thread"], ["J K", "file"], ["n", "unread"], ["h", "list"], ["r", "reply"], ["x", "resolve"], ["t", "diff / then / at"], ["{ }", "message"], ["Space", "menu"], ["?", "keys"]],
   drafts: [["j k", "move"], ["Enter", "its thread"], ["e", "edit"], ["d d", "discard"], ["c", "summary"], ["S", "request changes"], ["A", "approve"], ["g", "guide"], ["Esc", "back"]],
   changes: [["Esc", "back to the round"], ["s", "drafts"], ["?", "keys"]],
   composer: [["type the message"], ["Ctrl+S", "save as draft"], ["Ctrl+G", "send now"], ["Esc", "or"], ["j j", "leave, the text stays"], ["Ctrl+C", "quit"]],
@@ -169,7 +196,7 @@ function footer(v: ViewState, w: number): Line {
   return footerLine(w, { chip, hints, toast: v.toast });
 }
 
-const NARROW_HINTS: Hint[] = [["h", "list"], ["j k", "scroll"], ["] t", "next"], ["r", "reply"], ["x", "resolve"], ["?", "keys"]];
+const NARROW_HINTS: Hint[] = [["h", "list"], ["j k", "scroll"], ["] t", "[ t", "thread"], ["r", "reply"], ["x", "resolve"], ["?", "keys"]];
 
 /** `lines` from `top`, `height` of them; the top is clamped so the window never runs past the end. */
 function window(lines: Line[], top: number, height: number): { top: number; lines: Line[] } {
@@ -180,8 +207,10 @@ function window(lines: Line[], top: number, height: number): { top: number; line
 /** The list's top so the selected thread's rows stay in sight, a row of margin around them. */
 function follow(ids: (number | null)[], selected: number | null, top: number, height: number): number {
   const first = ids.indexOf(selected);
-  if (first === -1) return top;
-  const last = first + 1;
+  return first === -1 ? top : followAt(first, first + 1, top, height);
+}
+
+function followAt(first: number, last: number, top: number, height: number): number {
   if (first - 1 < top) return Math.max(0, first - 2);
   if (last + 1 >= top + height) return last + 2 - height;
   return top;
@@ -253,11 +282,25 @@ function position(v: ViewState): Span[] {
 }
 
 function listPane(v: ViewState, w: number, height: number, focus: boolean): Pane {
-  const l = listLines(v.data, v.filter, v.selected, focus, w - 2);
-  v.tops.list = follow(l.ids, v.selected, v.tops.list, height - 2);
-  const win = window(l.lines, v.tops.list, height - 2);
+  const base = { w, title: sideTitle(v.side), focus, hit: "focus:list" };
+  if (v.side === "search") {
+    return { ...base, lines: [blank(), line(s(" Search comes with the Changes run.", "dim")), blank(), line(s(" "), key("Space s t"), s(" threads · ", "dim"), key("Space e"), s(" files", "dim"))] };
+  }
+  let lines: Line[];
+  let at: number;
+  if (v.side === "files") {
+    const f = filesLines(v.data, v.files, v.fileSel, focus, w - 2);
+    lines = f.lines;
+    at = f.paths.indexOf(v.fileSel);
+    if (v.followList && at !== -1) v.tops.list = followAt(at, at, v.tops.list, height - 2);
+  } else {
+    const l = listLines(v.data, v.filter, v.selected, focus, w - 2, v.landed);
+    lines = l.lines;
+    if (v.followList) v.tops.list = follow(l.ids, v.selected, v.tops.list, height - 2);
+  }
+  const win = window(lines, v.tops.list, height - 2);
   v.tops.list = win.top;
-  return { w, title: LIST_TITLE, lines: win.lines, focus };
+  return { ...base, lines: win.lines };
 }
 
 function emptyPane(w: number, text: string, focus = false, title: Span[] = []): Pane {
@@ -278,6 +321,13 @@ function threadPanes(v: ViewState, cols: 1 | 2 | 3, widths: number[], height: nu
     const text = v.selected === null ? (v.data.threads.length ? "No thread selected." : "No threads yet. Comment on code in the browser or with `stet comment add`.") : `loading thread #${v.selected}…`;
     return { panes: widths.map((w, i) => emptyPane(w, i === 0 ? text : "", false, i === 0 ? [s(v.selected === null ? "Thread" : `#${v.selected}`, "b")] : [s("Conversation")])), box: null };
   }
+  if (v.side === "files" && v.focus === "list" && v.fileSel && !v.data.threads.some((x) => fileOf(x) === v.fileSel)) {
+    const f = v.files?.files.find((x) => x.path === v.fileSel);
+    const counts = f ? fileCounts(f) : [];
+    const what = f ? (f.status === "A" ? "a new file" : f.status === "D" ? "deleted" : f.status === "R" ? `renamed from ${f.oldPath}` : "changed") : "";
+    const lines = [blank(), line(s(" No threads in this file.")), blank(), line(s(` ${what}`, "dim"), ...(counts.length ? [s(" · ", "dim"), ...counts] : [])), blank(), line(s(" Its diff comes with the Changes run; ", "dim"), s("stet open --browser", "b"), s(" shows it now.", "dim"))];
+    return { panes: widths.map((w, i) => (i === 0 ? { w, title: [s(v.fileSel!, "b")], right: [s("preview", "dim")], lines, hit: "focus:code" } : emptyPane(w, "", false, [s("Conversation")]))), box: null };
+  }
   const writing = v.writing?.kind === "reply" && v.writing.thread === d.thread.id;
   if (cols === 3) {
     const [codeW, convW] = widths as [number, number];
@@ -294,8 +344,8 @@ function threadPanes(v: ViewState, cols: 1 | 2 | 3, widths: number[], height: nu
     else v.geom.starts = [];
     return {
       panes: [
-        { w: codeW, title: threadTitle(d), right, lines: code.lines, focus: v.focus === "code" },
-        { w: convW, title: [s("Conversation")], right: messagesNote(d, conv.fresh), lines: c.lines, focus: v.focus === "conv" },
+        { w: codeW, title: threadTitle(d), right, lines: code.lines, focus: v.focus === "code", hit: "focus:code" },
+        { w: convW, title: [s("Conversation")], right: messagesNote(d, conv.fresh), lines: c.lines, focus: v.focus === "conv", hit: "focus:conv" },
       ],
       box: c.box ? { pane: 1, ...c.box } : null,
     };
@@ -314,7 +364,7 @@ function threadPanes(v: ViewState, cols: 1 | 2 | 3, widths: number[], height: nu
   const t = place(writing ? all : [...all, ...hint], v.tops.thread, inner, w - 2, v, writing);
   v.tops.thread = t.top;
   v.geom.starts = conv.starts.map((x) => x + before.length);
-  return { panes: [{ w, title: threadTitle(d, !narrow), right, lines: t.lines, focus: focusThread }], box: t.box ? { pane: 0, ...t.box } : null };
+  return { panes: [{ w, title: threadTitle(d, !narrow), right, lines: t.lines, focus: focusThread, hit: "focus:code" }], box: t.box ? { pane: 0, ...t.box } : null };
 }
 
 function roundTab(v: ViewState, w: number, height: number, top: number): { rows: Row[]; box: Rect | null } {
@@ -357,7 +407,8 @@ function draftsLeft(v: ViewState, w: number): { lines: Line[]; ids: (number | nu
   }
   for (const c of d.drafts) {
     const fill = c.id === v.draftSel ? { fill: ["sel" as const] } : {};
-    lines.push({ spans: draftHead(c, d), ...fill }, { spans: [s("   "), s(c.body.split("\n")[0] || (c.restore ? "asks to restore lines" : ""), "dim")], ...fill });
+    const hit = `draft:${c.id}`;
+    lines.push({ spans: draftHead(c, d), hit, ...fill }, { spans: [s("   "), s(c.body.split("\n")[0] || (c.restore ? "asks to restore lines" : ""), "dim")], hit, ...fill });
     ids.push(c.id, c.id);
   }
   lines.push(blank(), line(s(" Summary", "dim"), s(" "), key("c")));
@@ -397,7 +448,7 @@ function draftsTab(v: ViewState, w: number, height: number, top: number): { rows
   const l = place(left.lines, v.tops.drafts, inner, leftW - 2, v, summaryBox);
   v.tops.drafts = l.top;
   const n = v.data.drafts.length;
-  const panes: Pane[] = [{ w: leftW, title: [s("Your review", "b"), s(` · ${plural(n, "draft")}`, "dim")], lines: l.lines, focus: true }];
+  const panes: Pane[] = [{ w: leftW, title: [s("Your review", "b"), s(` · ${plural(n, "draft")}`, "dim")], lines: l.lines, focus: true, hit: "focus:drafts" }];
   let box: Rect | null = l.box ? { x: 1 + l.box.dx, y: top + 1 + l.box.dy, w: l.box.w, h: l.box.h } : null;
   if (!narrow) {
     const rw = w - leftW;
@@ -406,7 +457,7 @@ function draftsTab(v: ViewState, w: number, height: number, top: number): { rows
     const p = place(r.lines, v.tops.draft, inner, rw - 2, v, editing);
     v.tops.draft = p.top;
     const right = n ? [key("e"), s(" edit · ", "dim"), key("d d"), s(" discard", "dim")] : [];
-    panes.push({ w: rw, title: r.title, right, lines: p.lines });
+    panes.push({ w: rw, title: r.title, right, lines: p.lines, hit: "focus:draft" });
     if (p.box) box = { x: leftW + 1 + p.box.dx, y: top + 1 + p.box.dy, w: p.box.w, h: p.box.h };
   }
   return { rows: hcat(panes.map((p) => pane(p, height))), box };
@@ -424,7 +475,8 @@ function menuBox(v: ViewState, w: number): Row[] {
     const group = e.desc.startsWith("+");
     const room = Math.max(1, colW - k.length - 2);
     const desc = e.desc.length > room ? `${e.desc.slice(0, room - 1)}…` : e.desc;
-    return [s(" "), s(k, "wk"), s(" "), s(desc, ...(group ? (["wg"] as const) : []))];
+    const hit = `key:${[...v.prefix, e.key].join("")}`;
+    return [s(" "), { ...s(k, "wk"), hit }, { ...s(" "), hit }, { ...s(desc, ...(group ? (["wg"] as const) : [])), hit }];
   };
   const lines: Line[] = [];
   for (let i = 0; i < half; i++) {
@@ -443,7 +495,7 @@ function choiceBox(c: Choice, w: number): Row[] {
   c.options.forEach((o, i) => {
     const parts = wrap(o.label, bw - 9);
     const fill = i === c.at ? { fill: ["sel" as const] } : {};
-    parts.forEach((p, k) => lines.push({ spans: k ? [s(`      ${p}`)] : [s(" "), s(String(i + 1), "b"), s(`  ${p}`)], ...fill }));
+    parts.forEach((p, k) => lines.push({ spans: k ? [s(`      ${p}`)] : [s(" "), s(String(i + 1), "b"), s(`  ${p}`)], hit: `key:${i + 1}`, ...fill }));
   });
   lines.push(blank(), line(s(" "), key("j k"), s(" "), ...c.options.slice(0, 9).flatMap((_, i) => [key(String(i + 1)), s(" ")]), s("choose · "), key("Enter"), s(" confirm · "), key("Esc"), s(" cancel")));
   return pane({ w: bw, title: [s(c.title, "b")], lines, focus: true }, lines.length + 2);
@@ -455,7 +507,7 @@ function helpBox(v: ViewState, w: number, height: number): Row[] {
   const rows = Math.min(height, lines.length + 2);
   v.tops.help = Math.max(0, Math.min(v.tops.help, lines.length - (rows - 2)));
   const more = lines.length - v.tops.help - (rows - 2);
-  return pane({ w: bw, title: [s("Keys", "b")], right: more > 0 ? [s(`${more} more ↓`, "dim")] : [], lines: lines.slice(v.tops.help), focus: true }, rows);
+  return pane({ w: bw, title: [s("Keys", "b")], right: more > 0 ? [s(`${more} more ↓`, "dim")] : [], lines: lines.slice(v.tops.help), focus: true, hit: "focus:help" }, rows);
 }
 
 // --- the screen
@@ -475,7 +527,7 @@ export function render(v: ViewState, w: number, h: number): Frame {
   if (!v.data.status) body = { rows: pane(emptyPane(w, v.connecting ?? "loading…"), height), box: null };
   else if (v.tab === "drafts") body = draftsTab(v, w, height, head.length);
   else if (v.tab === "changes") {
-    body = { rows: pane({ w, title: [s("Changes", "b")], lines: [blank(), line(s(" Changes come with the diff widget. Until then, ", "dim"), s("stet open --browser", "b"), s(" shows them.", "dim"))], focus: true }, height), box: null };
+    body = { rows: pane({ w, hit: "focus:changes", title: [s("Changes", "b")], lines: [blank(), line(s(" Changes come with the diff widget. Until then, ", "dim"), s("stet open --browser", "b"), s(" shows them.", "dim"))], focus: true }, height), box: null };
   } else body = roundTab(v, w, height, head.length);
   v.toNews = false;
   let rows = [...head, ...body.rows, bar(footer(v, w), w)];
@@ -494,16 +546,50 @@ export function render(v: ViewState, w: number, h: number): Frame {
   return { rows: rows.slice(0, h), box: v.choice || v.help ? null : body.box };
 }
 
-/** The keys of the focused place and the global ones, for `?`. */
-export function helpLines(scopeRows: { title: string; rows: { keys: string[]; desc: string }[] }[]): Line[] {
+const MOVING: { keys: string; desc: string }[] = [
+  { keys: "h  l  Tab", desc: "columns: h left, l right, Tab cycles them; or click a column" },
+  { keys: "Space e  Space s t", desc: "the left column's tabs: Files, Threads; or click a tab in its border" },
+  { keys: "s  Space r v", desc: "the Drafts and Changes tabs at the top; Esc back to the round; or click them" },
+  { keys: "j  k", desc: "in the list: the next / previous thread; in the code and the conversation: scroll" },
+  { keys: "J  K", desc: "the first thread of the next / previous file, wherever you are" },
+  { keys: "]t  [t", desc: "the next / previous thread from the code or the conversation" },
+  { keys: "n  N", desc: "the next / previous unread thread" },
+  { keys: "mouse", desc: "click a row, a tab, a column or a key chip; the wheel scrolls the column under the pointer" },
+  { keys: "Shift+drag", desc: "selects text in most terminals while the mouse is on (Option+drag in iTerm2)" },
+];
+
+const PLACE_NAMES: Record<string, string> = {
+  list: "The thread list",
+  files: "The files",
+  search: "Search",
+  code: "The code",
+  conv: "The conversation",
+  thread: "The thread",
+  drafts: "Drafts",
+  changes: "Changes",
+};
+
+/** `?`: the keys of the place in focus, how to move around, and the keys that work everywhere. */
+export function helpFor(scope: Scope): Line[] {
+  const group = (sc: Scope) => {
+    const byId = new Map<string, { keys: string[]; desc: string }>();
+    for (const r of KEYS.filter((x) => x.scope === sc)) {
+      const had = byId.get(r.id);
+      if (had) had.keys.push(...r.keys);
+      else byId.set(r.id, { keys: [...r.keys], desc: r.desc });
+    }
+    return [...byId.values()];
+  };
   const out: Line[] = [];
-  for (const g of scopeRows) {
-    if (!g.rows.length) continue;
+  const section = (title: string, rows: { keys: string; desc: string }[]) => {
     if (out.length) out.push(blank());
-    out.push(line(s(` ${g.title}`, "b")));
-    for (const r of g.rows) out.push(line(s(`  ${r.keys.map(keyLabel).join("  ").padEnd(18)}`, "wk"), s(` ${r.desc}`)));
-  }
+    out.push(line(s(` ${title}`, "b")));
+    for (const r of rows) out.push(line(s(`  ${r.keys.padEnd(20)}`, "wk"), s(` ${r.desc}`)));
+  };
+  const keys = (sc: Scope) => group(sc).map((r) => ({ keys: r.keys.map(keyLabel).join("  "), desc: r.desc }));
+  section(PLACE_NAMES[scope] ?? scope, keys(scope));
+  section("Moving around", MOVING);
+  section("Everywhere", keys("global"));
   out.push(blank(), line(s("  Ctrl+C quits from anywhere", "dim")));
   return out;
 }
-

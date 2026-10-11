@@ -15,6 +15,8 @@ export interface Pane {
   focus?: boolean;
   /** Border colour in place of the focus one. */
   border?: Cls;
+  /** What a click inside the pane does where its rows say nothing else. */
+  hit?: string;
 }
 
 const plainOf = (spans: Span[], c: Cls): Span[] => spans.map((x) => (x.c?.length ? x : { text: x.text, c: [c] }));
@@ -34,7 +36,8 @@ export function pane(p: Pane, h: number): Row[] {
     const bottom = p.bottom?.length ? clip([s(" "), ...p.bottom, s(" ")], Math.max(0, p.w - 4)) : [];
     rows.push(fit({ spans: [s("╰─", b), ...bottom, s("─".repeat(Math.max(0, p.w - 3 - spansWidth(bottom))), b), s("╯", b)] }, p.w));
   }
-  return rows.slice(0, h);
+  const out = rows.slice(0, h);
+  return p.hit ? out.map((r) => r.map((x) => (x.hit ? x : { ...x, hit: p.hit }))) : out;
 }
 
 export function hcat(cols: Row[][]): Row[] {
@@ -47,6 +50,7 @@ export function hcat(cols: Row[][]): Row[] {
 interface Cell {
   ch: string;
   c?: Cls[];
+  hit?: string;
   /** 0 for the right half of a wide character. */
   w: number;
 }
@@ -57,8 +61,8 @@ function cells(row: Row): Cell[] {
     for (const ch of x.text) {
       const cw = width(ch);
       if (cw === 0) continue;
-      out.push({ ch, c: x.c, w: cw });
-      if (cw === 2) out.push({ ch: "", c: x.c, w: 0 });
+      out.push({ ch, c: x.c, hit: x.hit, w: cw });
+      if (cw === 2) out.push({ ch: "", c: x.c, hit: x.hit, w: 0 });
     }
   }
   return out;
@@ -69,8 +73,8 @@ function spansOf(list: Cell[]): Row {
   for (const cell of list) {
     const last = out[out.length - 1];
     const key = cell.c?.join(" ") ?? "";
-    if (last && (last.c?.join(" ") ?? "") === key) last.text += cell.ch;
-    else out.push(cell.c ? { text: cell.ch, c: cell.c } : { text: cell.ch });
+    if (last && (last.c?.join(" ") ?? "") === key && last.hit === cell.hit) last.text += cell.ch;
+    else out.push({ text: cell.ch, ...(cell.c ? { c: cell.c } : {}), ...(cell.hit ? { hit: cell.hit } : {}) });
   }
   return out;
 }
@@ -84,8 +88,8 @@ export function overlay(base: Row[], box: Row[], top: number, left: number): Row
     const under = cells(out[y]!);
     const over = cells(row);
     const end = Math.min(under.length, left + over.length);
-    if (left > 0 && under[left]?.w === 0) under[left - 1] = { ch: " ", c: under[left - 1]!.c, w: 1 };
-    if (under[end]?.w === 0) under[end] = { ch: " ", c: under[end]!.c, w: 1 };
+    if (left > 0 && under[left]?.w === 0) under[left - 1] = { ...under[left - 1]!, ch: " ", w: 1 };
+    if (under[end]?.w === 0) under[end] = { ...under[end]!, ch: " ", w: 1 };
     under.splice(left, end - left, ...over.slice(0, end - left));
     out[y] = spansOf(under);
   });
@@ -99,4 +103,30 @@ export function rowText(row: Row): string {
 /** A line of the screen outside the panes: the header, the banner, the footer. */
 export function bar(l: Line, w: number): Row {
   return fit(l, w);
+}
+
+export interface Hit {
+  y: number;
+  x0: number;
+  x1: number;
+  hit: string;
+}
+
+/** Where on the screen each clickable span is. */
+export function hitsOf(rows: Row[]): Hit[] {
+  const out: Hit[] = [];
+  rows.forEach((row, y) => {
+    let x = 0;
+    for (const span of row) {
+      const w = width(span.text);
+      if (span.hit) out.push({ y, x0: x, x1: x + w, hit: span.hit });
+      x += w;
+    }
+  });
+  return out;
+}
+
+export function hitAt(hits: Hit[], x: number, y: number): string | null {
+  for (const h of hits) if (h.y === y && x >= h.x0 && x < h.x1) return h.hit;
+  return null;
 }

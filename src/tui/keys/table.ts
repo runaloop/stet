@@ -8,7 +8,7 @@
  * both when they share one), the Drafts and Changes tabs, the reply box, a question, the keys list, or everywhere
  * (`global`, after the focused place's own keys).
  */
-export type Scope = "list" | "code" | "conv" | "thread" | "drafts" | "changes" | "composer" | "choice" | "help" | "global";
+export type Scope = "list" | "files" | "search" | "code" | "conv" | "thread" | "drafts" | "changes" | "composer" | "choice" | "help" | "global";
 
 export interface KeyRow {
   id: string;
@@ -60,6 +60,17 @@ export const KEYS: KeyRow[] = [
   { id: "list.close", keys: ["<Esc>", "h"], scope: "list", desc: "hide the list (narrow screens)" },
   { id: "quit", keys: ["q"], scope: "list", desc: "quit" },
 
+  { id: "files.down", keys: ["j", "<Down>"], scope: "files", desc: "next file" },
+  { id: "files.up", keys: ["k", "<Up>"], scope: "files", desc: "previous file" },
+  { id: "files.open", keys: ["<CR>", "l", "o"], scope: "files", desc: "into the file's first thread" },
+  { id: "files.first", keys: ["gg"], scope: "files", desc: "first file" },
+  { id: "files.last", keys: ["G"], scope: "files", desc: "last file" },
+  { id: "list.close", keys: ["<Esc>", "h"], scope: "files", desc: "hide the list (narrow screens)" },
+  { id: "quit", keys: ["q"], scope: "files", desc: "quit" },
+
+  { id: "list.close", keys: ["<Esc>", "h"], scope: "search", desc: "hide the list (narrow screens)" },
+  { id: "quit", keys: ["q"], scope: "search", desc: "quit" },
+
   ...inThread("code"),
   ...inThread("conv"),
   ...inThread("thread"),
@@ -90,6 +101,8 @@ export const KEYS: KeyRow[] = [
   { id: "help.up", keys: ["k", "<Up>"], scope: "help", desc: "scroll up" },
   { id: "help.close", keys: ["<Esc>", "?", "q"], scope: "help", desc: "close" },
 
+  { id: "side.files", keys: ["<Space>e"], scope: "global", desc: "the changed files, in the left column", short: "files of the review" },
+  { id: "side.threads", keys: ["<Space>st"], scope: "global", desc: "the threads, in the left column", short: "threads" },
   { id: "focus.next", keys: ["<Tab>"], scope: "global", desc: "next column" },
   { id: "focus.prev", keys: ["<S-Tab>"], scope: "global", desc: "previous column" },
   { id: "submit", keys: ["S", "<Space>rs"], scope: "global", desc: "drafts, then S again submits: request changes (approve when there are no drafts)", short: "submit the review" },

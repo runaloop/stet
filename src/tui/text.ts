@@ -10,20 +10,41 @@ export type Cls =
 export interface Span {
   text: string;
   c?: Cls[];
+  /** What a click on it does: `thread:12`, `side:files`, `key:<Space>ur`, `focus:conv`; see `app.ts`. */
+  hit?: string;
 }
 
 export interface Line {
   spans: Span[];
   /** Styles of the whole row, padding included: a selected row, a diff row, a strip. */
   fill?: Cls[];
+  /** What a click on the row does, where its spans say nothing else. */
+  hit?: string;
 }
 
 export const s = (text: string, ...c: Cls[]): Span => (c.length ? { text, c } : { text });
 export const line = (...spans: (Span | string)[]): Line => ({ spans: spans.map((x) => (typeof x === "string" ? { text: x } : x)) });
 export const filled = (fill: Cls[], ...spans: (Span | string)[]): Line => ({ ...line(...spans), fill });
 export const blank = (): Line => ({ spans: [] });
-/** A key as a chip: ` Esc `. */
-export const key = (k: string): Span => s(` ${k} `, "key");
+const NAMED: Record<string, string | null> = {
+  Enter: "<CR>", Esc: "<Esc>", Tab: "<Tab>", Space: "<Space>", Backspace: "<BS>", "Ctrl+S": "<C-s>", "Ctrl+G": "<C-g>", "Ctrl+C": null, "j j": null,
+};
+
+/** The keys a chip's label stands for, as typed, so a click can run them: `Space u r` → `<Space>ur`, `j k` → `j`. */
+export function keysOfLabel(label: string): string | null {
+  if (label in NAMED) return NAMED[label]!;
+  if (label.startsWith("Space ")) return `<Space>${label.slice(6).replaceAll(" ", "")}`;
+  const parts = label.split(" ");
+  if (parts.some((p) => [...p].length !== 1)) return null;
+  if (parts.length === 1) return label;
+  return parts[0] === parts[1] || parts[0] === "[" || parts[0] === "]" ? parts.join("") : parts[0]!;
+}
+
+/** A key as a chip: ` Esc `; a click on it runs the key. */
+export const key = (k: string): Span => {
+  const keys = keysOfLabel(k);
+  return { text: ` ${k} `, c: ["key"], ...(keys ? { hit: `key:${keys}` } : {}) };
+};
 
 export function width(text: string): number {
   return Bun.stringWidth(text);
@@ -82,11 +103,16 @@ export function clip(spans: Span[], w: number): Span[] {
 
 /** The line as exactly `w` cells: cut with `…`, or padded in the row's own styles. */
 export function fit(l: Line, w: number): Span[] {
-  const spans = clip(l.spans, w).map((x) => (l.fill ? { text: x.text, c: [...l.fill, ...(x.c ?? [])] } : x));
+  const spans = clip(l.spans, w).map((x) => {
+    const c = l.fill ? [...l.fill, ...(x.c ?? [])] : x.c;
+    const hit = x.hit ?? l.hit;
+    return { text: x.text, ...(c ? { c } : {}), ...(hit ? { hit } : {}) };
+  });
   const used = spansWidth(spans);
-  if (used < w) spans.push({ text: " ".repeat(w - used), ...(l.fill ? { c: l.fill } : {}) });
+  if (used < w) spans.push({ text: " ".repeat(w - used), ...(l.fill ? { c: l.fill } : {}), ...(l.hit ? { hit: l.hit } : {}) });
   return spans;
 }
+
 
 /** Spans on the left, spans on the right, filling `w` cells with at least one space between; the left side gives way. */
 export function spread(left: Span[], right: Span[], w: number): Span[] {
