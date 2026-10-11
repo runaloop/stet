@@ -291,7 +291,10 @@ route("GET", "/api/patch", async (s, _req, url) => {
   const from = url.searchParams.get("from") ?? "";
   const to = url.searchParams.get("to") ?? "";
   if (!/^[0-9a-f]{7,64}$/.test(from) || !/^[0-9a-f]{7,64}$/.test(to)) throw usage("bad sha");
-  return new Response(await unifiedPatch(s.ctx.repo.cwd, from, to, []), { headers: { "content-type": "text/plain; charset=utf-8" } });
+  // one file's change alone: its path, and its old one when it was renamed
+  const paths = url.searchParams.getAll("path");
+  if (paths.some((p) => !p || p.startsWith("/") || p.split("/").includes(".."))) throw usage("bad path");
+  return new Response(await unifiedPatch(s.ctx.repo.cwd, from, to, paths), { headers: { "content-type": "text/plain; charset=utf-8" } });
 });
 
 route("GET", "/api/grep", async (s, _req, url) => {

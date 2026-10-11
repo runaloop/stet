@@ -1,5 +1,7 @@
 import { StetError } from "../core/context.ts";
+import type { ActionTarget, Launch } from "../core/module.ts";
 import type {
+  BlobDto,
   CommentDto,
   CompareDto,
   CursorsDto,
@@ -47,8 +49,21 @@ export function clientApi(server: Address) {
     return data as T;
   }
 
+  async function text(path: string, query: [string, string][]): Promise<string> {
+    const qs = new URLSearchParams(query);
+    const res = await fetch(`http://127.0.0.1:${server.port}${path}?${qs}`, { headers: { "x-stet-token": server.token } }).catch((e: Error) => {
+      throw new ApiError(`the server on port ${server.port} does not answer: ${e.message}`, 0, "unreachable");
+    });
+    if (!res.ok) throw new ApiError(`${path}: ${res.status} ${res.statusText}`, res.status, "error");
+    return res.text();
+  }
+
   return {
     ping: () => call<{ ok: boolean; build: string }>("GET", "/api/ping"),
+    /** The diff from one commit to another as a unified patch; of `paths` only when given. */
+    patch: (from: string, to: string, paths: string[] = []) => text("/api/patch", [["from", from], ["to", to], ...paths.map((p): [string, string] => ["path", p])]),
+    blob: (sha: string, path: string) => call<BlobDto>("GET", "/api/blob", { query: { sha, path } }),
+    action: (review: number, id: string, target: ActionTarget) => call<{ launch: Launch; launched: boolean; command: string }>("POST", `/api/actions/${id}`, { query: { review }, body: target }),
     reviews: () => call<{ reviews: ReviewDto[]; default: number | null }>("GET", "/api/reviews"),
     review: (review: number) => call<ReviewStatusDto>("GET", "/api/review", { query: { review } }),
     git: (review: number) => call<GitStateDto>("GET", "/api/git", { query: { review } }),

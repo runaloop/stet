@@ -250,6 +250,15 @@ export interface ComparePlacement {
   state: AnchorState;
 }
 
+/** A file at a commit, as `/api/blob` sends it: no text for a binary file or a missing one. */
+export interface BlobDto {
+  sha: string;
+  path: string;
+  exists: boolean;
+  binary: boolean;
+  contents: string | null;
+}
+
 export interface CompareDto {
   from: { ref: string; sha: string; label: string };
   to: { ref: string; sha: string; label: string };
