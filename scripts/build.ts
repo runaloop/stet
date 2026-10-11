@@ -22,7 +22,7 @@ let code = 1;
 try {
   await writeLists(without);
   const proc = Bun.spawn(
-    ["bun", "build", "--compile", "--minify", "--splitting", "--define", `STET_BUILD=${JSON.stringify(build)}`, "src/cli.ts", "--outfile", "dist/stet", ...rest],
+    ["bun", "build", "--compile", "--minify", "--splitting", "--define", `STET_BUILD=${JSON.stringify(build)}`, "src/cli.ts", "src/tui/diff/hl-worker.ts", "--outfile", "dist/stet", ...rest],
     { cwd: ROOT, stdio: ["inherit", "inherit", "inherit"] },
   );
   code = await proc.exited;

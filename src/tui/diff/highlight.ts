@@ -8,6 +8,7 @@ import { blend } from "./colors.ts";
 import { lineText } from "./model.ts";
 import type { TokenSource } from "./paint.ts";
 import type { Want } from "./view.ts";
+import { trace } from "../trace.ts";
 
 const RECYCLE_MS = 1000;
 /** The theme's background, for colours it gives with an alpha. */
@@ -17,6 +18,9 @@ type Lines = (Uint32Array | undefined)[];
 
 /** Where the worker is: next to this file in the source tree, or as an entry point of the compiled binary. */
 function workerUrl(): string {
+  // the binary keeps its entry points at their paths under src/ (scripts/build.ts), while this code may sit in a chunk
+  // at the root, so a URL relative to it would miss
+  if (Bun.main.startsWith("/$bunfs/") || Bun.main.startsWith("B:\\~BUN\\")) return "./tui/diff/hl-worker.ts";
   return new URL("./hl-worker.ts", import.meta.url).href;
 }
 
@@ -34,6 +38,7 @@ export class Highlighter implements TokenSource {
   private recycle: ReturnType<typeof setTimeout> | undefined;
   private last: Want[] = [];
   private closed = false;
+  private coloured = false;
 
   constructor(private readonly url: string = workerUrl()) {}
 
@@ -49,7 +54,10 @@ export class Highlighter implements TokenSource {
     const w = new Worker(this.url);
     w.onmessage = (e: MessageEvent) => this.message(e.data);
     // a worker that cannot start leaves the code plain
-    w.onerror = () => this.stop();
+    w.onerror = (e) => {
+      trace({ ev: "hlError", url: this.url, message: (e as ErrorEvent).message });
+      this.stop();
+    };
     this.worker = w;
     this.sent = new Map();
     return w;
@@ -119,6 +127,10 @@ export class Highlighter implements TokenSource {
       return;
     }
     if (m.t !== "tok") return;
+    if (!this.coloured) {
+      this.coloured = true;
+      trace({ ev: "hlFirst" });
+    }
     for (const [id, color, fs] of m.pal ?? []) this.styles[id] = { fg: color.length === 9 ? blend(color.slice(0, 7), THEME_BG, parseInt(color.slice(7), 16) / 255) : color || "#d6ddd8", fs };
     let t = this.toks.get(fd);
     if (!t) this.toks.set(fd, (t = [[], []]));
