@@ -3,6 +3,7 @@ import type { AnchorState, Intent, ThreadSummary } from "../../src/core/types.ts
 import { stateTone } from "../../src/ui/timeline.ts";
 import { areaText } from "../../src/core/media.ts";
 import type { Round } from "../../src/ui/versions.ts";
+import { THREAD_REF } from "../../src/ui/strip.ts";
 import { link, threads } from "../state.ts";
 
 export function Badge({ tone = "muted", children, title }: { tone?: string; children: ComponentChildren; title?: string }) {
@@ -56,14 +57,6 @@ export function whereText(t: ThreadSummary): string {
   return t.region ? areaText(t.region) : `L${rangeText(t.anchor.range ?? t.range)}`;
 }
 
-// "тред" is "thread" in Russian.
-export const THREAD_REF = /(?<![\p{L}\d_])(?:thread|тред\p{L}*)\s+#?(\d+)|(?<![\w&#])#(\d+)\b/giu;
-
-export function threadRefs(text: string): number[] {
-  const out = new Set<number>();
-  for (const m of text.matchAll(THREAD_REF)) out.add(Number(m[1] ?? m[2]));
-  return [...out];
-}
 
 export function ThreadRef({ id, children }: { id: number; children: ComponentChildren }) {
   const t = threads.value.find((x) => x.id === id);

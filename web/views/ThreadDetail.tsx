@@ -1,10 +1,10 @@
 import { parsePatchFiles, type FileDiffMetadata, type SelectedLineRange, type SelectionSide } from "@pierre/diffs";
 import { signal } from "@preact/signals";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import type { CommentDto, ThreadDetail as Detail, TimelineStepDto } from "../../src/core/types.ts";
+import type { ThreadDetail as Detail, TimelineStepDto } from "../../src/core/types.ts";
 import { api } from "../api.ts";
 import { useBlob } from "../components/useBlob.ts";
-import { ago, Badge, Kbd, rangeText, ThreadBadges, threadRefs, ThreadRef, StateBadge, whereText } from "../components/Bits.tsx";
+import { ago, Badge, Kbd, rangeText, ThreadBadges, ThreadRef, StateBadge, whereText } from "../components/Bits.tsx";
 import { DiffView } from "../components/Code.tsx";
 import { AreaHint, textViewer, ThreadArea } from "../modules.tsx";
 import { spansOf, type MdThread } from "../components/MarkdownView.tsx";
@@ -27,7 +27,7 @@ import {
   type FileView,
 } from "../compare.ts";
 import { Composer } from "../components/Composer.tsx";
-import { Conversation, unchangedSince } from "../components/Conversation.tsx";
+import { Conversation } from "../components/Conversation.tsx";
 import { hi, lo, PendingBox } from "../components/NewThread.tsx";
 import { askRestore, RESTORE_TITLE, restorable } from "../components/Restore.tsx";
 import { openResolveWithMessage, RESOLVE_WITH_MESSAGE_TITLE, ResolveWithMessageBox } from "../components/ResolveWithMessage.tsx";
@@ -49,6 +49,7 @@ import { carry, type Cursor, type CursorFile, type LineRange, type NavBlock, typ
 import type { Side } from "../../src/ui/search.ts";
 import { blocksInSight, linesInSight, stopElement } from "./anchor.ts";
 import { clampStep, diffPair } from "../../src/ui/timeline.ts";
+import { threadStrip } from "../../src/ui/strip.ts";
 import {
   codeMode,
   compareFocus,
@@ -668,56 +669,40 @@ export async function openExternal(): Promise<void> {
   }
 }
 
-const WAITS: Record<string, string> = {
-  question: "The agent asked you a question and waits for your answer.",
-  fixed: "The agent says it fixed this. Check the code, then resolve (x) or reply (r).",
-  disagree: "The agent disagrees. Read why, then resolve (x) or answer (r).",
-  answered: "The agent answered. Resolve (x) if that settles it, or reply (r).",
-};
-
-function lastPublished(d: Detail): CommentDto | null {
-  const pub = d.comments.filter((c) => !c.draft);
-  return pub[pub.length - 1] ?? null;
-}
-
 function StateStrip({ d }: { d: Detail }) {
-  const t = d.thread;
-  const myDraft = d.comments.some((c) => c.draft && c.role === "reviewer");
-  if (t.draft) return <div class="state-strip draft">Draft thread: the agent sees it after you submit the review (<Kbd>S</Kbd>).</div>;
-  if (t.status === "open" && d.comments.some((c) => c.draft && c.resolves)) {
+  const st = threadStrip(d);
+  if (!st) return null;
+  if (st.kind === "draft") return <div class="state-strip draft">Draft thread: the agent sees it after you submit the review (<Kbd>S</Kbd>).</div>;
+  if (st.kind === "settles") {
     return <div class="state-strip draft">Your message resolves this thread when you submit the review (<Kbd>S</Kbd>); the agent then does as it says, without asking again.</div>;
   }
-  if (t.status === "resolved") {
+  if (st.kind === "resolved") {
     return (
       <div class="state-strip resolved">
         <b>✓ Resolved</b>
-        {t.resolveReason ? <> · {t.resolveReason === "wontfix" ? "won't fix" : t.resolveReason === "go" ? "with your message: the agent does as it says" : t.resolveReason}</> : null}
-        {t.resolvedBy ? <> · by {t.resolvedBy === "reviewer" ? "you" : t.resolvedBy}</> : null}
-        {t.resolvedAt ? <span title={t.resolvedAt}> · {ago(t.resolvedAt)}</span> : null}
+        {st.reason ? <> · {st.reason}</> : null}
+        {st.by ? <> · by {st.by}</> : null}
+        {st.at ? <span title={st.at}> · {ago(st.at)}</span> : null}
         <span class="spacer" />
         <button class="btn small" onClick={() => void reopenCurrent()}>Reopen <Kbd>X</Kbd></button>
       </div>
     );
   }
-  const last = lastPublished(d);
-  if (!last) return null;
-  if (last.role === "reviewer") {
+  if (st.kind === "waiting") {
     return (
       <div class="state-strip waiting">
         Waiting for the agent: it has your last message.
-        {myDraft ? <> Your newer reply is a draft: it goes out when you submit the review (<Kbd>S</Kbd>).</> : null}
+        {st.myDraft ? <> Your newer reply is a draft: it goes out when you submit the review (<Kbd>S</Kbd>).</> : null}
       </div>
     );
   }
-  const refs = threadRefs(last.body).filter((id) => id !== t.id);
-  const since = last.intent === "fixed" ? unchangedSince(d, last) : null;
   return (
-    <div class={`state-strip turn intent-${last.intent ?? "none"}`}>
-      <b>Your turn.</b> {WAITS[last.intent ?? ""] ?? "The agent replied."}
-      {refs.length ? (
+    <div class={`state-strip turn intent-${st.intent ?? "none"}`}>
+      <b>Your turn.</b> {st.wait}
+      {st.refs.length ? (
         <>
           {" "}It refers to{" "}
-          {refs.map((id, i) => (
+          {st.refs.map((id, i) => (
             <>
               {i ? ", " : ""}
               <ThreadRef id={id}>#{id}</ThreadRef>
@@ -725,8 +710,8 @@ function StateStrip({ d }: { d: Detail }) {
           ))}.
         </>
       ) : null}
-      {since ? <span class="warn-text"> ⚠ The commented lines are the same as at {since}: the fix may be elsewhere, or not made yet.</span> : null}
-      {myDraft ? <> Your reply is a draft: submit the review (<Kbd>S</Kbd>) to send it.</> : null}
+      {st.since ? <span class="warn-text"> ⚠ The commented lines are the same as at {st.since}: the fix may be elsewhere, or not made yet.</span> : null}
+      {st.myDraft ? <> Your reply is a draft: submit the review (<Kbd>S</Kbd>) to send it.</> : null}
     </div>
   );
 }

@@ -1,29 +1,13 @@
 import type { ComponentChild } from "preact";
 import { useEffect, useState } from "preact/hooks";
-import type { CommentDto, ThreadDetail, ThreadEventDto, TimelineStepDto } from "../../src/core/types.ts";
+import type { CommentDto, ThreadDetail, ThreadEventDto } from "../../src/core/types.ts";
 import { api } from "../api.ts";
 import { guard, reloadAll, reviewId, selectedStep } from "../state.ts";
 import { firstNew, isFolded, isLong, jumpToNew, msgCursor, msgOpen, newMark, replyTo } from "../msgs.ts";
 import { ago, Badge, Body, IntentBadge, Kbd } from "./Bits.tsx";
 import { Composer } from "./Composer.tsx";
 import { RestoreBlock } from "./Restore.tsx";
-
-function regionText(step: TimelineStepDto | undefined): string | null {
-  const ex = step?.excerpt;
-  if (!ex || !step?.range) return null;
-  return ex.lines.slice(step.range.start - ex.firstLine, step.range.end - ex.firstLine + 1).join("\n");
-}
-
-export function unchangedSince(detail: ThreadDetail, c: CommentDto): string | null {
-  const i = detail.comments.indexOf(c);
-  const asked = detail.comments.slice(0, i).reverse().find((x) => x.role === "reviewer" && !x.draft);
-  const base = detail.timeline[asked?.step ?? 0];
-  const last = detail.timeline[detail.timeline.length - 1];
-  if (!base || !last || last.state === "outdated") return null;
-  const a = regionText(base);
-  const b = regionText(last);
-  return a !== null && a === b ? base.label : null;
-}
+import { unchangedSince } from "../../src/ui/strip.ts";
 
 function Avatar({ c }: { c: CommentDto }) {
   return (
