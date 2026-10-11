@@ -1,6 +1,7 @@
 import { StetError } from "../core/context.ts";
 import type {
   CommentDto,
+  CompareDto,
   CursorsDto,
   GitStateDto,
   Intent,
@@ -51,6 +52,7 @@ export function clientApi(server: Address) {
     reviews: () => call<{ reviews: ReviewDto[]; default: number | null }>("GET", "/api/reviews"),
     review: (review: number) => call<ReviewStatusDto>("GET", "/api/review", { query: { review } }),
     git: (review: number) => call<GitStateDto>("GET", "/api/git", { query: { review } }),
+    compare: (review: number, from: string, to: string) => call<CompareDto>("GET", "/api/compare", { query: { review, from, to } }),
     refreshNow: (review: number) => call<{ sha: string | null; changed: boolean }>("POST", "/api/now/refresh", { query: { review } }),
     threads: (review: number) => call<ThreadSummary[]>("GET", "/api/threads", { query: { review, status: "all" } }),
     thread: (review: number, id: number) => call<ThreadDetail>("GET", `/api/threads/${id}`, { query: { review } }),
