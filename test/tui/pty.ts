@@ -51,6 +51,8 @@ export interface PtyRun {
   screen: () => string;
   waitFor: (pred: (screen: string) => boolean, ms?: number) => Promise<number>;
   write: (s: string) => void;
+  resize: (cols: number, rows: number) => void;
+  pid: number;
   exited: Promise<number>;
   close: () => void;
 }
@@ -80,7 +82,7 @@ export function startPty(argv: string[], opts: { cols?: number; rows?: number; e
   const proc = Bun.spawn(argv, { terminal: term, cwd: opts.cwd, env: { TERM: "xterm-256color", ...process.env, ...opts.env } });
   const screen = () => {
     const b = xt.buffer.active;
-    return Array.from({ length: rows }, (_, y) => b.getLine(y)?.translateToString(true) ?? "").join("\n");
+    return Array.from({ length: xt.rows }, (_, y) => b.getLine(y)?.translateToString(true, 0, xt.cols) ?? "").join("\n");
   };
   const t0 = performance.now();
   const waitFor = (pred: (s: string) => boolean, ms = 10_000) =>
@@ -106,6 +108,13 @@ export function startPty(argv: string[], opts: { cols?: number; rows?: number; e
     screen,
     waitFor,
     write: (s) => term.write(s),
+    resize: (c, r) => {
+      term.resize(c, r);
+      xt.resize(c, r);
+      // the child does not lead the pty's process group, so the kernel does not tell it; a terminal would
+      proc.kill("SIGWINCH");
+    },
+    pid: proc.pid,
     exited: proc.exited,
     close: () => {
       proc.kill();

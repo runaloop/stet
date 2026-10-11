@@ -14,7 +14,7 @@ import { defaultCompare, shiftRef } from "../ui/state.ts";
 import { barSpans, isCollapsed, presetsOf, rangeTitle, refsOf, syncChanges, viewedChange, wholeBranch } from "./changes.ts";
 import { codeViews, fetchWide, scopesOf, threadCode, wideKey } from "./code.ts";
 import { FILE, GAP, GROUP } from "./diff/model.ts";
-import { flushTrace, trace } from "./trace.ts";
+import { flushTrace, trace, tracing } from "./trace.ts";
 import { Highlighter } from "./diff/highlight.ts";
 import { ComposerView } from "./composer.ts";
 import { KeyReader } from "./keys/input.ts";
@@ -67,6 +67,8 @@ export class App {
   private readonly texts: Texts;
   private readonly hl = new Highlighter();
   private ended = false;
+  private keyAt = 0;
+  private keyName: string | null = null;
 
   constructor(
     private readonly renderer: CliRenderer,
@@ -106,6 +108,15 @@ export class App {
       }
     });
     renderer.on("resize", () => this.redraw());
+    if (tracing) {
+      // from the bytes of a key to the frame that answers it, for the performance checks
+      process.stdin.prependListener("data", () => (this.keyAt = performance.now()));
+      renderer.on("frame", () => {
+        if (this.keyName === null) return;
+        trace({ ev: "key", key: this.keyName, ms: performance.now() - this.keyAt });
+        this.keyName = null;
+      });
+    }
     this.screen.onMouseDown = (e: MouseEvent) => this.guarded(() => this.click(e));
     this.screen.onMouseScroll = (e: MouseEvent) => this.guarded(() => this.wheel(e));
   }
@@ -526,11 +537,14 @@ export class App {
     try {
       const data = await api.compare(this.review, c.from, c.to);
       if (seq !== this.loads || this.ended) return;
+      const t1 = performance.now();
       const key = `${data.from.sha}-${data.to.sha}`;
       const moved = key !== c.key;
+      let t2 = t1;
       if (moved) {
         const text = await api.patch(data.from.sha, data.to.sha);
         if (seq !== this.loads || this.ended) return;
+        t2 = performance.now();
         c.base = parsePatchFiles(text, key).flatMap((p) => p.files);
         c.key = key;
         c.whole.clear();
@@ -541,9 +555,11 @@ export class App {
       c.error = null;
       c.loading = null;
       c.stale = false;
+      const t3 = performance.now();
       this.syncChanges();
       if (moved) c.diff.first();
-      trace({ ev: "changes", ms: performance.now() - t0, files: data.files.length });
+      const t4 = performance.now();
+      trace({ ev: "changes", ms: t4 - t0, compare: t1 - t0, patch: t2 - t1, parse: t3 - t2, rows: t4 - t3, files: data.files.length });
     } catch (e) {
       if (seq !== this.loads) return;
       c.error = (e as Error).message;
@@ -1385,6 +1401,7 @@ export class App {
     if (k.ctrl && k.name === "c") return;
     const token = this.keys.token(k);
     if (token === null) return;
+    if (tracing) this.keyName = token;
     if (this.composer.open) return this.composerKey(k, token);
     k.preventDefault();
     const v = this.v;
@@ -1448,7 +1465,8 @@ export class App {
 /** The terminal UI on a review, until q in the list, Ctrl+C or a signal; the terminal is restored on every way out. */
 export async function runTui(ctx: Ctx, review: number): Promise<number> {
   // Clicks and the wheel only: reporting every move would draw frames while the pointer wanders.
-  const renderer = await createCliRenderer({ exitOnCtrlC: true, useMouse: true, enableMouseMovement: false, autoFocus: false });
+  // maxFps 60 holds a frame back up to 15 ms under fast keys (phase 0); frames are drawn only when asked for anyway
+  const renderer = await createCliRenderer({ exitOnCtrlC: true, useMouse: true, enableMouseMovement: false, autoFocus: false, maxFps: 1000 });
   let settle!: (r: { code: number } | { error: unknown }) => void;
   const result = new Promise<{ code: number } | { error: unknown }>((resolve) => (settle = resolve));
   const app = new App(renderer, ctx, review, settle);

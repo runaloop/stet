@@ -1,50 +1,12 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { ensureReview, openContext } from "../../src/core/context.ts";
-import { addReply, addThread, createVersion } from "../../src/core/service.ts";
 import { Bidi } from "./bidi.ts";
+import { stand } from "./stand.ts";
 
 const ROOT = join(import.meta.dir, "..", "..");
 const OUT = join(ROOT, "perf-out");
 const FILES = Number(process.env.PERF_FILES ?? 3500);
 const THREADS = Number(process.env.PERF_THREADS ?? 200);
-
-function git(cwd: string, ...args: string[]): void {
-  const r = Bun.spawnSync(["git", ...args], {
-    cwd,
-    env: { ...process.env, GIT_AUTHOR_NAME: "perf", GIT_AUTHOR_EMAIL: "perf@example.com", GIT_COMMITTER_NAME: "perf", GIT_COMMITTER_EMAIL: "perf@example.com" },
-  });
-  if (r.exitCode !== 0) throw new Error(r.stderr.toString());
-}
-
-async function stand(): Promise<string> {
-  const repo = realpathSync(mkdtempSync(join(tmpdir(), "stet-perf-")));
-  git(repo, "init", "-q", "-b", "main");
-  const body = (d: number, i: number, v: string) => Array.from({ length: 30 }, (_, k) => `fun f${d}_${i}_${k}() = "${v}${k}"`).join("\n") + "\n";
-  const dirs = Math.ceil(FILES / 100);
-  const each = (fn: (d: number, i: number) => void) => {
-    for (let n = 0; n < FILES; n++) fn(Math.floor(n / 100), n % 100);
-  };
-  for (let d = 0; d < dirs; d++) mkdirSync(join(repo, `mod${d}/src`), { recursive: true });
-  each((d, i) => writeFileSync(join(repo, `mod${d}/src/F${i}.kt`), body(d, i, "a")));
-  writeFileSync(join(repo, "Big.kt"), Array.from({ length: 5000 }, (_, k) => `val line${k} = ${k}`).join("\n") + "\n");
-  git(repo, "add", "-A");
-  git(repo, "commit", "-q", "-m", "base");
-  git(repo, "checkout", "-q", "-b", "feat");
-  each((d, i) => writeFileSync(join(repo, `mod${d}/src/F${i}.kt`), body(d, i, "b")));
-  writeFileSync(join(repo, "Big.kt"), Array.from({ length: 5000 }, (_, k) => `val line${k} = ${k * 2}`).join("\n") + "\n");
-  const reviewer = await openContext({ cwd: repo, role: "reviewer", author: "you" });
-  const agent = await openContext({ cwd: repo, role: "agent", author: "claude" });
-  const review = await ensureReview(agent);
-  await createVersion(agent, review, { label: "perf" });
-  for (let n = 0; n < THREADS; n++) {
-    const t = await addThread(reviewer, review, { path: `mod${n % dirs}/src/F${n % 100}.kt`, start: 3, end: 5, at: "1", body: `thread ${n}` });
-    if (n % 2 === 0) await addReply(agent, review, t.id, { body: `reply ${n}`, intent: "answered", at: "1" });
-  }
-  await addThread(reviewer, review, { path: "Big.kt", start: 4000, end: 4002, at: "1", body: "deep in a big file" });
-  return repo;
-}
 
 async function firstLine(stream: ReadableStream<Uint8Array>, match: RegExp, timeoutMs: number): Promise<string> {
   const reader = stream.getReader();
@@ -64,7 +26,7 @@ async function firstLine(stream: ReadableStream<Uint8Array>, match: RegExp, time
   throw new Error(`did not see ${match} in time; got: ${buf.slice(0, 400)}`);
 }
 
-const repo = await stand();
+const repo = await stand(FILES, THREADS);
 console.log(`stand: ${FILES} changed files + Big.kt (5000 changed lines), ${THREADS + 1} threads in ${repo}`);
 const server = Bun.spawn(["bun", join(ROOT, "src", "cli.ts"), "serve", "--json"], { cwd: repo, stdout: "pipe", stderr: "ignore" });
 const url = JSON.parse(await firstLine(server.stdout as ReadableStream<Uint8Array>, /^(\{.*\})$/m, 20_000)).url as string;

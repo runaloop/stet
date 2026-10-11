@@ -17,7 +17,8 @@
     "ui-check": "bun test/perf/ui-check.ts",
     "check": "bun scripts/check.ts",
     "guide": "bun scripts/guide/run.ts",
-    "perf:scroll": "bun test/perf/scroll.ts"
+    "perf:scroll": "bun test/perf/scroll.ts",
+    "perf:tui": "bun test/perf/tui.ts"
   },
   "dependencies": {
     "@opentui/core": "0.5.16",
