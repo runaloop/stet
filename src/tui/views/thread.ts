@@ -1,7 +1,7 @@
 import type { CommentDto, ThreadDetail, ThreadSummary, TimelineStepDto } from "../../core/types.ts";
 import { readingOrder } from "../../ui/msgs.ts";
 import { threadStrip } from "../../ui/strip.ts";
-import { codeLines, codeViews, fileHeader, threadCode, type CodeView } from "../code.ts";
+import { codeLines, codeViews, fileHeader, nearThread, threadCode, type CodeView } from "../code.ts";
 import { ago, blank, filled, key, line, plural, rangeText, s, wrap, type Cls, type Line, type Span } from "../text.ts";
 
 const tag = (text: string, c: Cls) => s(` ${text} `, c);
@@ -115,8 +115,9 @@ export function viewsLine(d: ThreadDetail, view: CodeView): Line {
 }
 
 /** The code part: the file's header and its rows, with the ▲ row under the thread's lines. */
-export function codePart(d: ThreadDetail, view: CodeView | null, w: number): { lines: Line[]; view: CodeView } {
-  const code = threadCode(d, view);
+export function codePart(d: ThreadDetail, view: CodeView | null, w: number, around: number | null = null): { lines: Line[]; view: CodeView } {
+  const all = threadCode(d, view);
+  const code = around === null ? all : nearThread(all, around);
   const t = d.thread;
   const last = d.timeline[d.timeline.length - 1]!;
   const stateTag = t.anchor.state === "changed" || t.anchor.state === "moved" ? [s(" "), tag(t.anchor.state, "tchg")] : [];

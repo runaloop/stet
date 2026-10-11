@@ -95,6 +95,13 @@ export function threadCode(d: ThreadDetail, view: CodeView | null): Code {
   return { view: "at", title: "the thread's code could not be read", rows: [], diff: false };
 }
 
+/** Only the rows of the thread's lines and `around` rows on each side, for a column with little room. */
+export function nearThread(code: Code, around: number): Code {
+  const marked = code.rows.flatMap((r, i) => (r.marked ? [i] : []));
+  if (!marked.length) return code;
+  return { ...code, rows: code.rows.slice(Math.max(0, marked[0]! - around), marked[marked.length - 1]! + around + 1) };
+}
+
 export function counts(code: Code): { add: number; del: number } {
   return { add: code.rows.filter((r) => r.kind === "add").length, del: code.rows.filter((r) => r.kind === "del").length };
 }

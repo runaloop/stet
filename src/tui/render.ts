@@ -3,7 +3,7 @@
  * three from 150 cells (list, code, conversation), two from 100 (list, thread), else one with the list slid over it.
  */
 import type { CommentDto, GitStateDto, ThreadDetail } from "../core/types.ts";
-import { codeLines, threadCode, type CodeView } from "./code.ts";
+import { codeLines, nearThread, threadCode, type CodeView } from "./code.ts";
 import { bar, hcat, overlay, pane, type Pane, type Row } from "./grid.ts";
 import { keyLabel } from "./keys/table.ts";
 import { ordered, type Data, type ListFilter } from "./model.ts";
@@ -302,7 +302,7 @@ function threadPanes(v: ViewState, cols: 1 | 2 | 3, widths: number[], height: nu
   }
   const w = widths[0]!;
   const narrow = cols === 1;
-  const part = codePart(d, v.view, w - 2);
+  const part = codePart(d, v.view, w - 2, narrow ? 1 : null);
   const head = narrow ? stripLines(d, w - 2) : threadHead(d, part.view, w - 2);
   const codeRows = narrow ? part.lines.slice(1) : part.lines;
   const conv = conversation(d, v.fresh, w - 2, v.now);
@@ -382,12 +382,7 @@ function draftRight(v: ViewState, w: number): { title: Span[]; lines: Line[] } {
   if (!c) return { title: [s("Draft", "b")], lines: [] };
   const d = v.draftDetail;
   if (!d || d.thread.id !== c.threadId) return { title: [s(`#${c.threadId}`, "b")], lines: [blank(), line(s(` loading thread #${c.threadId}…`, "dim"))] };
-  const code = threadCode(d, null);
-  const marked = code.rows.map((r, i) => (r.marked ? i : -1)).filter((i) => i >= 0);
-  const from = Math.max(0, (marked[0] ?? 0) - 1);
-  const to = Math.min(code.rows.length, (marked[marked.length - 1] ?? code.rows.length - 1) + 2);
-  const near = { ...code, rows: marked.length ? code.rows.slice(from, to) : code.rows };
-  const rows = codeLines(near, w, null);
+  const rows = codeLines(nearThread(threadCode(d, null), 1), w, null);
   const msg = conversation({ ...d, comments: [c], events: [] }, new Set(), w, v.now).lines;
   return { title: threadTitle(d, false), lines: [blank(), ...rows, blank(), ...msg] };
 }
