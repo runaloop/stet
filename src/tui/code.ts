@@ -3,6 +3,7 @@
  * end, with a few lines around. A stand-in for the diff widget of phase 3, which takes over behind `codeLines`.
  */
 import type { Excerpt, ThreadDetail, TimelineStepDto } from "../core/types.ts";
+import { outdatedText } from "../ui/timeline.ts";
 import { chop, clean, filled, line, rangeText, s, spread, type Line, type Span } from "./text.ts";
 
 export interface CodeRow {
@@ -89,7 +90,7 @@ export function threadCode(d: ThreadDetail, view: CodeView | null): Code {
     return { view: v, title: `${lines(last.range)} at ${last.label}${since}`, rows: excerptRows(d.code.now!), diff: false };
   }
   if (v === "then") {
-    const gone = !d.code.now || !last.range ? `gone at ${last.label} (${last.reason ?? "outdated"}) · ` : "";
+    const gone = !d.code.now || !last.range ? `${outdatedText(last.reason, last.label)} · ` : "";
     return { view: v, title: `${gone}${lines(first.range)} as written on ${first.label}`, rows: excerptRows(d.code.then!), diff: false };
   }
   return { view: "at", title: "the thread's code could not be read", rows: [], diff: false };
