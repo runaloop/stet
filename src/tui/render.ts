@@ -48,8 +48,6 @@ export interface ViewState {
   banner: number | null;
   tab: Tab;
   focus: Focus;
-  /** On a narrow screen: the list slid in over the thread. */
-  listOpen: boolean;
   /** The left column's tab. */
   side: Side;
   /** The review's changed files, once the Files tab asked for them. */
@@ -94,7 +92,6 @@ export function initialView(): ViewState {
     banner: null,
     tab: "round",
     focus: "list",
-    listOpen: false,
     side: "threads",
     files: null,
     fileSel: null,
@@ -144,7 +141,6 @@ export function columnOf(v: ViewState): "list" | "files" | "search" | "code" | "
   if (v.tab === "drafts") return "drafts";
   if (v.tab === "changes") return "changes";
   const cols = v.geom.columns;
-  if (cols === 1) return v.listOpen ? listScope(v) : "thread";
   if (v.focus === "list") return listScope(v);
   return cols === 3 ? v.focus : "thread";
 }
@@ -315,7 +311,7 @@ interface ThreadPanes {
 function threadPanes(v: ViewState, cols: 1 | 2 | 3, widths: number[], height: number): ThreadPanes {
   const d = v.detail;
   const inner = height - 2;
-  const focusThread = v.focus !== "list" && !(cols === 1 && v.listOpen);
+  const focusThread = v.focus !== "list";
   const right = focusThread ? position(v) : [s("preview", "dim")];
   if (v.selected === null || !d || d.thread.id !== v.selected) {
     const text = v.selected === null ? (v.data.threads.length ? "No thread selected." : "No threads yet. Comment on code in the browser or with `stet comment add`.") : `loading thread #${v.selected}…`;
@@ -375,8 +371,9 @@ function roundTab(v: ViewState, w: number, height: number, top: number): { rows:
     const t = threadPanes(v, 1, [w], height);
     let rows = pane(t.panes[0]!, height);
     const box = t.box ? { x: 1 + t.box.dx, y: top + 1 + t.box.dy, w: t.box.w, h: t.box.h } : null;
-    if (v.listOpen) rows = overlay(rows, pane(listPane(v, Math.min(w - 4, Math.max(40, Math.floor(w * 0.58))), height, true), height), 0, 0);
-    return { rows, box: v.listOpen ? null : box };
+    // On a narrow screen the list in focus slides in over the thread.
+    if (v.focus === "list") rows = overlay(rows, pane(listPane(v, Math.min(w - 4, Math.max(40, Math.floor(w * 0.58))), height, true), height), 0, 0);
+    return { rows, box: v.focus === "list" ? null : box };
   }
   const list = listPane(v, listW, height, v.focus === "list");
   const rest = w - listW;

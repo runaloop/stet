@@ -283,7 +283,7 @@ export class App {
   private inThread(): boolean {
     const v = this.v;
     if (v.tab !== "round") return false;
-    return v.geom.columns === 1 ? !v.listOpen : v.focus !== "list";
+    return v.focus !== "list";
   }
 
   // --- moving around
@@ -307,7 +307,6 @@ export class App {
   private focus(f: "list" | "code" | "conv"): void {
     const v = this.v;
     v.focus = f;
-    if (v.geom.columns === 1) v.listOpen = f === "list";
     this.markReadSoon();
     this.redraw();
   }
@@ -511,7 +510,7 @@ export class App {
       case "focus.next":
       case "focus.prev": {
         if (v.tab !== "round") return;
-        if (cols === 1) return this.focus(v.listOpen ? "code" : "list");
+        if (cols === 1) return this.focus(v.focus === "list" ? "code" : "list");
         const order = cols === 3 ? (["list", "code", "conv"] as const) : (["list", "code"] as const);
         const at = Math.max(0, order.indexOf(v.focus as never));
         return this.focus(order[(at + (id === "focus.next" ? 1 : order.length - 1)) % order.length]!);
@@ -811,7 +810,7 @@ export class App {
     if (kind === "tab") return this.setTab(arg as "round" | "changes" | "drafts");
     if (kind === "side") return this.setSide(arg as Side);
     if (kind === "thread") {
-      if (v.focus !== "list" || (v.geom.columns === 1 && !v.listOpen)) this.focus("list");
+      if (v.focus !== "list") this.focus("list");
       return this.select(Number(arg));
     }
     if (kind === "file") {

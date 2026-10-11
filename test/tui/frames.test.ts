@@ -131,7 +131,6 @@ test("80×24: one column, the thread; h slides the list in over it", async () =>
   const thread = frame(v, 80, 24);
   expect(thread).toMatch(/\d+ of \d+/);
   expect(thread).not.toContain(" Threads ");
-  v.listOpen = true;
   v.focus = "list";
   const list = frame(v, 80, 24);
   expect(list).toContain(" Threads ");
