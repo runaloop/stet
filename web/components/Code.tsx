@@ -65,11 +65,16 @@ function focusLine(
   scroller: HTMLElement | null,
   line: number,
   side?: SelectionSide,
+  end?: number,
 ): void {
   requestAnimationFrame(() => {
     if (virtualizer && inst.getLinePosition) {
       const pos = inst.getLinePosition(line, side);
-      if (pos) virtualizer.scrollTo({ top: Math.max(0, pos.top - (scroller?.clientHeight ?? 400) / 3) });
+      const last = end === undefined ? undefined : inst.getLinePosition(end, side);
+      const view = scroller?.clientHeight ?? 400;
+      // a range in the middle, or from near the top when it is taller than the view
+      const span = pos && last ? last.top - pos.top + 20 : null;
+      if (pos) virtualizer.scrollTo({ top: Math.max(0, span === null ? pos.top - view / 3 : span < view - 40 ? pos.top - (view - span) / 2 : pos.top - 20) });
       return;
     }
     scroller?.querySelector(".anno-focus")?.scrollIntoView({ block: "center", behavior: "instant" as ScrollBehavior });
@@ -197,7 +202,7 @@ export interface FileViewProps<M> {
   selected?: { start: number; end: number } | null;
   onSelect?: (r: SelectedLineRange | null) => void;
   wrap?: boolean;
-  focus?: { line: number };
+  focus?: { line: number; end?: number };
 }
 
 export function FileView<M>(props: FileViewProps<M>) {
@@ -252,12 +257,12 @@ export function FileView<M>(props: FileViewProps<M>) {
     if (!f || !host.current) return;
     f.render({ file: props.file, containerWrapper: host.current, lineAnnotations: props.annotations ?? [], forceRender: true });
     f.setSelectedLines(props.selected ? { start: props.selected.start, end: props.selected.end } : null);
-    const key = props.focus ? `${props.file.name}:${props.focus.line}` : "";
+    const key = props.focus ? `${props.file.name}:${props.focus.line}-${props.focus.end ?? ""}` : "";
     if (props.focus && (focused.current.key !== key || focused.current.inst !== f)) {
       focused.current = { key, inst: f };
-      focusLine(f as never, virtualizer, scroller.current, props.focus.line);
+      focusLine(f as never, virtualizer, scroller.current, props.focus.line, undefined, props.focus.end);
     }
-  }, [inst.current, props.file, props.annotations, props.selected, props.wrap, props.focus?.line]);
+  }, [inst.current, props.file, props.annotations, props.selected, props.wrap, props.focus?.line, props.focus?.end]);
 
   useEffect(() => {
     if (painted.current) paintMarks(painted.current, props.marks ?? []);

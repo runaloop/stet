@@ -490,9 +490,10 @@ a.snip:not(.match):hover { opacity: 0.8; }
 .round li.done .tick { border-color: var(--ok); }
 .round p { margin: 3px 0 0; }
 
-.tref { position: relative; display: inline-block; }
+.tref, .fref { position: relative; display: inline-block; }
 .tref-card { display: none; position: absolute; left: 0; top: 100%; z-index: 25; width: max-content; max-width: min(460px, 70vw); padding: 7px 10px; background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 6px 20px rgb(0 0 0 / 0.18); font-size: 12px; white-space: normal; }
-.tref:hover .tref-card, .tref:focus-within .tref-card { display: grid; gap: 3px; }
+.tref:hover .tref-card, .tref:focus-within .tref-card, .fref:hover .tref-card, .fref:focus-within .tref-card { display: grid; gap: 3px; }
+.fref-path { font: 11px var(--mono); color: var(--fg-soft); }
 .tref-card .tref-last { color: var(--fg-soft); }
 
 .snip-row { display: flex; align-items: stretch; }

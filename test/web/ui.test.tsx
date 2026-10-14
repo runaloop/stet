@@ -892,3 +892,73 @@ describe("viewed files and the last pass", () => {
     expect(state.banner.value).toBeNull();
   });
 });
+
+const { Body } = await import("../../web/components/Bits.tsx");
+const { peek, fileChoice } = await import("../../web/compare.ts");
+const { picker } = await import("../../web/keys.ts");
+
+describe("file references in messages", () => {
+  const from = { thread: 7, agent: true, snapshot: "snap", version: 1 };
+  const serve = (blobs: Record<string, string[]>) => {
+    respond = (url) => {
+      const q = new URL(url, "http://x").searchParams;
+      if (url.startsWith("/api/compare")) return Response.json({ from: { ref: "base", sha: "b0", label: "base" }, to: { ref: "2", sha: "v2", label: "v2" }, files: [{ path: "src/app/Foo.kt", status: "M" }, { path: "src/a/Util.kt", status: "A" }], placements: [], outside: [] });
+      if (url.startsWith("/api/files")) return Response.json({ sha: q.get("sha"), paths: ["src/app/Foo.kt", "src/a/Util.kt", "src/b/Util.kt", "build.gradle", "src/x/Strings.kt", "test/Strings.kt"] });
+      if (url.startsWith("/api/blob")) {
+        const sha = q.get("sha")!;
+        const exists = (blobs[sha] ?? []).includes(q.get("path")!);
+        return Response.json({ sha, path: q.get("path"), exists, binary: false, contents: exists ? "a\nb\nc\n" : null });
+      }
+      return null;
+    };
+  };
+  const show = async (text: string) => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(<Body text={text} from={from} />, host);
+    await tick(60);
+    render(<Body text={text} from={from} />, host);
+    await tick(60);
+    return host;
+  };
+
+  test("a name of one file is a link with its path and lines; a click opens it at the message's code, lines marked", async () => {
+    state.route.value = { name: "thread", id: 7 };
+    state.status.value = { versions: 2, versionsList: [{ number: 1, snapshot: "v1" }, { number: 2, snapshot: "v2" }], now: { changedSinceLatest: false }, pinnedNow: null } as never;
+    serve({ snap: ["src/app/Foo.kt"], v2: ["src/app/Foo.kt"] });
+    const host = await show("Сделал по месту (Foo.kt:14-15), see also `build.gradle` and Nope.kt:3, v1.2:3");
+    const links = [...host.querySelectorAll(".fref")];
+    expect(links.map((l) => l.querySelector("a")!.textContent)).toEqual(["Foo.kt:14-15", "build.gradle"]);
+    expect(links[0]!.querySelector(".tref-card")!.textContent).toContain("src/app/Foo.kt · lines 14–15");
+    expect(links[0]!.querySelector("a")!.getAttribute("href")).toBe("#/compare/base..2?file=src%2Fapp%2FFoo.kt&line=14-15");
+    (links[0]!.querySelector("a") as HTMLAnchorElement).click();
+    await tick(60);
+    expect(peek.value).toEqual({ path: "src/app/Foo.kt", sha: "snap", label: "snap", line: 14, end: 15, note: "as in the agent's reply on #7 (the code after v1)", latest: { sha: "v2", label: "v2" } });
+    peek.value = null;
+    render(null, host);
+  });
+
+  test("a file the message's code does not have opens at the latest version", async () => {
+    serve({ v2: ["src/a/Util.kt"] });
+    const host = await show("added in src/a/Util.kt:3");
+    (host.querySelector(".fref a") as HTMLAnchorElement).click();
+    await tick(60);
+    expect(peek.value).toEqual({ path: "src/a/Util.kt", sha: "v2", label: "v2", line: 3, end: 3 });
+    peek.value = null;
+    render(null, host);
+  });
+
+  test("a name several files have opens the finder with the name typed in", async () => {
+    serve({});
+    const host = await show("both in Strings.kt:2");
+    expect(host.querySelector(".fref .tref-card")!.textContent).toContain("2 files have this name");
+    (host.querySelector(".fref a") as HTMLAnchorElement).click();
+    expect(picker.value).toBe("files");
+    expect(fileChoice.value?.query).toBe("Strings.kt");
+    expect(fileChoice.value?.paths).toEqual(["src/x/Strings.kt", "test/Strings.kt"]);
+    picker.value = null;
+    fileChoice.value = null;
+    respond = null;
+    render(null, host);
+  });
+});

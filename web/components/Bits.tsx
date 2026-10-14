@@ -4,6 +4,9 @@ import { stateTone } from "../../src/ui/timeline.ts";
 import { areaText } from "../../src/core/media.ts";
 import type { Round } from "../../src/ui/versions.ts";
 import { THREAD_REF } from "../../src/ui/strip.ts";
+import { fileRefs, linesText, type FileRef } from "../../src/ui/filerefs.ts";
+import { branchRoute, chooseFile, openFileRef, targetsOf, type MessageCode } from "../filerefs.ts";
+import { plainClick } from "../lib/route.ts";
 import { link, threads } from "../state.ts";
 
 export function Badge({ tone = "muted", children, title }: { tone?: string; children: ComponentChildren; title?: string }) {
@@ -77,30 +80,76 @@ export function ThreadRef({ id, children }: { id: number; children: ComponentChi
   );
 }
 
-function withRefs(text: string): ComponentChildren {
+/** A file a message names, as a link once it names files of the review: one opens over the code, several in the finder. */
+function FileRefLink({ r, from }: { r: FileRef; from: MessageCode }) {
+  const paths = targetsOf(r);
+  if (!paths?.length) return <>{r.text}</>;
+  const lines = linesText(r);
+  const where = `${lines ? ` · ${r.start === r.end ? "line" : "lines"} ${lines}` : ""}${r.column ? `, column ${r.column}` : ""}`;
+  if (paths.length > 1) {
+    const pick = (e: MouseEvent) => {
+      if (!plainClick(e)) return;
+      e.preventDefault();
+      chooseFile(paths, r, from);
+    };
+    return (
+      <span class="fref">
+        <a href="#" onClick={pick}>{r.text}</a>
+        <span class="tref-card" role="tooltip">
+          <span><b>{r.path}</b>{where}</span>
+          <span class="tref-title">{paths.length} files have this name: a click lets you pick one</span>
+          {paths.slice(0, 5).map((p) => <span class="fref-path">{p}</span>)}
+          {paths.length > 5 ? <span class="fref-path">…</span> : null}
+        </span>
+      </span>
+    );
+  }
+  const path = paths[0]!;
+  const open = () => void openFileRef(path, r, from);
+  const target = branchRoute(path, r);
+  return (
+    <span class="fref">
+      <a {...(target ? link(target, open) : { href: "#", onClick: (e: MouseEvent) => plainClick(e) && (e.preventDefault(), open()) })}>{r.text}</a>
+      <span class="tref-card" role="tooltip">
+        <span><b>{path}</b>{where}</span>
+        <span class="tref-title">opens over the thread's code, as it was when this was written</span>
+      </span>
+    </span>
+  );
+}
+
+/** Thread refs (`#12`) and, in a message of a thread, file refs as links. */
+function withRefs(text: string, from: MessageCode | undefined, threads = true): ComponentChildren {
+  const found: { index: number; length: number; node: ComponentChildren }[] = from ? fileRefs(text).map((r) => ({ index: r.index, length: r.text.length, node: <FileRefLink r={r} from={from} /> })) : [];
+  const taken = (at: number, n: number) => found.some((f) => at < f.index + f.length && at + n > f.index);
+  if (threads) {
+    for (const m of text.matchAll(THREAD_REF)) {
+      if (!taken(m.index!, m[0].length)) found.push({ index: m.index!, length: m[0].length, node: <ThreadRef id={Number(m[1] ?? m[2])}>{m[0]}</ThreadRef> });
+    }
+  }
+  found.sort((a, b) => a.index - b.index);
   const out: ComponentChildren[] = [];
   let pos = 0;
-  for (const m of text.matchAll(THREAD_REF)) {
-    out.push(text.slice(pos, m.index));
-    out.push(<ThreadRef id={Number(m[1] ?? m[2])}>{m[0]}</ThreadRef>);
-    pos = m.index! + m[0].length;
+  for (const f of found) {
+    out.push(text.slice(pos, f.index), f.node);
+    pos = f.index + f.length;
   }
   out.push(text.slice(pos));
   return out;
 }
 
-export function Body({ text }: { text: string }) {
+export function Body({ text, from }: { text: string; from?: MessageCode }) {
   const parts: ComponentChildren[] = [];
   const blocks = text.split(/```/);
   blocks.forEach((block, i) => {
     if (i % 2 === 1) {
-      parts.push(<pre class="body-code">{block.replace(/^\w*\n/, "")}</pre>);
+      parts.push(<pre class="body-code">{withRefs(block.replace(/^\w*\n/, ""), from, false)}</pre>);
       return;
     }
     const inline = block.split(/(`[^`\n]+`)/);
     parts.push(
       <span>
-        {inline.map((seg) => (seg.startsWith("`") && seg.endsWith("`") && seg.length > 1 ? <code>{seg.slice(1, -1)}</code> : withRefs(seg)))}
+        {inline.map((seg) => (seg.startsWith("`") && seg.endsWith("`") && seg.length > 1 ? <code>{withRefs(seg.slice(1, -1), from, false)}</code> : withRefs(seg, from)))}
       </span>,
     );
   });

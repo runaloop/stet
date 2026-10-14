@@ -511,8 +511,24 @@ export interface Peek {
   sha: string;
   label: string;
   line: number;
+  /** Lines from `line` to this one are marked, in the middle of the view. */
+  end?: number;
+  /** Whose code it is, before the label: "as in the agent's reply on #12". */
+  note?: string;
+  /** A newer version than the one shown, where the same lines can be looked up. */
+  latest?: { sha: string; label: string };
 }
 export const peek = signal<Peek | null>(null);
+
+/** The file finder opened to pick one of the files a name in a message may be: the name typed in, and what a pick does. */
+export interface FileChoice {
+  query: string;
+  paths: string[];
+  open: (path: string) => void;
+  /** The lines the name was written with, as text; empty without. */
+  lines: string;
+}
+export const fileChoice = signal<FileChoice | null>(null);
 
 export const grepResult = signal<GrepResultDto | null>(null);
 /** Grep results in the order of the Changes page: code first, docs last. */

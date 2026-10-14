@@ -101,7 +101,7 @@ function CommentNode({ c, childrenOf, detail, depth, newId }: { c: CommentDto; c
               }}
             />
           ) : (
-            <Body text={c.body} />
+            <Body text={c.body} from={{ thread: detail.thread.id, agent: c.role === "agent", snapshot: c.snapshot, version: c.version }} />
           )}
           {c.restore ? <RestoreBlock r={c.restore} /> : null}
           {folded ? <button class="unfold" title="za" onClick={fold}>▾ show the whole message</button> : null}

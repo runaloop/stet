@@ -6,6 +6,7 @@ import { ThreadMini } from "../components/ThreadMini.tsx";
 import { useBlob } from "../components/useBlob.ts";
 import { usePlacements } from "../components/usePlacements.ts";
 import { currentGrepHit, grepHits, hoverThread, onThreadPage, peek, type Peek } from "../compare.ts";
+import { peekLatest } from "../filerefs.ts";
 import { wrap } from "../state.ts";
 import { peekView } from "../modules.tsx";
 
@@ -23,8 +24,9 @@ function PeekBody({ p }: { p: Peek }) {
       ...hits
         .filter((h) => h.path === p.path)
         .map((h) => ({ side: "additions" as const, start: h.line, end: h.line, tag: "hit", ranges: h.ranges, current: h === cur })),
+      ...(p.end !== undefined ? [{ side: "additions" as const, start: p.line, end: p.end, tag: "linked" }] : []),
     ],
-    [hits, cur, p.path, placed, hover],
+    [hits, cur, p.path, placed, hover, p.line, p.end],
   );
   type Anno = { kind: "thread" | "new"; id: number; state: string };
   const annotations = useMemo(
@@ -36,7 +38,7 @@ function PeekBody({ p }: { p: Peek }) {
   );
   const selected = useMemo(() => (mine ? { start: mine.start, end: mine.end } : null), [mine?.start, mine?.end]);
   const file = useMemo(() => (blob && blob !== "loading" && blob.contents !== null ? { name: p.path, contents: blob.contents } : null), [blob]);
-  const focus = useMemo(() => ({ line: p.line }), [p.line, p.path]);
+  const focus = useMemo(() => ({ line: p.line, ...(p.end !== undefined ? { end: p.end } : {}) }), [p.line, p.end, p.path]);
   const own = peekView(p, placed);
   if (own) return own;
   if (blob === "loading") return <div class="note">loading…</div>;
@@ -63,8 +65,15 @@ export function PeekView() {
       <div class="peek-head">
         <b class="path">{p.path}</b>
         <span class="subtle">
-          at {p.label} · line {p.line}{onThreadPage.value ? "" : " is outside this diff"}
+          {p.note ?? `at ${p.label}`}
+          {p.end !== undefined ? ` · ${p.end > p.line ? `lines ${p.line}–${p.end}` : `line ${p.line}`}` : p.note ? "" : ` · line ${p.line}`}
+          {onThreadPage.value || p.end !== undefined ? "" : " is outside this diff"}
         </span>
+        {p.latest ? (
+          <button class="btn ghost small peek-latest" title="the same lines in the latest version, where they are now" onClick={() => void peekLatest(p)}>
+            in {p.latest.label}
+          </button>
+        ) : null}
         <span class="spacer" />
         <span class="hint">
           {onThreadPage.value ? "select lines to quote them in your reply or start a thread" : "select lines to comment"} · <Kbd>Esc</Kbd> {onThreadPage.value ? "back to the thread's code" : "back to the diff"}

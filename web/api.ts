@@ -120,6 +120,8 @@ export const api = {
   setViewed: (review: number, keys: string[], on: boolean) => call("POST", "/api/viewed", { query: { review }, body: { keys, on } }),
   blame: (review: number, q: { path: string; from: number; to: number; at: string }) => call<BlameDto>("GET", "/api/blame", { query: { review, ...q } }),
   grep: (sha: string, q: string, regex: boolean) => call<GrepResultDto>("GET", "/api/grep", { query: { sha, q, regex: regex ? 1 : 0 } }),
+  /** The files of a commit; null when the repository has too many to list. */
+  files: (sha: string) => call<{ sha: string; paths: string[] | null }>("GET", "/api/files", { query: { sha } }),
   async patch(from: string, to: string): Promise<string> {
     const res = await fetch(`/api/patch?from=${from}&to=${to}`, { headers: { "x-stet-token": token } });
     if (!res.ok) throw new ApiError(`patch: ${res.status}`, res.status, "error");
