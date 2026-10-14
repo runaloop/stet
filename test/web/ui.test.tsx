@@ -961,4 +961,16 @@ describe("file references in messages", () => {
     respond = null;
     render(null, host);
   });
+
+  test("Space f f on a thread's page opens the finder; a pick opens the file in the diff the reader came from, else the whole branch", async () => {
+    state.route.value = { name: "thread", id: 7 };
+    picker.value = null;
+    for (const k of [" ", "f", "f"]) key(k);
+    expect(picker.value as string | null).toBe("files");
+    picker.value = null;
+    const { openInChanges } = await import("../../web/filerefs.ts");
+    state.lastCompare.value = null;
+    openInChanges("src/app/Foo.kt");
+    expect(location.hash).toBe("#/compare/base..2?file=src%2Fapp%2FFoo.kt");
+  });
 });

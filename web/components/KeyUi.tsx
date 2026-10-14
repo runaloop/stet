@@ -1,6 +1,7 @@
 import type { ComponentChild } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import { compareNav, cursorSpace, fileRows, setCursor, type FileRow } from "../compare.ts";
+import { compareNav, cursorSpace, fileChoice, fileRows, onThreadPage, setCursor, type FileRow } from "../compare.ts";
+import { finderFiles, openInChanges } from "../filerefs.ts";
 import { bindings, bindingsHere, contexts, nextKeys, picker, tokens, whichKey, type Binding, type Where } from "../keys.ts";
 import { fuzzyFilter, wordFilter } from "../../src/ui/fuzzy.ts";
 import type { VersionDto } from "../../src/core/types.ts";
@@ -47,8 +48,10 @@ function Picker<T>(props: {
   shiftPick?: (t: T) => void;
   ctrlPick?: (t: T) => void;
   limit?: number;
+  /** Text the box opens with. */
+  initial?: string;
 }) {
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(props.initial ?? "");
   const [sel, setSel] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   const list = useMemo(() => props.filter(props.items, q).slice(0, props.limit ?? 80), [q, props.items]);
@@ -109,7 +112,35 @@ function Picker<T>(props: {
   );
 }
 
+const fileRow = (path: string) => {
+  const cut = path.lastIndexOf("/") + 1;
+  return (
+    <>
+      <span class="file-name">{path.slice(cut)}</span> <span class="file-dir">{path.slice(0, cut)}</span>
+    </>
+  );
+};
+
+/** On a thread's page: the branch's files open on the Changes page; the files a name in a message may be open over the code. */
+function ThreadFilePicker() {
+  const [choice] = useState(() => fileChoice.peek());
+  useEffect(() => () => void (fileChoice.value = null), []);
+  const items = choice ? choice.paths : finderFiles();
+  return (
+    <Picker<string>
+      placeholder={choice ? `${choice.paths.length} files have this name: pick one` : "find a file of the branch's diff (fuzzy)"}
+      initial={choice?.query}
+      items={items}
+      filter={(all, q) => fuzzyFilter(all, q, (p) => p, 80)}
+      hint={choice ? (choice.lines ? `open it at ${choice.lines.includes("–") ? "lines" : "line"} ${choice.lines}` : "open it") : "open it on the Changes page"}
+      row={fileRow}
+      pick={(p) => (choice ? choice.open(p) : openInChanges(p))}
+    />
+  );
+}
+
 function FilePicker() {
+  if (onThreadPage.value) return <ThreadFilePicker />;
   const rows = fileRows.value;
   return (
     <Picker<FileRow>

@@ -572,6 +572,8 @@ export const BINDINGS: Binding[] = [
 
   { keys: "<Space><Space>", desc: "find a file of the diff", where: "compare", run: toggle(() => (picker.value = "files")) },
   { keys: "<Space>ff", desc: "find a file of the diff", where: "compare", run: toggle(() => (picker.value = "files")) },
+  { keys: "<Space><Space>", desc: "find a file of the branch's diff and open it on the Changes page", where: "thread", run: toggle(() => (picker.value = "files")) },
+  { keys: "<Space>ff", desc: "find a file of the branch's diff and open it on the Changes page", where: "thread", run: toggle(() => (picker.value = "files")) },
   { keys: "<Space>gs", desc: "git state: pushed or not, staged, not staged, new files", where: "everywhere", run: toggle(() => (gitOpen.value = !gitOpen.value)) },
   { keys: "<Space>fv", desc: "find a version: what changed in it, or make it from / to", where: "everywhere", run: toggle(() => (picker.value = "versions")) },
   { keys: "<Space>/", desc: "search all files", where: "compare", run: () => search("files") },
