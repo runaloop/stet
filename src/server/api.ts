@@ -2,7 +2,7 @@ import { BUILD } from "../core/build.ts";
 import { StetError, forbidden, notFound, reviewById, usage, type Ctx } from "../core/context.ts";
 import { configKey, configValue, uiConfig } from "../core/config.ts";
 import { unifiedPatch } from "../core/diff.ts";
-import { readBlobAt } from "../core/git.ts";
+import { listFiles, readBlobAt } from "../core/git.ts";
 import { imageType } from "../core/media.ts";
 import { actionTarget, editorCommand, editorTemplate, launchCommand } from "../core/actions.ts";
 import * as svc from "../core/service.ts";
@@ -309,6 +309,18 @@ route("GET", "/api/blob", async (s, _req, url) => {
   const blob = await readBlobAt(s.ctx.repo.cwd, sha, path);
   if (!blob) return { sha, path, exists: false, binary: false, contents: null };
   return { sha, path, exists: true, binary: blob.binary, contents: blob.binary ? null : blob.text };
+});
+
+// past this the page resolves names in the diff only: a part of the tree could make a name that several files have look like one
+const MAX_FILES = 200_000;
+
+route("GET", "/api/files", async (s, _req, url) => {
+  const sha = url.searchParams.get("sha") ?? "";
+  if (!/^[0-9a-f]{7,64}$/.test(sha)) throw usage("bad sha");
+  const paths = await listFiles(s.ctx.repo.cwd, sha).catch(() => {
+    throw notFound(`commit ${sha.slice(0, 10)}`);
+  });
+  return { sha, paths: paths.length > MAX_FILES ? null : paths };
 });
 
 route("GET", "/api/raw", async (s, _req, url) => {

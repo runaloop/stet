@@ -67,6 +67,10 @@ test("draft thread, submit, and resolve through the API", async () => {
   expect(resolved.thread.resolvedAt).toBeTruthy();
   expect(resolved.events.map((e: { type: string }) => e.type)).toEqual(["resolved"]);
   expect((await api("/api/blob?sha=zzz&path=../etc/passwd")).status).toBe(400);
+  const files = await (await api(`/api/files?sha=${detail.timeline[0].sha}`)).json();
+  expect(files.paths).toEqual(["a.kt"]);
+  expect((await api("/api/files?sha=zzz")).status).toBe(400);
+  expect((await api(`/api/files?sha=${"0".repeat(40)}`)).status).toBe(404);
 });
 
 test("a CLI reply reaches the SSE stream within a second", async () => {

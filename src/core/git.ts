@@ -142,6 +142,11 @@ export async function blobIdAt(cwd: string, commit: string, path: string): Promi
   return m && m[2] === path ? m[1]! : null;
 }
 
+/** The paths of the files at a commit, from the repository's root. */
+export async function listFiles(cwd: string, commit: string): Promise<string[]> {
+  return (await git(["ls-tree", "-r", "-z", "--name-only", "--full-tree", commit], { cwd })).split("\0").filter(Boolean);
+}
+
 export async function readBlobAt(cwd: string, commit: string, path: string): Promise<GitBlob | null> {
   const id = await blobIdAt(cwd, commit, path);
   return id ? readBlobById(cwd, id) : null;
