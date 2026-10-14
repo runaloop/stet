@@ -475,19 +475,33 @@ export function CompareView({ from, to }: { from: string; to: string }) {
   };
 
   // Runs `fn` once the rendered Markdown file has laid out its blocks for the cursor; the file is scrolled to when it
-  // is not drawn (at once, or with `later` only if it is still not drawn a moment later).
+  // is not drawn (at once, or with `later` only if it is still not drawn a moment later), and again while it is not.
   const whenLaidOut = (path: string, fn: () => void, later = false) => {
     const fd = files?.find((f) => f.name === path);
     const ready = () => !!fd && fileBlocks.peek().get(path)?.fd === fd && !!stopElement(path, 0);
     if (ready()) return fn();
     const drawn = () => !!document.querySelector(`.md-anno [data-file="${CSS.escape(path)}"]`);
-    if (!later && !drawn()) view.current?.scrollTo({ type: "item", id: path, align: "start" });
-    if (later) setTimeout(() => drawn() || view.current?.scrollTo({ type: "item", id: path, align: "start" }), 150);
+    const toFile = () => view.current?.scrollTo({ type: "item", id: path, align: "start" });
+    if (!later && !drawn()) toFile();
+    let asked = performance.now();
+    // the reader's own scroll, click or key ends the scrolling to the file
+    let moved = false;
+    const events = ["wheel", "pointerdown", "keydown"] as const;
+    const move = () => (moved = true);
+    for (const ev of events) window.addEventListener(ev, move, { capture: true, passive: true });
     const end = performance.now() + 5000;
     const free = holdFade();
     const poll = () => {
       if (ready()) fn();
-      else if (performance.now() < end) return void requestAnimationFrame(poll);
+      else if (performance.now() < end) {
+        // files above it laid out after the scroll push it away before it is drawn: it is scrolled to again
+        if (!moved && !drawn() && performance.now() - asked >= 150) {
+          asked = performance.now();
+          toFile();
+        }
+        return void requestAnimationFrame(poll);
+      }
+      for (const ev of events) window.removeEventListener(ev, move, { capture: true });
       free();
     };
     requestAnimationFrame(poll);
