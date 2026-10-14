@@ -116,18 +116,21 @@ Pick one intent per thread:
 
 | Intent | When | Body |
 |---|---|---|
-| `fixed` | you changed the code | what you changed and where (file:line) |
+| `fixed` | you changed the code | what you changed and where (`path:line`) |
 | `answered` | it was a question, no code change | the answer |
 | `disagree` | you think the current code is right | the reason, concretely |
 | `question` | you need a decision from the reviewer | the question, with options |
 
 ```bash
-stet reply <id> --intent fixed --body "Moved the null check before the cache lookup (Foo.kt:42)."
+stet reply <id> --intent fixed --body "Moved the null check before the cache lookup (src/app/Foo.kt:42)."
 stet reply <id> --intent disagree --body - <<'EOF'
 Multi-line bodies go through stdin.
 EOF
 ```
 
+Name code as `path:L` or `path:L-M` (`:L:C` for a column), the path from the repository's root
+(`src/app/Foo.kt:14-15`), not a bare file name: the review UI turns it into a link to those lines as the code
+was when you replied.
 Reply to a specific comment in the thread with `--to <commentId>` when the thread branches.
 Refer to other threads as `#N`: the review UI turns that into a link. When you agree but wait for the
 reviewer (an answer in another thread, a choice), use `question` and say what you wait for; the UI shows
