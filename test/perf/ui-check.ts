@@ -2953,6 +2953,52 @@ try {
     const reconnected = await waitFor(`!document.querySelector("header .offline") && document.querySelector(".gitchip")`, 20000);
     check("when the server goes away the header says so, and the page picks it up again when it comes back on its port", /offline/.test(offline ?? "") && !!reconnected, { offline, reconnected });
 
+    // File references in an agent's reply: one file's lines, and a name two files have.
+    for (const dir of ["a", "b"]) {
+      mkdirSync(join(repo, `src/${dir}`), { recursive: true });
+      writeFileSync(join(repo, `src/${dir}/Twin.kt`), `val twin = "${dir}"\nval two = 2\n`);
+    }
+    run(repo, ["git", "add", "-A"]);
+    const twinsV = JSON.parse(run(repo, ["bun", CLI, "version", "create", "--label", "twins", "--json"])).version.number as number;
+    const refThread = JSON.parse(run(repo, ["bun", CLI, "comment", "add", "--file", "src/Zbig.kt", "--range", "14-14", "--at", String(twinsV), "--body", "Where is the note?", "--as", "reviewer", "--json"])).id as number;
+    run(repo, ["bun", CLI, "reply", String(refThread), "--intent", "fixed", "--body", "Сделал по месту реализации: двухстрочный комментарий над line14 (Zbig.kt:14-15), и то же в Twin.kt:2.", "--json"]);
+    await b.eval(`location.hash = "#/thread/${refThread}"; true`);
+    const refLink = `[...document.querySelectorAll(".thread-msgs .fref a")].find(a => a.textContent === "Zbig.kt:14-15")`;
+    await waitFor(`${refLink} && !document.querySelector(".view-fade")`, 10000);
+    await b.eval(`${refLink}.scrollIntoView({ block: "center", behavior: "instant" }); true`);
+    await sleep(200);
+    const refAt = await b.eval(`(() => { const r = ${refLink}?.getBoundingClientRect(); return r ? { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) } : null; })()`);
+    if (refAt) await pointer([{ type: "pointerMove", x: refAt.x, y: refAt.y }]);
+    const refCard = await waitFor(`(() => { const c = ${refLink}?.parentElement.querySelector(".tref-card"); return c && getComputedStyle(c).display !== "none" ? c.textContent : null; })()`, 3000);
+    check("a reply's Zbig.kt:14-15 is a link whose card gives the file's path and the lines", refCard?.includes("src/Zbig.kt · lines 14–15") ?? false, { refAt, refCard });
+    if (refAt) await pointer([{ type: "pointerDown", button: 0 }, { type: "pointerUp", button: 0 }]);
+    const peekShadow = `document.querySelector(".thread-code .peek diffs-container")?.shadowRoot`;
+    const refMarked = await waitFor(`(() => { const lines = [...(${peekShadow}?.querySelectorAll('[data-content] > [data-stet-mark~="linked"]') ?? [])].map(e => +e.getAttribute("data-line")); return lines.length ? lines : null; })()`, 8000);
+    const inView = await b.eval(`(() => { const host = document.querySelector(".thread-code .peek .code-host"); const el = [...(${peekShadow}?.querySelectorAll('[data-content] > [data-line="14"]') ?? [])].pop(); if (!host || !el) return null; const h = host.getBoundingClientRect(); const r = el.getBoundingClientRect(); return r.top >= h.top && r.bottom <= h.bottom; })()`);
+    const refHead = await b.eval(`document.querySelector(".thread-code .peek .peek-head")?.textContent ?? null`);
+    await b.screenshot(join(OUT, "shots", "ui-check-file-ref.png"));
+    check(
+      "a click opens the file over the thread's code at the reply's code, lines 14–15 marked and in view; the conversation stays",
+      JSON.stringify(refMarked) === "[14,15]" && inView === true && (refHead?.includes("as in the agent's reply") ?? false) && (await b.eval(`!!document.querySelector(".thread-msgs .fref")`)) === true,
+      { refMarked, inView, refHead },
+    );
+    await b.eval(`document.activeElement?.blur(); true`);
+    await keys(KEY.Escape);
+    const backHere = await waitFor(`!document.querySelector(".thread-code .peek") && document.querySelector(".thread-code .code-area diffs-container") ? location.hash : null`, 3000);
+    check("Esc closes it: back to the thread's code, on the same thread", backHere === `#/thread/${refThread}`, backHere);
+    await b.eval(`[...document.querySelectorAll(".thread-msgs .fref a")].find(a => a.textContent === "Twin.kt:2").click(); true`);
+    const twinPick = await waitFor(`(() => { const p = document.querySelector(".picker"); return p ? { q: p.querySelector("input").value, rows: [...p.querySelectorAll("li")].map(l => l.textContent) } : null; })()`, 3000);
+    check("a name two files have opens the file finder with the name typed in, listing both", twinPick?.q === "Twin.kt" && twinPick.rows.length === 2, twinPick);
+    await keys(KEY.Escape);
+    await waitFor(`!document.querySelector(".picker")`, 2000);
+    await keys(" ", "f", "f");
+    const finder = await waitFor(`document.querySelector(".picker input")?.placeholder ?? null`, 3000);
+    await keys(..."Zbig".split(""));
+    await waitFor(`document.querySelector(".picker li.on .file-name")?.textContent === "Zbig.kt"`, 3000);
+    await keys(KEY.Enter);
+    const finderHash = await waitFor(`location.hash.startsWith("#/compare/") ? location.hash : null`, 5000);
+    check("Space f f on a thread's page opens the file finder; a pick opens the file on the Changes page", (finder?.includes("branch's diff") ?? false) && (finderHash?.includes("file=src%2FZbig.kt") ?? false), { finder, finderHash });
+
     // A second review, on a branch in its own worktree, whose only thread is resolved.
     const sideDir = realpathSync(mkdtempSync(join(tmpdir(), "stet-ui-side-")));
     try {
