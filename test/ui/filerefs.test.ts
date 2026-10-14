@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { fileIndex, fileRefs, linesText, matchFile, resolveFile } from "../../src/ui/filerefs.ts";
+import { fileIndex, fileRefs, linesText, matchFile, movedLines, resolveFile } from "../../src/ui/filerefs.ts";
 
 const refs = (text: string) => fileRefs(text).map((r) => ({ text: r.text, path: r.path, start: r.start, end: r.end }));
 const one = (text: string) => {
@@ -43,15 +43,6 @@ describe("file references in a message", () => {
     const r = one("crash at src/Main.kt:88:12 on start");
     expect([r.text, r.start, r.end, r.column]).toEqual(["src/Main.kt:88:12", 88, 88, 12]);
     expect(refs("Foo.kt:20-14")).toEqual([{ text: "Foo.kt:20-14", path: "Foo.kt", start: 14, end: 20 }]);
-  });
-
-  test("an explicit version, with lines or without", () => {
-    expect(fileRefs("as it was in src/Foo.kt:88@v3").map((r) => [r.text, r.start, r.version])).toEqual([["src/Foo.kt:88@v3", 88, 3]]);
-    expect(fileRefs("src/Foo.kt:88-92@v3 and src/Foo.kt@v2").map((r) => [r.text, r.start, r.end, r.version])).toEqual([
-      ["src/Foo.kt:88-92@v3", 88, 92, 3],
-      ["src/Foo.kt@v2", null, null, 2],
-    ]);
-    expect(one("src/Foo.kt:88").version).toBeNull();
   });
 
   test("punctuation, quotes and Markdown around the reference stay outside it", () => {
@@ -143,5 +134,23 @@ describe("resolving a reference to the review's files", () => {
     expect(resolveFile(ref("Foo.kt"), [diff, null])).toEqual(["src/app/Foo.kt"]);
     expect(resolveFile(ref("build.gradle"), [diff, null])).toBeNull();
     expect(resolveFile(ref("Foo.kt"), [null])).toBeNull();
+  });
+});
+
+describe("the same lines in a later text", () => {
+  const text = (...lines: string[]) => lines.join("\n") + "\n";
+  const before = text("a", "b", "c", "d", "e", "f");
+
+  test("lines that did not change follow what was added or removed above them", () => {
+    expect(movedLines(before, before, { start: 3, end: 4 })).toEqual({ start: 3, end: 4, changed: false });
+    expect(movedLines(before, text("new1", "new2", "a", "b", "c", "d", "e", "f"), { start: 3, end: 4 })).toEqual({ start: 5, end: 6, changed: false });
+    expect(movedLines(before, text("b", "c", "d", "e", "f"), { start: 3, end: 4 })).toEqual({ start: 2, end: 3, changed: false });
+    expect(movedLines(before, text("a", "b", "c", "d", "x", "e", "f"), { start: 3, end: 4 })).toEqual({ start: 3, end: 4, changed: false });
+  });
+
+  test("an edited line lands on what replaced it, and says it changed", () => {
+    expect(movedLines(before, text("a", "b", "C", "d", "e", "f"), { start: 3, end: 4 })).toEqual({ start: 3, end: 4, changed: true });
+    expect(movedLines(before, text("a", "b", "e", "f"), { start: 3, end: 4 })).toEqual({ start: 3, end: 3, changed: true });
+    expect(movedLines(before, text("x", "a", "b", "C1", "C2", "C3", "d", "e", "f"), { start: 5, end: 6 })).toEqual({ start: 8, end: 9, changed: false });
   });
 });

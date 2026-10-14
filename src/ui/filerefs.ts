@@ -1,4 +1,6 @@
-/** A file a message names: `src/Foo.kt:14-15`, `Foo.kt:14:3`, `Foo.kt#L14-L15`, `Foo.kt line 14`, `Foo.kt:14@v3`, or a path alone. */
+import { structuredPatch } from "diff";
+
+/** A file a message names: `src/Foo.kt:14-15`, `Foo.kt:14:3`, `Foo.kt#L14-L15`, `Foo.kt line 14`, or a path alone. */
 export interface FileRef {
   /** Where it starts in the text, and the text that becomes the link. */
   index: number;
@@ -10,8 +12,6 @@ export interface FileRef {
   start: number | null;
   end: number | null;
   column: number | null;
-  /** `@v3`: the version the reference names, else the message's own. */
-  version: number | null;
 }
 
 const SEG = String.raw`\.?[\p{L}\p{N}_+\-]+(?:\.[\p{L}\p{N}_+\-]+)*`;
@@ -23,7 +23,7 @@ const LINES = [
   String.raw`#L(?<h>\d+)(?:-L?(?<i>\d+))?`,
   String.raw`,?\s+(?:lines?|строк[аиеуы]?|стр\.)\s*(?<w>\d+)(?:\s*[\-–—]\s*(?<x>\d+))?`,
 ].join("|");
-const FILE_REF = new RegExp(String.raw`(?<![\p{L}\p{N}_.\\/@:#~+\-])(?<path>${PATH})(?:${LINES})?(?:@v(?<v>\d+))?(?![\p{L}\p{N}_@])`, "gu");
+const FILE_REF = new RegExp(String.raw`(?<![\p{L}\p{N}_.\\/@:#~+\-])(?<path>${PATH})(?:${LINES})?(?![\p{L}\p{N}_@])`, "gu");
 const URL = /\b[a-z][a-z0-9+.-]*:\/\/[^\s<>()"'`]+|\bwww\.[^\s<>()"'`]+/gi;
 const EXT = /\.\p{L}[\p{L}\p{N}_+-]*$/u;
 
@@ -50,7 +50,6 @@ export function fileRefs(text: string): FileRef[] {
       start: a === null ? null : b === null ? a : Math.min(a, b),
       end: a === null ? null : b === null ? a : Math.max(a, b),
       column: Number(g.c ?? 0) || null,
-      version: Number(g.v ?? 0) || null,
     });
   }
   return out;
@@ -101,4 +100,28 @@ export function resolveFile(ref: Pick<FileRef, "path" | "loose">, indexes: reado
 /** `14`, `14–15`, or an empty string for a reference without lines. */
 export function linesText(r: { start: number | null; end: number | null }): string {
   return r.start === null ? "" : r.end === null || r.end === r.start ? `${r.start}` : `${r.start}–${r.end}`;
+}
+
+/**
+ * Lines of one text where they are in another: an unchanged line where it moved, a changed one at the start of what
+ * replaced it. `changed` when any of them was edited on the way.
+ */
+export function movedLines(oldText: string, newText: string, lines: { start: number; end: number }): { start: number; end: number; changed: boolean } {
+  const hunks = structuredPatch("a", "b", oldText, newText, undefined, undefined, { context: 0 }).hunks;
+  let changed = false;
+  const map = (n: number) => {
+    let shift = 0;
+    for (const h of hunks) {
+      if (n < h.oldStart) break;
+      if (n < h.oldStart + h.oldLines) {
+        changed = true;
+        return h.newStart + Math.min(n - h.oldStart, Math.max(0, h.newLines - 1));
+      }
+      shift = h.newStart + h.newLines - (h.oldStart + h.oldLines);
+    }
+    return n + shift;
+  };
+  const start = map(lines.start);
+  const end = Math.max(start, map(lines.end));
+  return { start, end, changed };
 }
