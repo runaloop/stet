@@ -123,6 +123,7 @@ export async function openFileRef(path: string, ref: FileRef, from: MessageCode)
   noteJump();
   peek.value = {
     path,
+    jumped: true,
     sha: at.sha,
     label: at.label,
     line: ref.start ?? 1,
@@ -144,6 +145,7 @@ export async function peekLatest(p: Peek): Promise<void> {
   noteJump();
   peek.value = {
     path: p.path,
+    jumped: true,
     sha: p.latest.sha,
     label: p.latest.label,
     line: lines?.start ?? p.line,

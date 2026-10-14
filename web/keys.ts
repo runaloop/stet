@@ -347,6 +347,12 @@ function backToThread(): boolean {
   return true;
 }
 
+/** A preview a link opened goes back to where the reader was, as Ctrl+O does; another one just closes. */
+function closePeek(): void {
+  if (peek.value?.jumped) jumpBack();
+  else peek.value = null;
+}
+
 function reviewAction(): boolean {
   if (route.value.name !== "drafts") navigate({ name: "drafts" });
   else if (drafts.value.length > 0) void submitReview();
@@ -509,7 +515,7 @@ export const BINDINGS: Binding[] = [
   { keys: "X", desc: "reopen", where: "thread", run: toggle(() => detail.value?.thread.status === "resolved" && void reopenCurrent()) },
   { keys: "e", desc: "open in the editor (STET_EDITOR)", where: "thread", run: toggle(() => void openExternal()) },
   { keys: "<Esc>", desc: "close the preview, then back to the changes, at this thread", where: "thread", run: toggle(() => {
-    if (peek.value) peek.value = null;
+    if (peek.value) closePeek();
     else navigate(lastCompare.value ? { name: "compare", ...lastCompare.value } : { name: "home" });
   }) },
   { keys: "gt", desc: "back to the thread's lines in the code, marked", where: "thread", run: showThreadCode },
@@ -547,7 +553,7 @@ export const BINDINGS: Binding[] = [
   { keys: "gcc", desc: "comment on the cursor line", where: "code", run: comment },
   { keys: "<Space>gY", desc: "copy a link to the cursor line or the selection, on the Changes page of the versions shown", where: "code", visual: true, run: copyLink },
   { keys: "<Esc>", desc: "close the preview, the selection, the comment box, then leave the code: the page's keys again", where: "code", visual: true, run: toggle(() => {
-    if (peek.value) peek.value = null;
+    if (peek.value) closePeek();
     else if (visualAnchor.value) visualAnchor.value = null;
     else if (pendingLines.value) linesNav()?.cancelComment();
     else leaveCode();

@@ -1,4 +1,4 @@
-import { useMemo } from "preact/hooks";
+import { useEffect, useMemo } from "preact/hooks";
 import { Kbd } from "../components/Bits.tsx";
 import { FileView } from "../components/Code.tsx";
 import { hi, lo, NewHereBox, useNewThread } from "../components/NewThread.tsx";
@@ -39,6 +39,20 @@ function PeekBody({ p }: { p: Peek }) {
   const selected = useMemo(() => (mine ? { start: mine.start, end: mine.end } : null), [mine?.start, mine?.end]);
   const file = useMemo(() => (blob && blob !== "loading" && blob.contents !== null ? { name: p.path, contents: blob.contents } : null), [blob]);
   const focus = useMemo(() => ({ line: p.line, ...(p.end !== undefined ? { end: p.end } : {}) }), [p.line, p.end, p.path]);
+  // where the conversation stands under the code, the preview can be off screen: its marked lines come into view
+  useEffect(() => {
+    if (p.end === undefined || !file) return;
+    const mid = Math.round((p.line + p.end) / 2);
+    let frame = 0;
+    let tries = 0;
+    const show = () => {
+      const el = [...(document.querySelector(".peek diffs-container")?.shadowRoot?.querySelectorAll(`[data-content] > [data-line="${mid}"]`) ?? [])].pop();
+      if (el) el.scrollIntoView({ block: "center", behavior: "instant" as ScrollBehavior });
+      else if (tries++ < 20) frame = requestAnimationFrame(show);
+    };
+    frame = requestAnimationFrame(() => (frame = requestAnimationFrame(show)));
+    return () => cancelAnimationFrame(frame);
+  }, [file, p.line, p.end]);
   const own = peekView(p, placed);
   if (own) return own;
   if (blob === "loading") return <div class="note">loading…</div>;

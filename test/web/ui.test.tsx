@@ -933,8 +933,10 @@ describe("file references in messages", () => {
     expect(links[0]!.querySelector("a")!.getAttribute("href")).toBe("#/compare/base..2?file=src%2Fapp%2FFoo.kt&line=14-15");
     (links[0]!.querySelector("a") as HTMLAnchorElement).click();
     await tick(60);
-    expect(peek.value).toEqual({ path: "src/app/Foo.kt", sha: "snap", label: "snap", line: 14, end: 15, note: "as in the agent's reply on #7 (the code after v1)", latest: { sha: "v2", label: "v2" } });
-    peek.value = null;
+    expect(peek.value).toEqual({ path: "src/app/Foo.kt", jumped: true, sha: "snap", label: "snap", line: 14, end: 15, note: "as in the agent's reply on #7 (the code after v1)", latest: { sha: "v2", label: "v2" } });
+    expect(key("Escape")).toBe(true);
+    await tick();
+    expect(peek.value).toBeNull();
     render(null, host);
   });
 
@@ -943,7 +945,7 @@ describe("file references in messages", () => {
     const host = await show("added in src/a/Util.kt:3");
     (host.querySelector(".fref a") as HTMLAnchorElement).click();
     await tick(60);
-    expect(peek.value).toEqual({ path: "src/a/Util.kt", sha: "v2", label: "v2", line: 3, end: 3 });
+    expect(peek.value).toEqual({ path: "src/a/Util.kt", jumped: true, sha: "v2", label: "v2", line: 3, end: 3 });
     peek.value = null;
     render(null, host);
   });

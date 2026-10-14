@@ -517,6 +517,8 @@ export interface Peek {
   note?: string;
   /** A newer version than the one shown, where the same lines can be looked up. */
   latest?: { sha: string; label: string };
+  /** Opened by a link, as a jump: Esc goes back to where the reader was. */
+  jumped?: true;
 }
 export const peek = signal<Peek | null>(null);
 
