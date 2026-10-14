@@ -42,6 +42,15 @@ describe("fades over a change of view", () => {
     expect(layer()).toBeNull();
   });
 
+  test("the copy dims at once while its view is not in place, and fades out from there on go", () => {
+    const fade = snapshot(new DOMRect(0, 0, 400, 300), [root]);
+    expect(layer()!.classList.contains("dim")).toBe(true);
+    expect(fading()).toBe(false);
+    fade.go();
+    expect(layer()!.classList.contains("dim")).toBe(false);
+    expect(fading()).toBe(true);
+  });
+
   test("with reduced motion there is no copy: the view changes at once", () => {
     reduce();
     crossfade(root, ".codeview-host");

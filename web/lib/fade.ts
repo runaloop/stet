@@ -104,9 +104,11 @@ function hold(cover: Cover): Fade {
 }
 
 /**
- * Lays a copy of `parts` (where they are on screen, within `clip`) over the page. It takes no input: keys, the wheel
- * and clicks reach the view under it, and the first of them removes it. With reduced motion there is none. A copy that
- * still waits for its view is not made again: the change that asks joins it, and it fades once all have said `go`.
+ * Lays a copy of `parts` (where they are on screen, within `clip`) over the page. It dims at once, so the change shows
+ * while its view is not in place yet, and fades out on `go`, or `HOLD` ms later at the latest. It takes no input: keys,
+ * the wheel and clicks reach the view under it, and the first of them removes it. With reduced motion there is none. A
+ * copy that still waits for its view is not made again: the change that asks joins it, and it fades once all have said
+ * `go`.
  */
 export function snapshot(clip: DOMRect, parts: readonly Element[]): Fade {
   if (current && !current.started) return hold(current);
@@ -130,6 +132,9 @@ export function snapshot(clip: DOMRect, parts: readonly Element[]): Fade {
   }
   document.body.append(layer);
   for (const [el, top, left] of at.scrolled) el.scrollTo(left, top);
+  // the change shows at once: the copy dims while it waits for its view (from full opacity, which needs a style first)
+  getComputedStyle(layer).opacity;
+  layer.classList.add("dim");
   const events = ["wheel", "pointerdown", "keydown"] as const;
   let timer = 0;
   const cover: Cover = {
@@ -140,6 +145,7 @@ export function snapshot(clip: DOMRect, parts: readonly Element[]): Fade {
       cover.started = true;
       clearTimeout(timer);
       layer.getBoundingClientRect();
+      layer.classList.remove("dim");
       layer.style.opacity = "0";
       timer = window.setTimeout(cover.drop, FADE_MS + 40);
     },
