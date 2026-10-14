@@ -2962,6 +2962,7 @@ try {
     const twinsV = JSON.parse(run(repo, ["bun", CLI, "version", "create", "--label", "twins", "--json"])).version.number as number;
     const refThread = JSON.parse(run(repo, ["bun", CLI, "comment", "add", "--file", "src/Zbig.kt", "--range", "14-14", "--at", String(twinsV), "--body", "Where is the note?", "--as", "reviewer", "--json"])).id as number;
     run(repo, ["bun", CLI, "reply", String(refThread), "--intent", "fixed", "--body", "Сделал по месту реализации: двухстрочный комментарий над line14 (Zbig.kt:14-15), и то же в Twin.kt:2.", "--json"]);
+    const beforeRefs = (await b.eval("location.hash")) as string;
     await b.eval(`location.hash = "#/thread/${refThread}"; true`);
     const refLink = `[...document.querySelectorAll(".thread-msgs .fref a")].find(a => a.textContent === "Zbig.kt:14-15")`;
     await waitFor(`${refLink} && !document.querySelector(".view-fade")`, 10000);
@@ -2987,17 +2988,20 @@ try {
     const backHere = await waitFor(`!document.querySelector(".thread-code .peek") && document.querySelector(".thread-code .code-area diffs-container") ? location.hash : null`, 3000);
     check("Esc closes it: back to the thread's code, on the same thread", backHere === `#/thread/${refThread}`, backHere);
     await b.eval(`[...document.querySelectorAll(".thread-msgs .fref a")].find(a => a.textContent === "Twin.kt:2").click(); true`);
-    const twinPick = await waitFor(`(() => { const p = document.querySelector(".picker"); return p ? { q: p.querySelector("input").value, rows: [...p.querySelectorAll("li")].map(l => l.textContent) } : null; })()`, 3000);
+    const twinPick = await waitFor(`(() => { const p = document.querySelector(".picker"); return p && document.activeElement === p.querySelector("input") ? { q: p.querySelector("input").value, rows: [...p.querySelectorAll("li")].map(l => l.textContent) } : null; })()`, 3000);
     check("a name two files have opens the file finder with the name typed in, listing both", twinPick?.q === "Twin.kt" && twinPick.rows.length === 2, twinPick);
     await keys(KEY.Escape);
     await waitFor(`!document.querySelector(".picker")`, 2000);
     await keys(" ", "f", "f");
-    const finder = await waitFor(`document.querySelector(".picker input")?.placeholder ?? null`, 3000);
+    const finder = await waitFor(`document.activeElement?.closest(".picker") ? document.querySelector(".picker input").placeholder : null`, 3000);
     await keys(..."Zbig".split(""));
     await waitFor(`document.querySelector(".picker li.on .file-name")?.textContent === "Zbig.kt"`, 3000);
     await keys(KEY.Enter);
     const finderHash = await waitFor(`location.hash.startsWith("#/compare/") ? location.hash : null`, 5000);
     check("Space f f on a thread's page opens the file finder; a pick opens the file on the Changes page", (finder?.includes("branch's diff") ?? false) && (finderHash?.includes("file=src%2FZbig.kt") ?? false), { finder, finderHash });
+    // the checks below click the Changes page's side tabs
+    await b.eval(`location.hash = ${JSON.stringify(beforeRefs)}; true`);
+    await waitFor(`!!document.querySelector(".codeview-host diffs-container") && !document.querySelector(".view-fade")`, 10000);
 
     // A second review, on a branch in its own worktree, whose only thread is resolved.
     const sideDir = realpathSync(mkdtempSync(join(tmpdir(), "stet-ui-side-")));
