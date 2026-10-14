@@ -225,8 +225,9 @@ In a thread: `j` / `k` next / previous thread, `n` / `N` unread, `[` / `]` timel
 at step, `p` diff base, `gt` back to the thread's lines in the code, marked, `r` reply, `x` / `X` resolve / reopen,
 `Space r x` [resolve with a message](#thread-page), `e` editor, `Space g b` blame the thread's lines in the code
 shown, `/` search all files at the step shown, `+` / `-` / `0` zoom the whole image, `*` find the selected word,
-`Space u l` the conversation left / right of the code, `Esc` close
-the preview, then back to the changes.
+`Space u l` the conversation left / right of the code, `Space Space` / `Space f f` find a file of the branch's diff
+(it opens on the Changes page, in the diff you came from when that has it), `Esc` close the preview, then back to the
+changes.
 The thread's code has the Changes page's cursor, but `j`, `k` and the rest act on it only while the code has the
 focus, so they keep stepping through threads and messages otherwise. A click on a line or a rendered block (or a
 comment started with the mouse) gives the code the focus; so do `V` (select lines from the cursor, which starts on the
@@ -298,7 +299,12 @@ on the Changes page, shared with the thread's code; the thread's blocks marked; 
 one column in unified view) with the changed words marked. A strip under the header says whose turn it is ("the agent asked
 you a question", "the agent says it fixed this", with a warning when the commented lines did not change),
 or that the thread is resolved, by whom and when; `#12` or "thread 12" in a message links to that thread
-with a preview on hover. The agent's and your messages have their own colours.
+with a preview on hover. A file a message names (`src/app/Foo.kt:14-15`, `Foo.kt:14:3`, `Foo.kt#L14-L15`,
+`Foo.kt line 14`, or a path alone, in text or in code) links too once it names a file of the review: the branch's diff
+first, then the repository's files. Its card gives the path and the lines; a click opens the file in the preview over
+the thread's code, as the code was when the message was written, its lines marked, with a button to the same lines in
+the latest version. A name that several files have opens the file finder with the name typed in. The agent's and your
+messages have their own colours.
 
 **Resolve with message** next to **Resolve** (or `Space r x`) closes a thread with your last word to the agent, for
 when it only has to go ahead ("yes, do it as you wrote in docs/x.md"). The box under the conversation saves the message
