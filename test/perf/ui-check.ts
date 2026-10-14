@@ -1674,13 +1674,16 @@ try {
         ${toggleOf(file)}.click();
         requestAnimationFrame(f);
       })`) as Promise<Frame[]>;
-    // the copy is there from the first frame, fades for about 200 ms once the new view is placed, and is gone
+    // the copy is there from the first frame and dims at once; once the new view is placed it fades out from half its
+    // opacity for about 200 ms, and is gone
     const faded = (rec: Frame[]) => {
       const on = rec.filter((r) => r[2] !== -1);
-      const start = rec.find((r) => r[2] !== -1 && r[2] < 1)?.[3] ?? null;
+      const dim = rec.find((r) => r[2] !== -1 && r[2] <= 0.9)?.[3] ?? null;
+      const out = rec.find((r) => r[2] !== -1 && r[2] < 0.45)?.[3] ?? null;
       const gone = rec.find((r, i) => i > 0 && r[2] === -1 && rec[i - 1]![2] !== -1)?.[3] ?? null;
-      const ok = rec[0]![2] === 1 && start !== null && gone !== null && gone - start >= 150 && gone - start <= 300 && gone <= 700 && on.every((r) => r[3] < gone);
-      return { ok, start, gone };
+      const ok =
+        rec[0]![2] > 0.9 && dim !== null && dim - rec[0]![3] <= 150 && out !== null && gone !== null && gone - out >= 100 && gone - out <= 300 && gone <= 700 && on.every((r) => r[3] < gone);
+      return { ok, dim, out, gone };
     };
     // after the frame that first shows the text where it was, the page may settle a little, but not shake
     const steady = (rec: Frame[], y: number) => {
@@ -1737,7 +1740,7 @@ try {
       drifts,
     );
     check(
-      "a copy of the old view covers the switch from its first frame and fades out in about 200 ms once the new view is in place, then is gone",
+      "a copy of the old view covers the switch from its first frame and dims at once, fades out in about 200 ms once the new view is in place, then is gone",
       fadedAll,
       Object.fromEntries(Object.entries(drifts).map(([k, v]) => [k, [(v as { toCode: { fade: unknown } }).toCode.fade, (v as { toRendered: { fade: unknown } }).toRendered.fade]])),
     );
@@ -2248,20 +2251,23 @@ try {
     // Every change of the view in one jump fades the old view out over the new one, as the rendered / code switch does:
     // each frame for 1.5 s, the copy's opacity (-1 when there is none) and the time.
     await b.eval(`window.__trace = (ms) => { const rec = window.__rec = { frames: [], done: false }; const t0 = performance.now(); const f = () => { const o = document.querySelector(".view-fade"); rec.frames.push([o ? Math.round(+getComputedStyle(o).opacity * 100) / 100 : -1, Math.round(performance.now() - t0)]); if (performance.now() - t0 < ms) requestAnimationFrame(f); else rec.done = true; }; requestAnimationFrame(f); return true; }; true`);
-    // a copy came, faded out in about 200 ms and was gone within a second of coming
-    const fadeIn = (rec: [number, number][]) => {
+    // a copy came and dimmed at once, faded out from half its opacity in about 200 ms, and was gone within the longest
+    // wait for its view (0.7 s) and the fade of coming; a view at hand (`quick`) does not make it wait that long
+    const fadeIn = (rec: [number, number][], quick: boolean) => {
       const on = rec.find((r) => r[0] !== -1)?.[1] ?? null;
-      const start = rec.find((r) => r[0] > 0 && r[0] < 1)?.[1] ?? null;
+      const dim = rec.find((r) => r[0] !== -1 && r[0] <= 0.9)?.[1] ?? null;
+      const out = rec.find((r) => r[0] !== -1 && r[0] < 0.45)?.[1] ?? null;
       const gone = rec.find((r, i) => i > 0 && r[0] === -1 && rec[i - 1]![0] !== -1)?.[1] ?? null;
-      return { ok: on !== null && start !== null && gone !== null && gone - start >= 150 && gone - start <= 300 && gone - on <= 1100, on, start, gone };
+      const ok = on !== null && dim !== null && dim - on <= 120 && out !== null && gone !== null && gone - out >= 100 && gone - out <= 300 && gone - on <= (quick ? 600 : 1100);
+      return { ok, on, dim, out, gone };
     };
-    const across = async (act: () => Promise<unknown>, there: string) => {
+    const across = async (act: () => Promise<unknown>, there: string, quick = false) => {
       await waitFor(`!document.querySelector(".view-fade")`, 3000);
       await b.eval(`__trace(1500)`);
       await act();
       const reached = !!(await waitFor(there, 4000));
       await waitFor(`__rec.done`, 3000);
-      return { ...fadeIn(await b.eval(`__rec.frames`)), reached };
+      return { ...fadeIn(await b.eval(`__rec.frames`), quick), reached };
     };
     type Across = Awaited<ReturnType<typeof across>>;
     const allFaded = (r: Record<string, Across>) => Object.values(r).every((x) => x.ok && x.reached);
@@ -2285,24 +2291,24 @@ try {
     const pages: Record<string, Across> = {};
     await b.eval(`location.hash = "#/compare/${blameB}..${guideV}?file=src%2FGuide.kt&line=11"; true`);
     await waitFor(`${cursorIn("src/Guide.kt")}.join() === "11" && !document.querySelector(".view-fade")`, 4000);
-    pages.open = await across(() => keys(KEY.Enter), `location.hash.startsWith("#/thread/") && ${q(".detail .code-area diffs-container")}`);
-    pages.back = await across(() => keys(KEY.Escape), `location.hash.startsWith("#/compare/${blameB}..${guideV}") && ${q(".codeview-host diffs-container")}`);
+    pages.open = await across(() => keys(KEY.Enter), `location.hash.startsWith("#/thread/") && ${q(".detail .code-area diffs-container")}`, true);
+    pages.back = await across(() => keys(KEY.Escape), `location.hash.startsWith("#/compare/${blameB}..${guideV}") && ${q(".codeview-host diffs-container")}`, true);
     await b.eval(`document.querySelector(".codeview-host").scrollTop = 1e6; true`);
-    pages.gt = await across(() => keys("g", "t"), `["10", "11"].includes(${cursorIn("src/Guide.kt")}.join())`);
-    check("a thread page and the Changes page fade into each other: opening a thread, Esc back to the changes, gt back to the thread", allFaded(pages), pages);
+    pages.gt = await across(() => keys("g", "t"), `["10", "11"].includes(${cursorIn("src/Guide.kt")}.join())`, true);
+    check("a thread page and the Changes page fade into each other within 0.6 s: opening a thread, Esc back to the changes, gt back to the thread", allFaded(pages), pages);
 
     const jumpsHere: Record<string, Across> = {};
-    jumpsHere.nextFile = await across(() => keys("]", "b"), `${cursorIn("src/Guide.kt")}.length === 0`);
+    jumpsHere.nextFile = await across(() => keys("]", "b"), `${cursorIn("src/Guide.kt")}.length === 0`, true);
     await b.eval(`[...document.querySelectorAll(".side-tabs button")].find(x => x.textContent.startsWith("Files")).click(); true`);
-    jumpsHere.filesClick = await across(() => b.eval(`[...document.querySelectorAll(".file-row")].find(r => r.querySelector(".file-name")?.textContent === "GuideOther.kt").querySelector(".file-link").click(); true`), `[...document.querySelectorAll(".file-row.active .file-name")].map(x => x.textContent).join() === "GuideOther.kt"`);
-    jumpsHere.lineLink = await across(() => b.eval(`location.hash = "#/compare/${blameB}..${guideV}?file=src%2FGuide.kt&line=10-11"; true`), `${cursorIn("src/Guide.kt")}.join() === "10"`);
+    jumpsHere.filesClick = await across(() => b.eval(`[...document.querySelectorAll(".file-row")].find(r => r.querySelector(".file-name")?.textContent === "GuideOther.kt").querySelector(".file-link").click(); true`), `[...document.querySelectorAll(".file-row.active .file-name")].map(x => x.textContent).join() === "GuideOther.kt"`, true);
+    jumpsHere.lineLink = await across(() => b.eval(`location.hash = "#/compare/${blameB}..${guideV}?file=src%2FGuide.kt&line=10-11"; true`), `${cursorIn("src/Guide.kt")}.join() === "10"`, true);
     await chord([KEY.Control], "f");
     await waitFor(`document.activeElement?.id === "diff-search"`, 2000);
     await b.eval(`(() => { const i = document.getElementById("diff-search"); i.value = "util2"; i.dispatchEvent(new Event("input", { bubbles: true })); return true; })()`);
     await waitFor(`document.querySelectorAll(".search .hit").length === 1`, 4000);
-    jumpsHere.searchHit = await across(() => keys(KEY.Enter), `[...document.querySelectorAll(".codeview-host diffs-container")].some(c => c.shadowRoot.querySelector("[data-title]")?.textContent === "src/GuideUtil.kt" && c.shadowRoot.querySelector('[data-stet-mark~="hit-current"]'))`);
+    jumpsHere.searchHit = await across(() => keys(KEY.Enter), `[...document.querySelectorAll(".codeview-host diffs-container")].some(c => c.shadowRoot.querySelector("[data-title]")?.textContent === "src/GuideUtil.kt" && c.shadowRoot.querySelector('[data-stet-mark~="hit-current"]'))`, true);
     await b.eval(`document.activeElement?.blur(); true`);
-    check("jumps on the Changes page fade over to where they go: ]b, a click in Files, a link to lines, a search match", allFaded(jumpsHere), jumpsHere);
+    check("jumps on the Changes page fade over to where they go within 0.6 s: ]b, a click in Files, a link to lines, a search match", allFaded(jumpsHere), jumpsHere);
 
     const ranges: Record<string, Across> = {};
     const titled = (from: number | string, to: number) => `location.hash === "#/compare/${from}..${to}" && ${q(".range-title")}?.textContent.includes("v${to}")`;
