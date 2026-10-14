@@ -2994,11 +2994,11 @@ try {
     await waitFor(`!document.querySelector(".picker")`, 2000);
     await keys(" ", "f", "f");
     const finder = await waitFor(`document.activeElement?.closest(".picker") ? document.querySelector(".picker input").placeholder : null`, 3000);
-    await keys(..."Zbig".split(""));
-    await waitFor(`document.querySelector(".picker li.on .file-name")?.textContent === "Zbig.kt"`, 3000);
+    await keys(..."Twin".split(""));
+    const typed = await waitFor(`document.querySelector(".picker li.on .file-name")?.textContent === "Twin.kt" ? document.querySelector(".picker li.on").textContent : null`, 3000);
     await keys(KEY.Enter);
     const finderHash = await waitFor(`location.hash.startsWith("#/compare/") ? location.hash : null`, 5000);
-    check("Space f f on a thread's page opens the file finder; a pick opens the file on the Changes page", (finder?.includes("branch's diff") ?? false) && (finderHash?.includes("file=src%2FZbig.kt") ?? false), { finder, finderHash });
+    check("Space f f on a thread's page opens the file finder; a pick opens the file on the Changes page", (finder?.includes("branch's diff") ?? false) && /file=src%2F[ab]%2FTwin.kt/.test(finderHash ?? ""), { finder, typed, finderHash });
     // the checks below click the Changes page's side tabs
     await b.eval(`location.hash = ${JSON.stringify(beforeRefs)}; true`);
     await waitFor(`!!document.querySelector(".codeview-host diffs-container") && !document.querySelector(".view-fade")`, 10000);
