@@ -894,6 +894,7 @@ describe("viewed files and the last pass", () => {
 });
 
 const { Body } = await import("../../web/components/Bits.tsx");
+const { FileRefLink } = await import("../../web/components/FileRef.tsx");
 const { peek, fileChoice } = await import("../../web/compare.ts");
 const { picker } = await import("../../web/keys.ts");
 
@@ -915,9 +916,9 @@ describe("file references in messages", () => {
   const show = async (text: string) => {
     const host = document.createElement("div");
     document.body.appendChild(host);
-    render(<Body text={text} from={from} />, host);
+    render(<Body text={text} fileLink={(r) => <FileRefLink r={r} from={from} />} />, host);
     await tick(60);
-    render(<Body text={text} from={from} />, host);
+    render(<Body text={text} fileLink={(r) => <FileRefLink r={r} from={from} />} />, host);
     await tick(60);
     return host;
   };

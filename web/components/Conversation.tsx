@@ -6,6 +6,7 @@ import { guard, reloadAll, reviewId, selectedStep } from "../state.ts";
 import { firstNew, isFolded, isLong, jumpToNew, msgCursor, msgOpen, newMark, replyTo } from "../msgs.ts";
 import { ago, Badge, Body, IntentBadge, Kbd } from "./Bits.tsx";
 import { Composer } from "./Composer.tsx";
+import { FileRefLink } from "./FileRef.tsx";
 import { RestoreBlock } from "./Restore.tsx";
 import { unchangedSince } from "../../src/ui/strip.ts";
 
@@ -101,7 +102,7 @@ function CommentNode({ c, childrenOf, detail, depth, newId }: { c: CommentDto; c
               }}
             />
           ) : (
-            <Body text={c.body} from={{ thread: detail.thread.id, agent: c.role === "agent", snapshot: c.snapshot, version: c.version }} />
+            <Body text={c.body} fileLink={(r) => <FileRefLink r={r} from={{ thread: detail.thread.id, agent: c.role === "agent", snapshot: c.snapshot, version: c.version }} />} />
           )}
           {c.restore ? <RestoreBlock r={c.restore} /> : null}
           {folded ? <button class="unfold" title="za" onClick={fold}>▾ show the whole message</button> : null}
