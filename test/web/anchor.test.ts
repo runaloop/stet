@@ -8,8 +8,10 @@ afterAll(async () => {
 });
 
 const { filesBox, pin, placeAt } = await import("../../web/views/anchor.ts");
+const { snapshot } = await import("../../web/lib/fade.ts");
 
 const frames = (n: number) => new Promise((r) => setTimeout(r, n * 20));
+const fading = () => document.querySelector<HTMLElement>(".view-fade")?.style.opacity === "0";
 
 // the browser calls observers in the order they were made, after layout and before the paint
 const observers: FakeObserver[] = [];
@@ -78,6 +80,18 @@ describe("a place a jump went to is kept while the files around it lay out", () 
     resized(box);
     expect(rowOnScreen()).toBe(300);
     expect(scroller.scrollTop).toBe(1050);
+  });
+
+  test("pin lets go of a copy of the old view once the row stands still, and keeps the row in place after that", async () => {
+    const fade = snapshot(new DOMRect(0, 0, 800, 600), [scroller]);
+    pin(scroller, () => row);
+    fade.go();
+    expect(fading()).toBe(false);
+    await frames(8);
+    expect(fading()).toBe(true);
+    rowTop += 450;
+    resized(box);
+    expect(rowOnScreen()).toBe(300);
   });
 
   test("the reader's first key lets go of it: what grows then moves the row", async () => {

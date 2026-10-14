@@ -164,7 +164,8 @@ export function lineAt(scroller: HTMLElement, view: CodeView<never>, path: strin
 
 /**
  * Keeps an element a jump went to where pierre put it: once it is drawn and stands still, it stays there while the
- * files around it lay out (pictures load, rendered Markdown and thread cards are measured).
+ * files around it lay out (pictures load, rendered Markdown and thread cards are measured), and the copy of the old
+ * view may fade.
  */
 export function pin(scroller: HTMLElement, find: () => Element | null, ms = 1500): void {
   const p = placement();
@@ -173,7 +174,10 @@ export function pin(scroller: HTMLElement, find: () => Element | null, ms = 1500
   const tick = () => {
     if (p.over()) return;
     const el = find();
-    if (el && still(String(offsetOf(scroller, el)))) return p.keep(scroller, find, offsetOf(scroller, el));
+    if (el && still(String(offsetOf(scroller, el)))) {
+      p.tell();
+      return p.keep(scroller, find, offsetOf(scroller, el));
+    }
     if (performance.now() > end) return p.stop();
     requestAnimationFrame(tick);
   };
