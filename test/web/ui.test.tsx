@@ -927,7 +927,7 @@ describe("file references in messages", () => {
     state.route.value = { name: "thread", id: 7 };
     state.status.value = { versions: 2, versionsList: [{ number: 1, snapshot: "v1" }, { number: 2, snapshot: "v2" }], now: { changedSinceLatest: false }, pinnedNow: null } as never;
     serve({ snap: ["src/app/Foo.kt"], v2: ["src/app/Foo.kt"] });
-    const host = await show("Сделал по месту (Foo.kt:14-15), see also `build.gradle` and Nope.kt:3, v1.2:3");
+    const host = await show("Done in place (Foo.kt:14-15), see also `build.gradle` and Nope.kt:3, v1.2:3");
     const links = [...host.querySelectorAll(".fref")];
     expect(links.map((l) => l.querySelector("a")!.textContent)).toEqual(["Foo.kt:14-15", "build.gradle"]);
     expect(links[0]!.querySelector(".tref-card")!.textContent).toContain("src/app/Foo.kt · lines 14–15");

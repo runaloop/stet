@@ -10,8 +10,8 @@ const one = (text: string) => {
 
 describe("file references in a message", () => {
   test("the agent's reply the reviewer could not follow", () => {
-    const text = "Сделал по месту реализации: двухстрочный комментарий над firedActions (StorageReactionActions.kt:14-15).";
-    expect(refs(text)).toEqual([{ text: "StorageReactionActions.kt:14-15", path: "StorageReactionActions.kt", start: 14, end: 15 }]);
+    const text = "Done in place: a two-line comment above pendingJobs (RetryQueue.kt:14-15).";
+    expect(refs(text)).toEqual([{ text: "RetryQueue.kt:14-15", path: "RetryQueue.kt", start: 14, end: 15 }]);
     const r = one(text);
     expect(text.slice(r.index, r.index + r.text.length)).toBe(r.text);
   });

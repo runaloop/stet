@@ -2961,7 +2961,7 @@ try {
     run(repo, ["git", "add", "-A"]);
     const twinsV = JSON.parse(run(repo, ["bun", CLI, "version", "create", "--label", "twins", "--json"])).version.number as number;
     const refThread = JSON.parse(run(repo, ["bun", CLI, "comment", "add", "--file", "src/Zbig.kt", "--range", "14-14", "--at", String(twinsV), "--body", "Where is the note?", "--as", "reviewer", "--json"])).id as number;
-    run(repo, ["bun", CLI, "reply", String(refThread), "--intent", "fixed", "--body", "Сделал по месту реализации: двухстрочный комментарий над line14 (Zbig.kt:14-15), и то же в Twin.kt:2.", "--json"]);
+    run(repo, ["bun", CLI, "reply", String(refThread), "--intent", "fixed", "--body", "Done in place: a two-line comment above line14 (Zbig.kt:14-15), and the same in Twin.kt:2.", "--json"]);
     const beforeRefs = (await b.eval("location.hash")) as string;
     await b.eval(`location.hash = "#/thread/${refThread}"; true`);
     const refLink = `[...document.querySelectorAll(".thread-msgs .fref a")].find(a => a.textContent === "Zbig.kt:14-15")`;
