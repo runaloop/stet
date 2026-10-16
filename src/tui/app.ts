@@ -7,7 +7,7 @@ import type { Ctx } from "../core/context.ts";
 import type { CommentDto, ThreadDetail } from "../core/types.ts";
 import { stepFile, stepThread, stepUnread } from "../ui/nav.ts";
 import { hydratePartialDiff, parsePatchFiles } from "@pierre/diffs";
-import type { ActionTarget } from "../core/module.ts";
+import { launchCommand } from "../core/actions.ts";
 import { foldedFiles, viewedCount, type FileRow } from "../ui/compare.ts";
 import { NOTHING, withSpan } from "../ui/reveal.ts";
 import { defaultCompare, shiftRef, tipRef } from "../ui/state.ts";
@@ -18,6 +18,7 @@ import { DiffView } from "./diff/view.ts";
 import { FILE, GAP, GROUP } from "./diff/model.ts";
 import { flushTrace, trace, tracing } from "./trace.ts";
 import { Highlighter } from "./diff/highlight.ts";
+import { browserTarget } from "./browser.ts";
 import { ComposerView } from "./composer.ts";
 import { editLine, KeyReader } from "./keys/input.ts";
 import { KeyMatcher, rowFor, runRow, type Actions } from "../ui/keys/match.ts";
@@ -1018,31 +1019,30 @@ export class App {
     this.redraw();
   }
 
-  /** Where the browser opens for the place in focus: the cursor's line of the range, a thread, or the review. */
-  private browserTarget(): ActionTarget {
-    const v = this.v;
-    if (v.tab === "changes") {
-      const c = v.changes;
-      const info = c.diff.info();
-      const path = info?.item.kind === "file" ? info.item.key : (c.sel ?? undefined);
-      const line = info && (info.newNo || info.oldNo) ? info.newNo || info.oldNo : undefined;
-      return { ...(path ? { path } : {}), ...(line ? { line } : {}), ...(c.from ? { from: c.from } : {}), ...(c.to ? { at: c.to } : {}) };
-    }
-    if (v.tab === "round" && v.selected !== null) return { thread: v.selected };
-    return {};
-  }
-
-  private async browser(what: string): Promise<void> {
+  /** Opens a view of the web UI: `target` as `browserTarget` gives it, through the server's browser.open action. */
+  private async browser(what: string, target = browserTarget(this.v, this.selectedDraft()?.threadId ?? null)): Promise<void> {
     if (!this.api) return;
-    const r = await this.guard(this.api.action(this.review, "browser.open", this.browserTarget()));
+    const r = await this.guard(this.api.action(this.review, "browser.open", target));
     if (!r || r.launch.kind !== "url") return;
     const url = r.launch.url;
+    trace({ ev: "browser", url });
     try {
-      Bun.spawn(process.platform === "darwin" ? ["open", url] : ["xdg-open", url], { stdin: "ignore", stdout: "ignore", stderr: "ignore" }).unref();
+      Bun.spawn(launchCommand(r.launch).argv, { stdin: "ignore", stdout: "ignore", stderr: "ignore" }).unref();
       this.say(`${what}: opened in the browser`);
     } catch {
       this.say(`${what}: ${url}`);
     }
+  }
+
+  /** Space u g: the agent's guide to the version on the right, in the browser; the terminal has no Guide tab yet. */
+  private guide(): void {
+    const v = this.v;
+    const vs = v.data.status?.versionsList ?? [];
+    const c = v.changes;
+    const [from, to] = v.tab === "changes" && c.from && c.to ? [c.from, c.to] : onlyVersion(vs[vs.length - 1]?.number ?? 1);
+    const n = /^\d+$/.test(to) ? Number(to) : to === "now" ? null : vs.find((x) => x.snapshot === to)?.number;
+    if (!vs.find((x) => x.number === n)?.guide) return this.say(`${/^\d+$/.test(to) ? `v${to}` : to} has no guide: the agent writes one with stet version create --guide`);
+    void this.browser(`the guide to v${n}`, { from, at: to, guide: true });
   }
 
   /** V, i on a thread's page: a cursor on its code, at first on the thread's first line. */

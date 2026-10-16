@@ -16,6 +16,8 @@ import { KeyTester, type Tried } from "../../src/tui/keys/tester.ts";
 import type { Terminal } from "../../src/ui/keys/terminal.ts";
 import { KeyMatcher } from "../../src/ui/keys/match.ts";
 import { KEYS } from "../../src/ui/keys/table.ts";
+import { browserTarget } from "../../src/tui/browser.ts";
+import { parseHash, takeToken } from "../../src/ui/route.ts";
 import { helpFor, initialView, render, type ViewState } from "../../src/tui/render.ts";
 import { width } from "../../src/tui/text.ts";
 import { seedTui, type Seeded } from "../fixtures/tui-seed.ts";
@@ -542,4 +544,41 @@ test("120×40, 180×46, 80×24: the worktree moved after “now” was read: “
     expect(rows[0]!.some((x) => x.hit === "key:R" && x.text.includes("↻"))).toBe(true);
   }
   expect(frame(v, 120, 40)).toMatchSnapshot();
+});
+
+/** The page the browser key opens from `v`: the route of the URL the server's browser.open builds. */
+async function opened(v: ViewState): Promise<unknown> {
+  const r = await api.action(review, "browser.open", browserTarget(v, null));
+  expect(r.launch.kind).toBe("url");
+  const url = new URL((r.launch as { url: string }).url);
+  const { review: _, ...route } = parseHash(takeToken(url.hash)!.hash) as { review?: number };
+  return route;
+}
+
+test("g x opens the same lines in the browser: the selection on its side, a picture's or a Markdown file's page, a thread, a file a message named", async () => {
+  const v = await changes("1", "2");
+  frame(v, 120, 40);
+  pick(v, "src/auth.ts", 0, 4, 5);
+  expect(await opened(v)).toEqual({ name: "compare", from: "1", to: "2", file: "src/auth.ts", line: 4, end: 5, side: "old" });
+  v.changes.diff.clearSelection();
+  pick(v, "src/auth.ts", 1, 7, 7);
+  expect(await opened(v)).toEqual({ name: "compare", from: "1", to: "2", file: "src/auth.ts", line: 7 });
+  v.changes.diff.clearSelection();
+
+  const all = await changes("base", "2");
+  frame(all, 120, 40);
+  for (const path of ["docs/limits.png", "README.md"]) {
+    all.changes.diff.goTo(all.changes.diff.itemRow(all.changes.diff.items.findIndex((x) => x.key === path)));
+    expect(await opened(all)).toEqual({ name: "compare", from: "base", to: "2", file: path });
+  }
+
+  const t = await view(ids.timing);
+  expect(await opened(t)).toEqual({ name: "thread", id: ids.timing });
+  t.focus = "code";
+  frame(t, 180, 46);
+  t.code.enter();
+  t.codeCursor = true;
+  expect(await opened(t)).toEqual({ name: "compare", from: "1", to: "2", file: "src/auth.ts", line: 6 });
+  t.peek = { path: "src/limiter.ts", sha: t.detail!.timeline[1]!.sha, label: "v2", line: 4, end: 5 };
+  expect(await opened(t)).toEqual({ name: "compare", from: "base", to: "2", file: "src/limiter.ts", line: 4, end: 5 });
 });

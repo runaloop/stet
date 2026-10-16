@@ -355,6 +355,7 @@ stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v
 │ │  r                    reply to the thread                                                                        │ │
 │ │  Esc  h               hide the list (narrow screens)                                                             │ │
 │ │  q                    quit                                                                                       │ │
+│ │  g x                  the thread in the browser                                                                  │ │
 │ │                                                                                                                  │ │
 │ │ Moving around                                                                                                    │ │
 │ │  h  l  Tab            columns: h left, l right, Tab cycles them; or click a column                               │ │

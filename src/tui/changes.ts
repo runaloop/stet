@@ -216,7 +216,7 @@ export function buildChanges(d: Data, c: ChangesState, showResolved: boolean): B
     const note = r.fd.hunks.length
       ? undefined
       : f?.image
-        ? "a picture: the browser shows it"
+        ? "a picture:  g x  shows it in the browser"
         : f?.binary || r.fd.type === "change"
           ? "a binary file"
           : r.fd.type === "rename-pure"

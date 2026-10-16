@@ -33,6 +33,21 @@ import {
 
 export type Focus = "list" | "code" | "conv";
 
+/** A file a message named, over the thread's code: as it was at `sha`, the lines `line..end` marked. */
+export interface Peek {
+  path: string;
+  sha: string;
+  label: string;
+  line: number;
+  end?: number;
+  /** Whose code it is: "as in the agent's reply on #12 (v2)". */
+  note?: string;
+  /** A newer version than the one shown, where the same lines can be looked up. */
+  latest?: { sha: string; label: string };
+  /** The file's text there once it came; null when it is not text. */
+  text?: string | null;
+}
+
 /** The files of the whole branch's diff, from the base to the tip (`ref`: a version, or "now"). */
 export interface Branch {
   key: string;
@@ -126,6 +141,8 @@ export interface ViewState {
   picker: PickerState | null;
   /** The whole branch's files, base to the tip, once a finder or a file named in a message needed them. */
   branch: Branch | null;
+  /** A file a message named, shown in place of the thread's code until Esc. */
+  peek: Peek | null;
   help: Help | null;
   toast: Toast | null;
   connecting: string | null;
@@ -175,6 +192,7 @@ export function initialView(): ViewState {
     choice: null,
     picker: null,
     branch: null,
+    peek: null,
     help: null,
     toast: null,
     connecting: null,
