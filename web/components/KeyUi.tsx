@@ -2,7 +2,10 @@ import type { ComponentChild } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { compareNav, cursorSpace, fileChoice, fileRows, onThreadPage, setCursor, type FileRow } from "../compare.ts";
 import { finderFiles, openInChanges } from "../filerefs.ts";
-import { bindings, bindingsHere, contexts, nextKeys, picker, tokens, whichKey, type Binding, type Where } from "../keys.ts";
+import { contexts, nextKeys, picker, runKeyRow, webRows, whichKey } from "../keys.ts";
+import { boxKey } from "../keyinput.ts";
+import { tokens } from "../../src/ui/keys/names.ts";
+import type { KeyRow, Scope } from "../../src/ui/keys/table.ts";
 import { fuzzyFilter, wordFilter } from "../../src/ui/fuzzy.ts";
 import type { VersionDto } from "../../src/core/types.ts";
 import { onlyVersion, withEnd, type Round } from "../../src/ui/versions.ts";
@@ -16,7 +19,18 @@ export function keyLabel(keys: string): string {
   return tokens(keys).map(shown).join(" ");
 }
 
-const WHERE: Record<Where, string> = { compare: "changes", guide: "guide", thread: "thread", code: "code", drafts: "drafts", everywhere: "everywhere" };
+const WHERE: Partial<Record<Scope, string>> = { changes: "changes", guide: "guide", thread: "thread", code: "code", drafts: "drafts", global: "everywhere" };
+
+const Keys = ({ row }: { row: KeyRow }) => (
+  <>
+    {row.keys.map((k, i) => (
+      <>
+        {i ? " " : null}
+        <Kbd>{keyLabel(k)}</Kbd>
+      </>
+    ))}
+  </>
+);
 
 export function WhichKey() {
   const prefix = whichKey.value;
@@ -82,20 +96,21 @@ function Picker<T>(props: {
             setQ((e.target as HTMLInputElement).value);
             setSel(0);
           }}
-          onKeyDown={(e) => {
-            const down = e.key === "ArrowDown" || (e.ctrlKey && ["n", "j"].includes(e.key));
-            const up = e.key === "ArrowUp" || (e.ctrlKey && ["p", "k"].includes(e.key));
-            if (down || up) {
-              e.preventDefault();
-              setSel((s) => Math.max(0, Math.min(list.length - 1, s + (down ? 1 : -1))));
-            } else if (e.key === "Enter") {
-              e.preventDefault();
-              choose(sel, e.shiftKey ? "shift" : e.ctrlKey ? "ctrl" : "pick");
-            } else if (e.key === "Escape") {
-              e.preventDefault();
-              close();
-            }
-          }}
+          onKeyDown={(e) =>
+            boxKey(
+              e,
+              "picker",
+              {
+                "picker.down": () => setSel((s) => Math.max(0, Math.min(list.length - 1, s + 1))),
+                "picker.up": () => setSel((s) => Math.max(0, s - 1)),
+                "picker.pick": () => choose(sel),
+                "picker.from": () => choose(sel, "shift"),
+                "picker.to": () => choose(sel, "ctrl"),
+                "picker.close": () => void close(),
+              },
+              true,
+            )
+          }
         />
         <ul ref={listRef}>
           {list.map((t, i) => (
@@ -167,38 +182,44 @@ function FilePicker() {
   );
 }
 
-export function keysHere(): { b: Binding; here: boolean }[] {
+/** The rows of this page first, its first place's first and each key once; then the rows of the other pages. */
+export function keysHere(): { row: KeyRow; here: boolean }[] {
   const where = contexts();
+  const rows = webRows().filter((r) => WHERE[r.scope]);
   const seen = new Set<string>();
-  const here: { b: Binding; here: boolean }[] = [];
-  for (const b of bindingsHere()) {
-    if (seen.has(b.keys)) continue;
-    seen.add(b.keys);
-    here.push({ b, here: true });
+  const here: { row: KeyRow; here: boolean }[] = [];
+  for (const scope of where) {
+    for (const row of rows) {
+      if (row.scope !== scope || row.keys.every((k) => seen.has(k))) continue;
+      for (const k of row.keys) seen.add(k);
+      here.push({ row, here: true });
+    }
   }
-  return [...here, ...bindings().filter((b) => !where.includes(b.where)).map((b) => ({ b, here: false }))];
+  return [...here, ...rows.filter((r) => !where.includes(r.scope)).map((row) => ({ row, here: false }))];
 }
 
-const keyText = (b: Binding) => `${b.desc} ${keyLabel(b.keys)} ${b.keys} ${WHERE[b.where]}`;
+const keysText = (r: KeyRow) => r.keys.map(keyLabel).join(" ");
+const keyText = (r: KeyRow) => `${r.desc} ${keysText(r)} ${r.keys.join(" ")} ${WHERE[r.scope]}`;
 
 function KeyPicker() {
   const items = useMemo(keysHere, []);
   return (
-    <Picker<{ b: Binding; here: boolean }>
+    <Picker<{ row: KeyRow; here: boolean }>
       placeholder="search keys: what you want to do, or the key itself"
       items={items}
-      filter={(all, q) => wordFilter(all, q, (x) => keyText(x.b))}
+      filter={(all, q) => wordFilter(all, q, (x) => keyText(x.row))}
       hint="run it"
-      row={({ b, here }) => (
+      row={({ row, here }) => (
         <span class={`key-row${here ? "" : " elsewhere"}`}>
-          <Kbd>{keyLabel(b.keys)}</Kbd>
-          <span class="key-desc">{b.desc}</span>
-          <span class="key-where">{here ? "" : WHERE[b.where]}</span>
+          <Keys row={row} />
+          <span class="key-desc">{row.desc}</span>
+          <span class="key-where">{here ? "" : WHERE[row.scope]}</span>
         </span>
       )}
-      pick={({ b, here }) => {
-        if (here) b.run(1);
-        else notify(b.where === "code" ? `${keyLabel(b.keys)} works in a thread's code or the guide's lines: click into them, or press V or i there` : b.where === "guide" ? `${keyLabel(b.keys)} works in the Guide tab of the Changes page` : `${keyLabel(b.keys)} works on the ${WHERE[b.where]} page`);
+      pick={({ row, here }) => {
+        const keys = keysText(row);
+        if (here) runKeyRow(row);
+        else notify(row.scope === "code" ? `${keys} works in a thread's code or the guide's lines: click into them, or press V or i there` : row.scope === "guide" ? `${keys} works in the Guide tab of the Changes page` : `${keys} works on the ${WHERE[row.scope]} page`);
       }}
     />
   );
@@ -281,13 +302,13 @@ export function Pickers() {
   return p === "files" ? <FilePicker /> : p === "keys" ? <KeyPicker /> : p === "versions" ? <VersionPicker /> : null;
 }
 
-const SECTIONS: [Where, string][] = [
-  ["compare", "Changes (the diff)"],
+const SECTIONS: [Scope, string][] = [
+  ["changes", "Changes (the diff)"],
   ["guide", "Changes: the Guide tab (experimental)"],
   ["thread", "Thread"],
   ["code", "In the code of a thread or of the Guide tab (after a click into it, V or i)"],
   ["drafts", "Drafts"],
-  ["everywhere", "Everywhere"],
+  ["global", "Everywhere"],
 ];
 
 export function Help() {
@@ -301,7 +322,8 @@ export function Help() {
   }, [open]);
   if (!open) return null;
   const close = () => (helpOpen.value = false);
-  const matching = new Set(wordFilter(bindings(), q, keyText));
+  const all = webRows();
+  const matching = new Set(wordFilter(all, q, keyText));
   return (
     <div class="overlay" onClick={close}>
       <div class="help" onClick={(e) => e.stopPropagation()}>
@@ -313,12 +335,7 @@ export function Help() {
             placeholder="filter: what you want to do, or the key"
             value={q}
             onInput={(e) => setQ((e.target as HTMLInputElement).value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                e.preventDefault();
-                close();
-              }
-            }}
+            onKeyDown={(e) => boxKey(e, "help", { "help.close": () => void close() }, true)}
           />
         </div>
         <p class="hint">
@@ -328,16 +345,16 @@ export function Help() {
         <div class="help-cols">
           {SECTIONS.map(([where, title]) => {
             const seen = new Set<string>();
-            const rows = bindings().filter((b) => b.where === where && matching.has(b) && !seen.has(b.desc + b.keys) && seen.add(b.desc + b.keys));
+            const rows = all.filter((r) => r.scope === where && matching.has(r) && !seen.has(r.desc + r.keys) && seen.add(r.desc + r.keys));
             if (rows.length === 0) return null;
             return (
               <section>
                 <h4>{title}</h4>
                 <table>
-                  {rows.map((b) => (
+                  {rows.map((r) => (
                     <tr>
-                      <td><Kbd>{keyLabel(b.keys)}</Kbd></td>
-                      <td>{b.desc}</td>
+                      <td><Keys row={r} /></td>
+                      <td>{r.desc}</td>
                     </tr>
                   ))}
                 </table>

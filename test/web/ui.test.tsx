@@ -323,7 +323,7 @@ describe("landing and unsent text", () => {
 
 describe("keys", () => {
   test("hotkeys work in the Russian layout by physical key", async () => {
-    const { keyToken } = await import("../../web/keys.ts");
+    const { keyToken } = await import("../../web/keyinput.ts");
     const ev = (key: string, code: string, shiftKey = false) => new KeyboardEvent("keydown", { key, code, shiftKey });
     expect(keyToken(ev("о", "KeyJ"))).toBe("j");
     expect(keyToken(ev("О", "KeyJ", true))).toBe("J");
@@ -334,13 +334,43 @@ describe("keys", () => {
   });
 
   test("the / key works in the Russian layout, where it types a dot, and ? with Shift; other layouts keep their own punctuation", async () => {
-    const { keyToken } = await import("../../web/keys.ts");
+    const { keyToken } = await import("../../web/keyinput.ts");
     const ev = (key: string, code: string, shiftKey = false) => new KeyboardEvent("keydown", { key, code, shiftKey });
     expect(keyToken(ev(".", "Slash"))).toBe("/");
     expect(keyToken(ev(",", "Slash", true))).toBe("?");
     expect(keyToken(ev("/", "Slash"))).toBe("/");
     expect(keyToken(ev("-", "Slash"))).toBe("-");
     expect(keyToken(ev(".", "Period"))).toBe(".");
+  });
+
+  test("the page reads the shared table's rows it has actions for, and leaves the browser's own keys to it", async () => {
+    const { webRows } = await import("../../web/keys.ts");
+    const rows = webRows();
+    expect(rows.filter((r) => r.ui === "tui")).toEqual([]);
+    expect(rows.some((r) => r.scope === "drafts" && r.keys.includes("A"))).toBe(false);
+    expect(rows.some((r) => r.id === "focus.next")).toBe(false);
+    state.route.value = { name: "compare", from: "1", to: "2" };
+    expect(handleKey(new KeyboardEvent("keydown", { key: "PageDown", code: "PageDown" }))).toBe(false);
+    expect(handleKey(new KeyboardEvent("keydown", { key: "Tab", code: "Tab" }))).toBe(false);
+    state.route.value = { name: "home" };
+  });
+
+  test("a box runs its own place's rows: Ctrl+S and Ctrl+Enter save in the reply box, a terminal's stand-in does nothing, a field types its characters", async () => {
+    const { boxKey } = await import("../../web/keyinput.ts");
+    const ran: string[] = [];
+    const own = { "composer.draft": () => void ran.push("draft"), "composer.now": () => void ran.push("now"), "composer.leave": () => void ran.push("leave") };
+    const ev = (init: KeyboardEventInit) => new KeyboardEvent("keydown", { cancelable: true, ...init });
+    expect(boxKey(ev({ key: "s", code: "KeyS", ctrlKey: true }), "composer", own, true)).toBe(true);
+    expect(boxKey(ev({ key: "ы", code: "KeyS", ctrlKey: true }), "composer", own, true)).toBe(true);
+    expect(boxKey(ev({ key: "Enter", code: "Enter", ctrlKey: true }), "composer", own, true)).toBe(true);
+    expect(boxKey(ev({ key: "Enter", code: "Enter", ctrlKey: true, shiftKey: true }), "composer", own, true)).toBe(true);
+    expect(boxKey(ev({ key: "g", code: "KeyG", ctrlKey: true }), "composer", own, true)).toBe(false);
+    expect(boxKey(ev({ key: "Escape", code: "Escape" }), "composer", own, true)).toBe(true);
+    expect(ran).toEqual(["draft", "draft", "draft", "now", "leave"]);
+    const closed: string[] = [];
+    expect(boxKey(ev({ key: "q", code: "KeyQ" }), "help", { "help.close": () => void closed.push("q") }, true)).toBe(false);
+    expect(boxKey(ev({ key: "q", code: "KeyQ" }), "choice", { "choice.cancel": () => void closed.push("q") }, false)).toBe(true);
+    expect(closed).toEqual(["q"]);
   });
 
   test("only text fields swallow keys: a focused checkbox, select or button does not", async () => {

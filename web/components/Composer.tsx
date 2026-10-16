@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
+import { boxKey } from "../keyinput.ts";
 import { Kbd } from "./Bits.tsx";
 
 export function loadText(key: string | undefined): string | null {
@@ -74,25 +75,23 @@ export function Composer(props: ComposerProps) {
   };
 
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault();
-      void send(e.shiftKey && props.secondaryLabel !== null ? "now" : "draft");
-    } else if (e.code === "KeyS" && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
-      e.preventDefault();
-      void send("draft");
-    } else if (e.key === "Escape" || (e.key === "j" && lastJ.current > Date.now() - 300 && text.endsWith("j"))) {
-      e.preventDefault();
-      const el = e.target as HTMLTextAreaElement;
-      if (e.key === "j") {
-        const value = text.slice(0, -1);
-        setText(value);
-        saveText(props.storageKey, value);
-      }
+    const el = e.target as HTMLTextAreaElement;
+    const leave = () => {
       if (props.onEscape) props.onEscape(el);
       else {
         el.blur();
         props.onCancel?.();
       }
+    };
+    // jj leaves by the characters typed, never by the physical key: оо is common in Russian words
+    if (e.key === "j" && lastJ.current > Date.now() - 300 && text.endsWith("j")) {
+      e.preventDefault();
+      const value = text.slice(0, -1);
+      setText(value);
+      saveText(props.storageKey, value);
+      leave();
+    } else {
+      boxKey(e, "composer", { "composer.draft": () => void send("draft"), "composer.now": () => void send(props.secondaryLabel !== null ? "now" : "draft"), "composer.leave": leave }, true);
     }
     lastJ.current = e.key === "j" ? Date.now() : 0;
   };

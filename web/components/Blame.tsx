@@ -5,6 +5,7 @@ import { api } from "../api.ts";
 import { cursor } from "../compare.ts";
 import type { Route } from "../../src/ui/route.ts";
 import { codeMode, link, navigate, reviewId, route, selectedStep, versions } from "../state.ts";
+import { boxKey } from "../keyinput.ts";
 import { Kbd, rangeText } from "./Bits.tsx";
 
 export interface BlameAsk {
@@ -146,23 +147,13 @@ export function BlamePop() {
     const key = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
       if (el?.tagName === "TEXTAREA" || el?.tagName === "INPUT" || e.ctrlKey || e.metaKey || e.altKey) return;
-      const down = e.key === "ArrowDown" || e.code === "KeyJ";
-      const up = e.key === "ArrowUp" || e.code === "KeyK";
-      const stop = () => {
-        e.preventDefault();
-        e.stopPropagation();
-      };
-      if (e.key === "Escape") {
-        stop();
-        close();
-      } else if ((down || up) && flat.length > 1) {
-        stop();
-        setSel((was) => ((was ?? start) + (down ? 1 : -1) + flat.length) % flat.length);
-      } else if (e.key === "Enter" && flat[on]) {
-        stop();
+      const step = (dir: 1 | -1) => flat.length > 1 && void setSel((was) => ((was ?? start) + dir + flat.length) % flat.length);
+      const open = () => {
+        if (!flat[on]) return false;
         close();
         navigate(flat[on]!.route);
-      }
+      };
+      if (boxKey(e, "blame", { "blame.down": () => step(1), "blame.up": () => step(-1), "blame.open": open, "blame.close": () => void close() }, false)) e.stopPropagation();
     };
     const click = (e: MouseEvent) => {
       if (!ref.current?.contains(e.target as Node)) close();

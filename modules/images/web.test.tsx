@@ -12,7 +12,7 @@ GlobalRegistrator.register({ url: "http://127.0.0.1:4000/" });
 globalThis.fetch = (async () => Response.json({ ok: true })) as unknown as typeof fetch;
 const { render } = await import("preact");
 const state = await import("../../web/state.ts");
-const { bindings } = await import("../../web/keys.ts");
+const { webRows } = await import("../../web/keys.ts");
 const registry = await import("../../web/modules.tsx");
 const { threadLanding } = await import("../../web/views/Compare.tsx");
 const { ImagePane } = await import("./ImageView.tsx");
@@ -41,7 +41,7 @@ describe("the images module on the page", () => {
     render(node, host);
     return host;
   };
-  const zoomKeys = () => bindings().filter((b) => ["+", "=", "-", "0"].includes(b.keys));
+  const zoomKeys = () => webRows().filter((r) => r.keys.some((k) => ["+", "=", "-", "0"].includes(k)));
 
   test("on: it draws pictures, fills the slots and brings the zoom keys", () => {
     switched(true);
@@ -53,7 +53,7 @@ describe("the images module on the page", () => {
     expect(drawn(registry.headerControl(svg.name)).querySelector(".img-svg-toggle")).not.toBeNull();
     expect(drawn(<registry.StepThumb sha="s1" path={png.name} region={region} />).querySelector(".img-step-thumb .img-crop")).not.toBeNull();
     expect(drawn(<registry.ThreadArea d={detail} from={step} to={step} />).querySelector(".img-area .img-crop")).not.toBeNull();
-    expect(zoomKeys().map((b) => `${b.where} ${b.keys}`)).toEqual(["compare +", "compare =", "compare -", "compare 0", "thread +", "thread =", "thread -", "thread 0"]);
+    expect(zoomKeys().map((r) => `${r.scope} ${r.keys.join(" ")}`)).toEqual(["changes + =", "changes -", "changes 0", "thread + =", "thread -", "thread 0"]);
     expect(threadLanding(png.name, true)).toBe("file");
   });
 

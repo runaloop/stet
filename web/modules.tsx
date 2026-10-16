@@ -6,7 +6,8 @@ import type { ComparePlacement, Region, ThreadDetail, TimelineStepDto } from "..
 import type { OrderPreset } from "../src/ui/order.ts";
 import type { FileView, Peek } from "./compare.ts";
 import type { RenderedProps } from "./components/MarkdownView.tsx";
-import type { Binding } from "./keys.ts";
+import type { Actions } from "../src/ui/keys/match.ts";
+import type { KeyRow } from "../src/ui/keys/table.ts";
 import { markdownViewer } from "./markdown.tsx";
 import { WEB_MODULES } from "./modules.gen.ts";
 import { modulePresets, status } from "./state.ts";
@@ -62,7 +63,9 @@ export interface WebModule {
   id: string;
   viewers?: FileViewer[];
   slots?: Partial<Slots>;
-  bindings?: Binding[];
+  /** Its rows of the key table and the actions they run. */
+  keys?: KeyRow[];
+  actions?: Actions;
   /** The order presets of its core part, for the page to sort files by them as the CLI and the terminal do. */
   orderPresets?: readonly OrderPreset[];
   /** Drops what it began on the Changes page and has not sent yet: Esc and another range drop it as they drop a comment on lines. */
@@ -120,8 +123,10 @@ export function cancelModules(): void {
   for (const m of WEB_MODULES) m.cancel?.();
 }
 
-/** The key bindings of the enabled modules, after the core's. */
-export const moduleBindings = (): Binding[] => webModules.value.flatMap((m) => m.bindings ?? []);
+/** The key rows of the enabled modules, after the core's. */
+export const moduleRows = (): KeyRow[] => webModules.value.flatMap((m) => m.keys ?? []);
+
+export const moduleActions = computed((): Actions => Object.assign({}, ...webModules.value.map((m) => m.actions ?? {})));
 
 const slot = <K extends keyof Slots>(name: K): Slots[K] | undefined => webModules.value.find((m) => m.slots?.[name])?.slots?.[name];
 

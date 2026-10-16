@@ -1,7 +1,7 @@
 import "./web.css";
 import { imageType } from "../../src/core/media.ts";
 import { drawnFiles, setFileView } from "../../web/compare.ts";
-import type { Binding } from "../../web/keys.ts";
+import type { KeyRow } from "../../src/ui/keys/table.ts";
 import type { WebModule } from "../../web/modules.tsx";
 import { threads } from "../../web/state.ts";
 import { isPixelImage, isSvg } from "./core.ts";
@@ -9,11 +9,10 @@ import { ImageArea, ImageDiff, ImagePane, RegionThumb } from "./ImageView.tsx";
 import { zoomKey } from "./ImageZoom.tsx";
 import { imagePending } from "./state.ts";
 
-const zoom = (where: "compare" | "thread"): Binding[] => [
-  { keys: "+", desc: "zoom in on the picture under the mouse (or the one in sight)", where, run: () => zoomKey(1) },
-  { keys: "=", desc: "zoom in on the picture (same as +)", where, run: () => zoomKey(1) },
-  { keys: "-", desc: "zoom out of the picture", where, run: () => zoomKey(-1) },
-  { keys: "0", desc: "fit the picture in its place again", where, run: () => zoomKey(0) },
+const zoom = (scope: "changes" | "thread"): KeyRow[] => [
+  { id: "image.zoomIn", keys: ["+", "="], scope, desc: "zoom in on the picture under the mouse (or the one in sight)" },
+  { id: "image.zoomOut", keys: ["-"], scope, desc: "zoom out of the picture" },
+  { id: "image.fit", keys: ["0"], scope, desc: "fit the picture in its place again" },
 ];
 
 export default {
@@ -63,6 +62,7 @@ export default {
     },
     "files.tag": (fd) => (fd.hunks.length === 0 && isPixelImage(fd.name) ? "image" : null),
   },
-  bindings: [...zoom("compare"), ...zoom("thread")],
+  keys: [...zoom("changes"), ...zoom("thread")],
+  actions: { "image.zoomIn": () => zoomKey(1), "image.zoomOut": () => zoomKey(-1), "image.fit": () => zoomKey(0) },
   cancel: () => void (imagePending.value = null),
 } satisfies WebModule;

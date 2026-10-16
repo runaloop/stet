@@ -31,6 +31,10 @@ export type Scope =
   | "round.thread"
   | "changes.files";
 
+/** The places each UI has. */
+export const WEB_SCOPES: ReadonlySet<Scope> = new Set<Scope>(["global", "changes", "drafts", "composer", "choice", "picker", "search", "help", "guide", "thread", "code", "blame"]);
+export const TUI_SCOPES: ReadonlySet<Scope> = new Set<Scope>(["global", "changes", "drafts", "composer", "choice", "picker", "search", "help", "round.list", "round.files", "round.search", "round.code", "round.conv", "round.thread", "changes.files"]);
+
 /** `visual`: lines are being selected (V); a row without `modes` works in normal mode only. */
 export type Mode = "normal" | "visual" | "insert";
 
@@ -85,8 +89,10 @@ const changes: KeyRow[] = [
   { id: "diff.up", keys: ["k", "<Up>"], scope: "changes", modes: V, count: true, desc: "cursor up" },
   { id: "diff.first", keys: ["gg"], scope: "changes", modes: V, desc: "first line of the diff" },
   { id: "diff.last", keys: ["G"], scope: "changes", modes: V, desc: "last line of the diff" },
-  { id: "diff.pageDown", keys: ["<C-d>", "<PageDown>"], scope: "changes", modes: V, desc: "half a page down" },
-  { id: "diff.pageUp", keys: ["<C-u>", "<PageUp>"], scope: "changes", modes: V, desc: "half a page up" },
+  { id: "diff.pageDown", keys: ["<C-d>"], scope: "changes", modes: V, desc: "half a page down" },
+  { id: "diff.pageUp", keys: ["<C-u>"], scope: "changes", modes: V, desc: "half a page up" },
+  { id: "diff.pageDown", keys: ["<PageDown>"], scope: "changes", ui: "tui", desc: "half a page down" },
+  { id: "diff.pageUp", keys: ["<PageUp>"], scope: "changes", ui: "tui", desc: "half a page up" },
   { id: "diff.nextChange", keys: ["]c"], scope: "changes", modes: V, count: true, desc: "next change" },
   { id: "diff.prevChange", keys: ["[c"], scope: "changes", modes: V, count: true, desc: "previous change" },
   { id: "diff.nextHunk", keys: ["]h"], scope: "changes", modes: V, count: true, desc: "next hunk" },
@@ -264,7 +270,7 @@ const drafts: KeyRow[] = [
   { id: "drafts.edit", keys: ["e"], scope: "drafts", desc: "edit the draft" },
   { id: "drafts.discard", keys: ["dd"], scope: "drafts", desc: "discard the draft" },
   { id: "drafts.summary", keys: ["c"], scope: "drafts", desc: "the summary for the whole review" },
-  { id: "review.approve", keys: ["A"], scope: "drafts", desc: "approve the latest version (drafts go along as nits)" },
+  { id: "review.approve", keys: ["A"], scope: "drafts", ui: "tui", desc: "approve the latest version (drafts go along as nits)" },
   { id: "drafts.guide", keys: ["g"], scope: "drafts", desc: "ask the agent for a guide to the next version" },
   { id: "tab.round", keys: ["<Esc>", "q"], scope: "drafts", desc: "back to the round" },
 ];

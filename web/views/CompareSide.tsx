@@ -46,6 +46,7 @@ import { clampStep } from "../../src/ui/timeline.ts";
 import { fileTag } from "../modules.tsx";
 import { detail, link, route, selectedStep } from "../state.ts";
 import { transition } from "../transition.ts";
+import { boxKey } from "../keyinput.ts";
 import { ThreadTree } from "./ThreadTree.tsx";
 
 const split = (path: string) => {
@@ -375,16 +376,20 @@ function SearchPanel() {
           placeholder={onThreadPage.value ? `search all files at ${at}  (/ or Ctrl+F)` : scope === "files" ? "search all files  (/ or Ctrl+F)" : "search the diff  (/ or Ctrl+F)"}
           value={searchInput.value}
           onInput={(e) => (searchInput.value = (e.target as HTMLInputElement).value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              stepHit(e.shiftKey ? -1 : 1);
-            } else if (e.key === "Escape") {
-              e.preventDefault();
-              if (peek.value) peek.value = null;
-              else (e.target as HTMLElement).blur();
-            }
-          }}
+          onKeyDown={(e) =>
+            boxKey(
+              e,
+              "search",
+              {
+                "search.next": () => void stepHit(1),
+                "search.prev": () => void stepHit(-1),
+                "peek.hide": () => void (peek.value = null),
+                "search.leave": () => (e.target as HTMLElement).blur(),
+              },
+              true,
+              { peek: () => !!peek.value },
+            )
+          }
         />
         <button class={`btn ghost small${searchRegex.value ? " on" : ""}`} title="regular expression" onClick={() => (searchRegex.value = !searchRegex.value)}>.*</button>
         <button class="btn ghost small" title="previous (Shift+Enter)" disabled={!count} onClick={() => stepHit(-1)}>↑</button>

@@ -1,6 +1,7 @@
 import { signal } from "@preact/signals";
 import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
+import { boxKey } from "../keyinput.ts";
 import { Kbd } from "./Bits.tsx";
 
 export interface Option<T extends string> {
@@ -62,13 +63,7 @@ function Dialog({ q }: { q: Question }) {
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           e.stopPropagation();
-          const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
-          if (e.key === "Escape") q.answer(null);
-          else if (e.key === "Enter" || e.key === " ") q.answer(choices[sel]!.value);
-          else if (e.key === "ArrowDown" || (plain && e.code === "KeyJ") || (e.key === "Tab" && !e.shiftKey)) move(1);
-          else if (e.key === "ArrowUp" || (plain && e.code === "KeyK") || (e.key === "Tab" && e.shiftKey)) move(-1);
-          else return;
-          e.preventDefault();
+          boxKey(e, "choice", { "choice.down": () => move(1), "choice.up": () => move(-1), "choice.pick": () => q.answer(choices[sel]!.value), "choice.cancel": () => q.answer(null) }, false);
         }}
       >
         <h3>{q.title}</h3>
