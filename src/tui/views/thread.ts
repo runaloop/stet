@@ -150,6 +150,30 @@ export class CodePane {
     this.diff.onWant = want;
   }
 
+  /** The view and scope last drawn, whose two ends the code's sides are at. */
+  get drawn(): { view: CodeView; scope: Scope } | null {
+    return this.block ? { view: this.block.view, scope: this.block.scope } : null;
+  }
+
+  /** A cursor on the code: on the thread's first line where it is drawn, else on the first line. */
+  enter(): boolean {
+    const d = this.diff;
+    if (d.cursor >= 0 && d.cursor < d.rows.len) return true;
+    const p = this.block?.item.placed?.[0];
+    let r = p ? d.lineRow(this.block!.item.key, p.side === "deletions" ? 0 : 1, p.range.start) : -1;
+    if (r === -1) for (let i = 0; i < d.rows.len && r === -1; i++) if (DiffView.isCode(d.rows.kind[i]!)) r = i;
+    if (r === -1) return false;
+    d.goTo(r);
+    return true;
+  }
+
+  /** The cursor off the code: it is not drawn, and the selection goes. */
+  leave(): void {
+    this.diff.clearSelection();
+    this.diff.cursor = -1;
+    this.diff.invalidate();
+  }
+
   /** The code of `view` and `scope` in `w` cells; while a wider scope loads, the header says so. */
   lines(d: ThreadDetail, view: CodeView | null, scope: Scope, wide: Wide | null, w: number, around: number | null = null, mark = true): { lines: Line[]; view: CodeView; scope: Scope } {
     this.d = d;

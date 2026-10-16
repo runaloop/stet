@@ -159,7 +159,7 @@ test("120×40: the Files tab lists the changed files with −/+ and their thread
   v.files = await api.compare(review, "base", "2");
   v.fileSel = "src/routes.ts";
   const text = frame(v, 120, 40);
-  expect(text).toContain("7 files · base → v2");
+  expect(text).toContain("9 files · base → v2");
   expect(text).toContain(" FILES ");
   expect(text).toMatch(/src\/routes\.ts\s+\+\d+ ●4/);
   expect(text).toMatchSnapshot();
@@ -312,7 +312,7 @@ test("? on the Changes tab lists its keys: lines, files, threads, folds, viewed,
   const v = await changes("base", "2");
   v.help = helpFor("changes", reader, legacy);
   const text = v.help.lines.map((l) => l.spans.map((x) => x.text).join("")).join("\n");
-  for (const k of ["] t ", "[ t ", "] b  L", "] c", "z a", "m ", "] v", "{", "p ", "Enter  o"]) expect(text).toContain(k);
+  for (const k of ["] t ", "[ t ", "] b  L", "] c", "z a", "m ", "] v", "{", "p ", "Enter ", "V  v", "i  a  c"]) expect(text).toContain(k);
 });
 
 test("256 colours under TERM=screen-256color: the frame paints with palette indexes", async () => {
@@ -340,4 +340,103 @@ test("? waits for the next key of a sequence, and says what the first key did wh
   expect(tester.press("<C-w>").row).toBeNull();
   expect(tester.press("W").row?.id).toBe("focus.prev");
   expect(tester.press("<S-F3>").text).toBe("got Shift+F3: nothing here");
+});
+
+/** The lines `start..end` of `path` picked with V on a side, as the keys pick them. */
+function pick(v: ViewState, path: string, side: 0 | 1, start: number, end: number): void {
+  const d = v.changes.diff;
+  d.goTo(d.lineRow(path, side, start), "center");
+  if (d.split) d.setSide(side);
+  expect(d.startSelection()).toBe(true);
+  d.goTo(d.lineRow(path, side, end));
+}
+
+test("120×40: V on removed lines picks the old side; i opens a new thread's box under the diff, the lines in sight above it", async () => {
+  const v = await changes("1", "2");
+  frame(v, 120, 40);
+  pick(v, "src/auth.ts", 0, 4, 5);
+  const sel = v.changes.diff.selection()!;
+  expect(sel).toMatchObject({ key: "src/auth.ts", side: 0, start: 4, end: 5 });
+  const visual = frame(v, 120, 40);
+  expect(visual).toContain(" VISUAL ");
+  v.writing = { kind: "thread", path: "src/auth.ts", side: "old", start: 4, end: 5, at: v.changes.data!.from.sha, label: "v1", from: "changes" };
+  v.composerText = "Both lines leak the key's length through timing as well.";
+  const f = render(v, 120, 40);
+  expect(f.box).not.toBeNull();
+  const text = frame(v, 120, 40);
+  expect(text).toContain("New thread on src/auth.ts:4–5 · removed lines (v1) · draft");
+  expect(text).toContain("const given = req.headers.get");
+  expect(text).toContain(" NEW THREAD ");
+  expect(visual).toMatchSnapshot();
+  expect(text).toMatchSnapshot();
+});
+
+test("180×46, split: the cursor on the new side, V picks added lines there; Left would pick the old side", async () => {
+  const v = await changes("1", "2");
+  v.changes.layout = "split";
+  v.changes.diff.setLayout("split");
+  frame(v, 180, 46);
+  expect(v.changes.diff.split).toBe(true);
+  pick(v, "src/auth.ts", 1, 6, 7);
+  expect(v.changes.diff.selection()).toMatchObject({ side: 1, start: 6, end: 7 });
+  const text = frame(v, 180, 46);
+  expect(text).toContain(" VISUAL ");
+  const rows = render(v, 180, 46).rows;
+  const picked = rows.filter((r) => r.some((x) => x.c?.includes("vis")));
+  expect(picked.length).toBe(2);
+  expect(text).toMatchSnapshot();
+});
+
+test("80×24: a new thread's box on one column, over the bottom of the diff", async () => {
+  const v = await changes("1", "2");
+  frame(v, 80, 24);
+  pick(v, "src/auth.ts", 1, 3, 3);
+  v.writing = { kind: "thread", path: "src/auth.ts", side: "new", start: 3, end: 3, at: v.changes.data!.to.sha, label: "v2", from: "changes" };
+  v.composerText = "";
+  const f = render(v, 80, 24);
+  expect(f.box).not.toBeNull();
+  const text = frame(v, 80, 24);
+  expect(text).toContain("New thread on src/auth.ts:3 (v2)");
+  expect(text).toContain("const KEY = Buffer.from");
+  expect(text).toMatchSnapshot();
+});
+
+test("180×46: V in a thread's code picks its removed lines on the old side; the new thread's box sits under the code", async () => {
+  const v = await view(ids.timing);
+  v.focus = "code";
+  frame(v, 180, 46);
+  expect(v.code.enter()).toBe(true);
+  v.codeCursor = true;
+  const d = v.code.diff;
+  expect(d.selection()).toMatchObject({ side: 1, start: 6 });
+  d.goTo(d.lineRow("src/auth.ts", 0, 5));
+  d.startSelection();
+  d.goTo(d.lineRow("src/auth.ts", 0, 4));
+  expect(d.selection()).toMatchObject({ side: 0, start: 4, end: 5 });
+  const visual = frame(v, 180, 46);
+  expect(visual).toContain(" VISUAL ");
+  v.writing = { kind: "thread", path: "src/auth.ts", side: "old", start: 4, end: 5, at: v.detail!.timeline[0]!.sha, label: "v1", from: "thread" };
+  const f = render(v, 180, 46);
+  expect(f.box).not.toBeNull();
+  const text = frame(v, 180, 46);
+  expect(text).toContain("New thread on src/auth.ts:4–5 · removed lines (v1) · draft");
+  expect(text).toContain("return given === KEY;");
+  expect(visual).toMatchSnapshot();
+  expect(text).toMatchSnapshot();
+});
+
+test("120×40 and 80×24: the cursor in a thread's code on an added line; the column follows it", async () => {
+  const v = await view(ids.timing);
+  v.focus = "code";
+  frame(v, 120, 40);
+  v.code.enter();
+  v.codeCursor = true;
+  const text = frame(v, 120, 40);
+  expect(text).toContain(" LINES ");
+  expect(render(v, 120, 40).rows.some((r) => r.some((x) => x.c?.includes("sel") && x.text.includes("6")))).toBe(true);
+  expect(text).toMatchSnapshot();
+  frame(v, 80, 24);
+  const narrow = frame(v, 80, 24);
+  expect(narrow).toContain("timingSafeEqual(given, KEY)");
+  expect(narrow).toMatchSnapshot();
 });

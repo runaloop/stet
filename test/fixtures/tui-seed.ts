@@ -3,6 +3,9 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
+/** A picture of one pixel, for a file the terminal shows only in the browser. */
+const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
 const GIT = { GIT_AUTHOR_NAME: "Demo", GIT_AUTHOR_EMAIL: "demo@example.com", GIT_COMMITTER_NAME: "Demo", GIT_COMMITTER_EMAIL: "demo@example.com" };
 
 /** A report module of a few hundred lines, `v` 1 or 2: the second renames a function, changes a few lines and adds some. */
@@ -71,7 +74,7 @@ export interface Seeded {
  * Two versions and twelve threads: the agent's fix waiting for you and unread, a question, an outdated thread, a long
  * message waiting for the agent, two resolved, new threads on v2 (three in src/auth.ts, four in src/routes.ts, one deep
  * in the long src/report.ts) and a draft thread. v2 also adds a test that only adds code and a lock file, which the
- * Changes tab folds.
+ * Changes tab folds, a picture, and a second routes.ts that a message's file reference cannot tell from the first.
  */
 export function seedTui(root: string, cli: string[]): Seeded {
   rmSync(root, { recursive: true, force: true });
@@ -264,6 +267,15 @@ test("the sweep drops keys whose hits left the window", () => {
   expect(l.allow("x", 100)).toBe(true);
 });
 `);
+  write("src/admin/routes.ts", `import { authorized } from "../auth.ts";
+
+export async function adminRoutes(req: Request): Promise<Response> {
+  if (!authorized(req)) return new Response("unauthorized", { status: 401 });
+  return Response.json({ limiter: "on" });
+}
+`);
+  mkdirSync(join(root, "docs"), { recursive: true });
+  writeFileSync(join(root, "docs/limits.png"), Buffer.from(PNG, "base64"));
   write("bun.lock", `{
   "lockfileVersion": 1,
   "workspaces": { "": { "name": "shop-api" } },
@@ -297,6 +309,7 @@ test("the sweep drops keys whose hits left the window", () => {
   const order = comment("src/routes.ts", "12", "Checking the key before the route means a 401 for every unknown path: is that on purpose?", "--at", "2");
   reply("agent", order, "Yes: answering 404 before the key check would tell anyone which paths exist. I would keep it.", "--intent", "disagree");
   const port = comment("src/server.ts", "3", "`Number(undefined ?? 8080)` is fine, but `PORT=abc` gives NaN and Bun picks a random port. Validate it?", "--at", "2");
+  reply("agent", port, "Should it refuse to start? The check would sit next to the read of PORT (src/server.ts:3-4), before any route runs: routes.ts:12 checks the key on every request. The limiter takes its settings the same way (src/limiter.ts#L4).", "--intent", "question");
   const draft = comment("src/routes.ts", "13", "Should 401 come with a `www-authenticate` header?", "--at", "2", "--draft");
   const deep = String(reportModule(2).split("\n").findIndex((l) => l.includes("export function auditStatsRows")) + 1);
   const report = comment("src/report.ts", deep, "`limit` grows with the route's index: is that on purpose, or should every route share one default?", "--at", "2");

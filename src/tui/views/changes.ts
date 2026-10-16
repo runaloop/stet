@@ -112,8 +112,11 @@ export function stripLine(d: Data, c: ChangesState): Line {
 export function infoLine(c: ChangesState, shown: number): Line {
   const outside = c.data?.outside.length ?? 0;
   return line(
-    s(` ${plural(shown, "thread")} on this diff${outside ? ` · ${outside} elsewhere` : ""} ·`, "dim"),
-    s(" "),
+    s(` ${plural(shown, "thread")} on this diff${outside ? ` · ${outside} elsewhere` : ""} · `, "dim"),
+    key("V"),
+    s(" select lines · ", "dim"),
+    key("i"),
+    s(" comment · ", "dim"),
     key("] t"),
     key("[ t"),
     s(" step · ", "dim"),
@@ -182,9 +185,9 @@ export function filesLines(d: Data, c: ChangesState, focus: boolean, w: number, 
   return { lines: out, at: at < head.length ? -1 : at, total };
 }
 
-/** The diff's pane: the range in its border, the strip and the info lines over the widget's lines. */
-export function diffPane(d: Data, c: ChangesState, w: number, height: number, shown: number): Pane {
-  const inner = height - 2;
+/** The diff's pane: the range in its border, the strip and the info lines over the widget's lines; `foot` under them. */
+export function diffPane(d: Data, c: ChangesState, w: number, height: number, shown: number, foot: Line[] = []): Pane {
+  const inner = height - 2 - foot.length;
   const title: Span[] = [s(rangeTitle(d, c), "b"), ...(c.data ? [s(` · ${plural(c.data.files.length, "file")}`, "dim")] : [])];
   const right = [s(`${c.diff.split ? "split" : "unified"}${c.layout === "auto" ? "" : " (fixed)"} · ${c.wrap ? "wrap" : "no wrap"}`, "dim")];
   const head = [stripLine(d, c), infoLine(c, shown), blank()];
@@ -193,11 +196,15 @@ export function diffPane(d: Data, c: ChangesState, w: number, height: number, sh
   else if (!c.data || !c.base) body = [line(s(` ${c.loading ?? "loading the changes…"}`, "dim"))];
   else if (!c.rows.length) body = [line(s(" No changes between these two.", "dim"))];
   else {
-    c.diff.setSize(w - 2, Math.max(1, inner - head.length));
+    const h = Math.max(1, inner - head.length);
+    const shrunk = h < c.diff.height;
+    c.diff.setSize(w - 2, h);
+    if (shrunk) c.diff.reveal();
     c.diff.focus = c.focus === "diff";
     body = c.diff.lines();
   }
-  return { w, title, right, lines: [...head, ...body], focus: c.focus === "diff", hit: "focus:cdiff" };
+  while (body.length < inner - head.length) body.push(blank());
+  return { w, title, right, lines: [...head, ...body.slice(0, Math.max(0, inner - head.length)), ...foot], focus: c.focus === "diff", hit: "focus:cdiff" };
 }
 
 export function filesPane(d: Data, c: ChangesState, w: number, height: number, top: { value: number }): Pane {

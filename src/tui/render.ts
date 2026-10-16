@@ -15,7 +15,7 @@ import { KEYS, type Scope } from "../ui/keys/table.ts";
 import { workingKeys, type Terminal } from "../ui/keys/terminal.ts";
 import { OFF, SCOPE, type MenuEntry } from "./keys/menu.ts";
 import { ordered, type Data, type ListFilter } from "./model.ts";
-import { blank, key, line, plural, s, spansWidth, wrap, type Cls, type Line, type Span } from "./text.ts";
+import { blank, key, line, plural, rangeText, s, spansWidth, wrap, type Cls, type Line, type Span } from "./text.ts";
 import { bannerLine, footerLine, headerLine, type Hint, type Tab, type Toast } from "./views/bars.ts";
 import { fileCounts, fileOf, filesLines, listLines, listWidth, sideTitle, type Side } from "./views/list.ts";
 import {
@@ -32,8 +32,20 @@ import {
 
 export type Focus = "list" | "code" | "conv";
 
-/** What the composer writes: a reply to a thread, a draft's new text, or the summary of the whole review. */
-export type Writing = { kind: "reply"; thread: number } | { kind: "edit"; comment: number; thread: number } | { kind: "summary" };
+/** Lines a new thread is on: of `path` at the commit `at` (its version `label`), on the old or the new side of the diff shown. */
+export interface NewLines {
+  path: string;
+  side: "old" | "new";
+  start: number;
+  end: number;
+  at: string;
+  label: string;
+  /** Where the lines were picked: the Changes tab, or a thread's code. */
+  from: "changes" | "thread";
+}
+
+/** What the composer writes: a reply to a thread, a draft's new text, the summary of the whole review, or a new thread on lines. */
+export type Writing = { kind: "reply"; thread: number } | { kind: "edit"; comment: number; thread: number } | { kind: "summary" } | ({ kind: "thread" } & NewLines);
 
 export interface Choice {
   title: string;
@@ -74,6 +86,8 @@ export interface ViewState {
   view: CodeView | null;
   /** How much of the thread's file its code shows (`z`). */
   scope: CodeScope;
+  /** The keys move a cursor over the thread's code (V, i), not the column. */
+  codeCursor: boolean;
   /** The wider scope's code, once fetched. */
   wide: Wide | null;
   /** Syntax colours, and where the lines on screen are asked for. */
@@ -115,6 +129,7 @@ export function initialView(): ViewState {
     code: new CodePane(tokens, want),
     draftCode: new CodePane(tokens, want),
     scope: "around",
+    codeCursor: false,
     wide: null,
     data: { status: null, threads: [], drafts: [], now: null, online: true },
     git: null,
@@ -160,7 +175,7 @@ export function initialView(): ViewState {
 export const columnsFor = (w: number): 1 | 2 | 3 => (w >= 150 ? 3 : w >= 100 ? 2 : 1);
 
 /** The scope keys go to: the focused column, the composer, a box over the screen. */
-export type Place = "list" | "files" | "search" | "code" | "conv" | "thread" | "drafts" | "changes" | "cfiles" | "composer" | "choice" | "help" | "menu";
+export type Place = "list" | "files" | "search" | "code" | "conv" | "thread" | "tcode" | "drafts" | "changes" | "cfiles" | "composer" | "choice" | "help" | "menu";
 
 const listScope = (v: ViewState): "list" | "files" | "search" => (v.side === "threads" ? "list" : v.side);
 
@@ -172,7 +187,7 @@ export function scopeOf(v: ViewState): Place {
   return columnOf(v);
 }
 
-export type Column = "list" | "files" | "search" | "code" | "conv" | "thread" | "drafts" | "changes" | "cfiles";
+export type Column = "list" | "files" | "search" | "code" | "conv" | "thread" | "tcode" | "drafts" | "changes" | "cfiles";
 
 /** The column in focus, under any box over it. */
 export function columnOf(v: ViewState): Column {
@@ -180,6 +195,7 @@ export function columnOf(v: ViewState): Column {
   if (v.tab === "changes") return v.changes.focus === "list" ? "cfiles" : "changes";
   const cols = v.geom.columns;
   if (v.focus === "list") return listScope(v);
+  if (v.codeCursor) return "tcode";
   return cols === 3 ? v.focus : "thread";
 }
 
@@ -190,6 +206,7 @@ const CHIPS: Record<Place, string> = {
   code: "CODE",
   conv: "CONVERSATION",
   thread: "THREAD",
+  tcode: "LINES",
   drafts: "DRAFTS",
   changes: "CHANGES",
   cfiles: "FILES",
@@ -206,8 +223,9 @@ const HINTS: Record<Place, Hint[]> = {
   code: [["j k", "scroll"], ["] t", "[ t", "thread"], ["J K", "file"], ["n", "unread"], ["Tab", "next column"], ["h", "list"], ["r", "reply"], ["x", "resolve"], ["t", "diff / then / at"], ["Space", "menu"], ["?", "all keys"]],
   conv: [["j k", "scroll"], ["{ }", "message"], ["] t", "[ t", "thread"], ["J K", "file"], ["r", "reply"], ["x", "resolve"], ["h", "code"], ["Tab", "next column"], ["Space", "menu"], ["?", "all keys"]],
   thread: [["j k", "scroll"], ["] t", "[ t", "thread"], ["J K", "file"], ["n", "unread"], ["h", "list"], ["r", "reply"], ["x", "resolve"], ["t", "diff / then / at"], ["{ }", "message"], ["Space", "menu"], ["?", "keys"]],
+  tcode: [["j k", "line"], ["V", "select"], ["i", "comment"], ["] c", "[ c", "change"], ["Esc", "leave the code"], ["?", "keys"]],
   drafts: [["j k", "move"], ["Enter", "its thread"], ["e", "edit"], ["d d", "discard"], ["c", "summary"], ["S", "request changes"], ["A", "approve"], ["g", "guide"], ["Esc", "back"]],
-  changes: [["j k", "line"], ["] t", "[ t", "thread"], ["] b", "[ b", "file"], ["Enter", "open"], ["m", "viewed"], ["z a", "fold"], ["] v", "[ v", "range"], ["h", "files"], ["Space", "menu"], ["?", "keys"]],
+  changes: [["j k", "line"], ["V", "select"], ["i", "comment"], ["] t", "[ t", "thread"], ["] b", "[ b", "file"], ["Enter", "open"], ["m", "viewed"], ["z a", "fold"], ["] v", "[ v", "range"], ["h", "files"], ["Space", "menu"], ["?", "keys"]],
   cfiles: [["j k", "file"], ["Enter", "l", "into the diff"], ["m", "viewed"], ["z a", "fold"], ["Tab", "column"], ["Space", "menu"], ["?", "keys"], ["q", "round"]],
   composer: [["type the message"], ["Ctrl+S", "save as draft"], ["Ctrl+G", "send now"], ["Esc", "or"], ["j j", "leave, the text stays"], ["Ctrl+C", "quit"]],
   choice: [["j k", "choose"], ["Enter", "confirm"], ["Esc", "cancel"]],
@@ -228,10 +246,13 @@ function footer(v: ViewState, w: number): Line {
     const hints: Hint[] = [[`${keyLabel(v.prefix.join(""))} …`], ...v.next.map((n) => [keyLabel(n.key), n.desc] as Hint)];
     return footerLine(w, { chip: CHIPS[scope], hints, toast: null });
   }
-  const chip = scope === "composer" ? (v.writing?.kind === "edit" ? "DRAFT" : v.writing?.kind === "summary" ? "SUMMARY" : "REPLY") : CHIPS[scope];
+  if ((scope === "changes" && v.changes.diff.anchor >= 0) || (scope === "tcode" && v.code.diff.anchor >= 0)) return footerLine(w, { chip: "VISUAL", hints: VISUAL_HINTS, toast: v.toast });
+  const chip = scope === "composer" ? (v.writing?.kind === "edit" ? "DRAFT" : v.writing?.kind === "summary" ? "SUMMARY" : v.writing?.kind === "thread" ? "NEW THREAD" : "REPLY") : CHIPS[scope];
   const hints = scope === "composer" ? composerHints(v) : scope === "thread" && v.geom.columns === 1 ? NARROW_HINTS : HINTS[scope];
   return footerLine(w, { chip, hints, toast: v.toast });
 }
+
+const VISUAL_HINTS: Hint[] = [["j k", "more lines"], ["o", "other end"], ["i", "comment on them"], ["V", "Esc", "drop the selection"]];
 
 const NARROW_HINTS: Hint[] = [["h", "list"], ["j k", "scroll"], ["] t", "[ t", "thread"], ["r", "reply"], ["x", "resolve"], ["?", "keys"]];
 
@@ -259,12 +280,18 @@ function composerTitle(v: ViewState): Span[] {
   const w = v.writing!;
   if (w.kind === "reply") return [s(`Reply to #${w.thread} ·`, "cf"), s(" "), s("draft", "cft")];
   if (w.kind === "edit") return [s(`Edit the draft on #${w.thread}`, "cf")];
+  if (w.kind === "thread") return [s(`New thread on ${newLinesText(w)} ·`, "cf"), s(" "), s("draft", "cft")];
   return [s("Summary for the whole review", "cf")];
+}
+
+/** `src/auth.ts:6–7 · removed lines (v1)`: where a new thread goes. */
+export function newLinesText(n: NewLines): string {
+  return `${n.path}:${rangeText(n)}${n.side === "old" ? " · removed lines" : ""} (${n.label})`;
 }
 
 function composerBottom(v: ViewState): Span[] {
   const kept = [key("Esc"), s(" "), s("leave, text kept", "cf")];
-  if (v.writing?.kind === "reply") return [key("Ctrl+S"), s(" "), s("save draft ·", "cf"), s(" "), key("Ctrl+G"), s(" "), s("send now ·", "cf"), s(" "), ...kept];
+  if (v.writing?.kind === "reply" || v.writing?.kind === "thread") return [key("Ctrl+S"), s(" "), s("save draft ·", "cf"), s(" "), key("Ctrl+G"), s(" "), s("send now ·", "cf"), s(" "), ...kept];
   return [key("Ctrl+S"), s(" "), s(v.writing?.kind === "summary" ? "keep ·" : "save ·", "cf"), s(" "), ...kept];
 }
 
@@ -349,6 +376,14 @@ interface ThreadPanes {
   box: { pane: number; dx: number; dy: number; w: number; h: number } | null;
 }
 
+/** The column's top so the cursor in the thread's code stays in sight; `before` lines come over the code. */
+function followCursor(v: ViewState, before: number, top: number, height: number): number {
+  const d = v.code.diff;
+  if (!v.codeCursor || d.cursor < 0 || d.cursor >= d.rows.len) return top;
+  const y = before + d.lay.top(d.cursor);
+  return followAt(y, y + d.lay.height(d.cursor) - 1, top, height);
+}
+
 function threadPanes(v: ViewState, cols: 1 | 2 | 3, widths: number[], height: number): ThreadPanes {
   const d = v.detail;
   const inner = height - 2;
@@ -366,11 +401,14 @@ function threadPanes(v: ViewState, cols: 1 | 2 | 3, widths: number[], height: nu
     return { panes: widths.map((w, i) => (i === 0 ? { w, title: [s(v.fileSel!, "b")], right: [s("preview", "dim")], lines, hit: "focus:code" } : emptyPane(w, "", false, [s("Conversation")]))), box: null };
   }
   const writing = v.writing?.kind === "reply" && v.writing.thread === d.thread.id;
+  const newHere = v.writing?.kind === "thread" && v.writing.from === "thread";
   if (cols === 3) {
     const [codeW, convW] = widths as [number, number];
     const part = v.code.lines(d, v.view, v.scope, v.wide, codeW - 2);
-    const codeLinesAll = [...threadHead(d, part.view, part.scope, codeW - 2), ...part.lines];
-    const code = place(codeLinesAll, v.tops.code, inner, codeW - 2, v, false);
+    const head = threadHead(d, part.view, part.scope, codeW - 2);
+    const codeLinesAll = [...head, ...part.lines];
+    v.tops.code = followCursor(v, head.length, v.tops.code, inner - (newHere ? composerBox(v, codeW - 2).lines.length : 0));
+    const code = place(codeLinesAll, v.tops.code, inner, codeW - 2, v, newHere);
     v.tops.code = code.top;
     const conv = conversation(d, v.fresh, convW - 2, v.now);
     const convAll = [blank(), ...conv.lines];
@@ -384,7 +422,7 @@ function threadPanes(v: ViewState, cols: 1 | 2 | 3, widths: number[], height: nu
         { w: codeW, title: threadTitle(d), right, lines: code.lines, focus: v.focus === "code", hit: "focus:code" },
         { w: convW, title: [s("Conversation")], right: messagesNote(d, conv.fresh), lines: c.lines, focus: v.focus === "conv", hit: "focus:conv" },
       ],
-      box: c.box ? { pane: 1, ...c.box } : null,
+      box: code.box ? { pane: 0, ...code.box } : c.box ? { pane: 1, ...c.box } : null,
     };
   }
   const w = widths[0]!;
@@ -398,7 +436,10 @@ function threadPanes(v: ViewState, cols: 1 | 2 | 3, widths: number[], height: nu
   const all = [...before, ...conv.lines];
   if (v.toNews && conv.newAt !== null) v.tops.thread = before.length + conv.newAt;
   const hint = focusThread ? [blank(), narrow ? blank() : THREAD_HINT] : [blank(), PREVIEW_HINT];
-  const t = place(writing ? all : [...all, ...hint], v.tops.thread, inner, w - 2, v, writing);
+  v.tops.thread = followCursor(v, head.length - (narrow ? 1 : 0), v.tops.thread, inner - (newHere ? composerBox(v, w - 2).lines.length : 0));
+  // a new thread's box goes under the code it is on; the conversation waits under it
+  const content = newHere ? [...head, ...codeRows] : writing ? all : [...all, ...hint];
+  const t = place(content, v.tops.thread, inner, w - 2, v, writing || newHere);
   v.tops.thread = t.top;
   v.geom.starts = conv.starts.map((x) => x + before.length);
   return { panes: [{ w, title: threadTitle(d, !narrow), right, lines: t.lines, focus: focusThread, hit: "focus:code" }], box: t.box ? { pane: 0, ...t.box } : null };
@@ -435,17 +476,22 @@ function changesTab(v: ViewState, w: number, height: number, top0: number): { ro
   const shown = (c.data?.placements ?? []).filter((p) => v.filter.status === "all" || v.data.threads.find((t) => t.id === p.threadId)?.status !== "resolved").length;
   const top = { value: v.tops.clist };
   // the diff's lines start under the pane's border and its three lines of range, strip and threads
-  v.geom.diff = { x: (w < 100 ? 0 : listWidthOf(c, w)) + 1, y: top0 + 4 };
+  const x = w < 100 ? 0 : listWidthOf(c, w);
+  v.geom.diff = { x: x + 1, y: top0 + 4 };
+  const dw = w - x;
+  // a new thread's box sits under the diff, which keeps its picked lines in sight above it
+  const b = v.writing?.kind === "thread" && v.writing.from === "changes" ? composerBox(v, dw - 2) : null;
+  const foot = b?.lines ?? [];
+  const box = b ? { x: x + 1 + b.text.dx, y: top0 + 1 + (height - 2 - foot.length) + b.text.dy, w: b.text.w, h: b.text.h } : null;
   if (w < 100) {
-    let rows = pane(diffPane(v.data, c, w, height, shown), height);
-    if (c.focus === "list") rows = overlay(rows, pane(filesPane(v.data, c, Math.min(w - 4, Math.max(40, Math.floor(w * 0.58))), height, top), height), 0, 0);
+    let rows = pane(diffPane(v.data, c, w, height, shown, foot), height);
+    if (c.focus === "list" && !b) rows = overlay(rows, pane(filesPane(v.data, c, Math.min(w - 4, Math.max(40, Math.floor(w * 0.58))), height, top), height), 0, 0);
     v.tops.clist = top.value;
-    return { rows, box: null };
+    return { rows, box };
   }
-  const listW = listWidthOf(c, w);
-  const list = filesPane(v.data, c, listW, height, top);
+  const list = filesPane(v.data, c, x, height, top);
   v.tops.clist = top.value;
-  return { rows: hcat([pane(list, height), pane(diffPane(v.data, c, w - listW, height, shown), height)]), box: null };
+  return { rows: hcat([pane(list, height), pane(diffPane(v.data, c, dw, height, shown, foot), height)]), box };
 }
 
 // --- the Drafts tab
@@ -636,6 +682,7 @@ const PLACE_NAMES: Record<string, string> = {
   code: "The code",
   conv: "The conversation",
   thread: "The thread",
+  tcode: "Lines of the thread's code",
   drafts: "Drafts",
   changes: "Changes",
   cfiles: "The files of the changes",

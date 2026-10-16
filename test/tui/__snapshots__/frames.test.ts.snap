@@ -2,7 +2,7 @@
 
 exports[`120×40: the list has the focus and the selected thread shows beside it as a preview 1`] = `
 "
-stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v2      Round 5   Changes   Drafts 1    ?  
+stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2      Round 6   Changes   Drafts 1    ?  
  The agent handed over v2.   Space r v  shows what changed since you last looked.                                       
 ╭─  Threads   Files   Search  ─────────╮╭─ #2 src/routes.ts:5  your turn  written on v1 ───────────────────── preview ─╮
 │ open 9 resolved 2 · all 12 · [ ] new ││ Your turn. The agent asked you a question and waits for your answer.         │
@@ -30,7 +30,7 @@ stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v
 │   #11 L13  draft                     ││   this branch.                                                               │
 │   Should 401 come with a \`www-authen…││                                                                              │
 │ src/server.ts                       1││                                                                              │
-│   #10 L3  agent's turn               ││  Enter  or  l  go into the thread ·  r  reply here                           │
+│ ● #10 L3  your turn                  ││  Enter  or  l  go into the thread ·  r  reply here                           │
 │   \`Number(undefined ?? 8080)\` is fin…││                                                                              │
 │                                      ││                                                                              │
 │ 2 resolved hidden ·  Space u r       ││                                                                              │
@@ -47,7 +47,7 @@ stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v
 
 exports[`180×46: three columns, the code focused, a NEW rule over the agent's unread fix 1`] = `
 "
-stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v2                                                                  Round 5   Changes   Drafts 1    ?  
+stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2                                                                  Round 6   Changes   Drafts 1    ?  
  The agent handed over v2.   Space r v  shows what changed since you last looked.                                                                                                   
 ╭─  Threads   Files   Search  ─────────╮╭─ #1 src/auth.ts:6–7  changed   your turn  written on v1 ─────────── 3 of 10 ─╮╭─ Conversation ────────────────────── 2 messages · 1 new ─╮
 │ open 9 resolved 2 · all 12 · [ ] new ││ Your turn. The agent says it fixed this. Check the code, then resolve (x) or ││                                                          │
@@ -75,7 +75,7 @@ stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v
 │   #11 L13  draft                     ││                                                                              ││                                                          │
 │   Should 401 come with a \`www-authen…││                                                                              ││                                                          │
 │ src/server.ts                       1││                                                                              ││                                                          │
-│   #10 L3  agent's turn               ││                                                                              ││                                                          │
+│ ● #10 L3  your turn                  ││                                                                              ││                                                          │
 │   \`Number(undefined ?? 8080)\` is fin…││                                                                              ││                                                          │
 │                                      ││                                                                              ││                                                          │
 │ 2 resolved hidden ·  Space u r       ││                                                                              ││                                                          │
@@ -98,7 +98,7 @@ stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v
 
 exports[`120×40: the reply box at the bottom of the thread's column 1`] = `
 "
-stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v2      Round 5   Changes   Drafts 1    ?  
+stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2      Round 6   Changes   Drafts 1    ?  
 ╭─  Threads   Files   Search  ─────────╮╭─ #2 src/routes.ts:5  your turn  written on v1 ───────────────────── 6 of 10 ─╮
 │ open 9 resolved 2 · all 12 · [ ] new ││ Your turn. The agent asked you a question and waits for your answer.         │
 │                                      ││                                                                              │
@@ -125,7 +125,7 @@ stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v
 │   #11 L13  draft                     ││   this branch.                                                               │
 │   Should 401 come with a \`www-authen…││                                                                              │
 │ src/server.ts                       1││ ╭─ Reply to #2 · draft ─────────────────────────────────────────────────────╮│
-│   #10 L3  agent's turn               ││ │ Env vars, please, with these numbers as defaults. And name the second one ││
+│ ● #10 L3  your turn                  ││ │ Env vars, please, with these numbers as defaults. And name the second one ││
 │   \`Number(undefined ?? 8080)\` is fin…││ │ RATE_WINDOW_MS everywhere, the README says RATE_WINDOW.                   ││
 │                                      ││ │                                                                           ││
 │ 2 resolved hidden ·  Space u r       ││ ╰─  Ctrl+S  save draft ·  Ctrl+G  send now ·  Esc  leave, text kept ────────╯│
@@ -143,7 +143,7 @@ stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v
 
 exports[`120×40: the Space menu lists the groups this UI has 1`] = `
 "
-stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v2      Round 5   Changes   Drafts 1    ?  
+stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2      Round 6   Changes   Drafts 1    ?  
 ╭─  Threads   Files   Search  ─────────╮╭─ #2 src/routes.ts:5  your turn  written on v1 ───────────────────── preview ─╮
 │ open 9 resolved 2 · all 12 · [ ] new ││ Your turn. The agent asked you a question and waits for your answer.         │
 │                                      ││                                                                              │
@@ -188,7 +188,7 @@ stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v
 
 exports[`120×40: the Drafts tab with the approve question 1`] = `
 "
-stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v2      Round 5   Changes   Drafts 1    ?  
+stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2      Round 6   Changes   Drafts 1    ?  
 ╭─ Your review · 1 draft ───────────────────╮╭─ #11 src/routes.ts:13  draft  ───────────────  e  edit ·  d d  discard ─╮
 │ The agent sees drafts only when you send …││                                                                         │
 │                                           ││    12     if (!authorized(req)) return new Response("unauthorized", { st│
@@ -233,7 +233,7 @@ stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v
 
 exports[`80×24: one column, the thread; h slides the list in over it 1`] = `
 "
-stet rate-limit   v2                               Round 5   Changes   Drafts 1 
+stet rate-limit   v2                               Round 6   Changes   Drafts 1 
 ╭─ #1 src/auth.ts:6–7  changed   your turn  ───────────────────────── 3 of 10 ─╮
 │ Your turn. The agent says it fixed this. Check the code, then resolve (x) or │
 │ reply (r).                                                                   │
@@ -262,7 +262,7 @@ stet rate-limit   v2                               Round 5   Changes   Drafts 1
 
 exports[`80×24: one column, the thread; h slides the list in over it 2`] = `
 "
-stet rate-limit   v2                               Round 5   Changes   Drafts 1 
+stet rate-limit   v2                               Round 6   Changes   Drafts 1 
 ╭─  Threads   Files   Search  ───────────────╮─────────────────────── preview ─╮
 │ open 9 resolved 2 · all 12 · [ ] new       │ck the code, then resolve (x) or │
 │                                            │                                 │
@@ -291,19 +291,19 @@ stet rate-limit   v2                               Round 5   Changes   Drafts 1
 
 exports[`120×40: the Files tab lists the changed files with −/+ and their threads, the file's first thread beside it 1`] = `
 "
-stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v2      Round 5   Changes   Drafts 1    ?  
+stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2      Round 6   Changes   Drafts 1    ?  
 ╭─  Threads   Files   Search  ─────────╮╭─ #2 src/routes.ts:5  your turn  written on v1 ───────────────────── preview ─╮
-│ 7 files · base → v2                  ││ Your turn. The agent asked you a question and waits for your answer.         │
+│ 9 files · base → v2                  ││ Your turn. The agent asked you a question and waits for your answer.         │
 │                                      ││                                                                              │
 │ README.md                    −1 +3  1││  v1  written · L5 · 1 msg  ──▶   v2  no change · L5 · 2 msgs                 │
 │ bun.lock new                    +5  ·││ Diff · Then  At v2   t      around the thread  all changes · whole file  z   │
-│ src/auth.ts new                 +8 ●3││                                                                              │
-│ src/limiter.test.ts new         +8  ·││ src/routes.ts · line 5 at v2 · unchanged since v1                            │
-│ src/limiter.ts new             +18  1││     2   import { findUser } from "./db.ts";                                  │
-│ src/report.ts new             +410  1││     3   import { RateLimiter } from "./limiter.ts";                          │
-│ src/routes.ts                   +7 ●4││     4                                                                        │
-│                                      ││▌    5   const limiter = new RateLimiter(100, 60_000);                        │
-│                                      ││         ▲ thread #2 · v2                                                     │
+│ docs/limits.png new                 ·││                                                                              │
+│ src/admin/routes.ts new         +6  ·││ src/routes.ts · line 5 at v2 · unchanged since v1                            │
+│ src/auth.ts new                 +8 ●3││     2   import { findUser } from "./db.ts";                                  │
+│ src/limiter.test.ts new         +8  ·││     3   import { RateLimiter } from "./limiter.ts";                          │
+│ src/limiter.ts new             +18  1││     4                                                                        │
+│ src/report.ts new             +410  1││▌    5   const limiter = new RateLimiter(100, 60_000);                        │
+│ src/routes.ts                   +7 ●4││         ▲ thread #2 · v2                                                     │
 │                                      ││     6                                                                        │
 │                                      ││     7   export async function handle(req: Request): Promise<Response> {      │
 │                                      ││     8     const url = new URL(req.url);                                      │
@@ -426,7 +426,7 @@ stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v
 
 exports[`180×46: z widens the thread's code to every change of its file, then to the whole file 1`] = `
 "
-stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v2                                                                  Round 5   Changes   Drafts 1    ?  
+stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2                                                                  Round 6   Changes   Drafts 1    ?  
 ╭─  Threads   Files   Search  ─────────╮╭─ #1 src/auth.ts:6–7  changed   your turn  written on v1 ─────────── 3 of 10 ─╮╭─ Conversation ────────────────────── 2 messages · 1 new ─╮
 │ open 9 resolved 2 · all 12 · [ ] new ││ Your turn. The agent says it fixed this. Check the code, then resolve (x) or ││                                                          │
 │                                      ││ reply (r).                                                                   ││ you · reviewer @v1 · just now                            │
@@ -453,7 +453,7 @@ stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v
 │   #11 L13  draft                     ││                                                                              ││                                                          │
 │   Should 401 come with a \`www-authen…││                                                                              ││                                                          │
 │ src/server.ts                       1││                                                                              ││                                                          │
-│   #10 L3  agent's turn               ││                                                                              ││                                                          │
+│ ● #10 L3  your turn                  ││                                                                              ││                                                          │
 │   \`Number(undefined ?? 8080)\` is fin…││                                                                              ││                                                          │
 │                                      ││                                                                              ││                                                          │
 │ 2 resolved hidden ·  Space u r       ││                                                                              ││                                                          │
@@ -477,7 +477,7 @@ stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v
 
 exports[`180×46: z widens the thread's code to every change of its file, then to the whole file 2`] = `
 "
-stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v2                                                                  Round 5   Changes   Drafts 1    ?  
+stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2                                                                  Round 6   Changes   Drafts 1    ?  
 ╭─  Threads   Files   Search  ─────────╮╭─ #1 src/auth.ts:6–7  changed   your turn  written on v1 ─────────── 3 of 10 ─╮╭─ Conversation ────────────────────── 2 messages · 1 new ─╮
 │ open 9 resolved 2 · all 12 · [ ] new ││ Your turn. The agent says it fixed this. Check the code, then resolve (x) or ││                                                          │
 │                                      ││ reply (r).                                                                   ││ you · reviewer @v1 · just now                            │
@@ -504,7 +504,7 @@ stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v
 │   #11 L13  draft                     ││                                                                              ││                                                          │
 │   Should 401 come with a \`www-authen…││                                                                              ││                                                          │
 │ src/server.ts                       1││                                                                              ││                                                          │
-│   #10 L3  agent's turn               ││                                                                              ││                                                          │
+│ ● #10 L3  your turn                  ││                                                                              ││                                                          │
 │   \`Number(undefined ?? 8080)\` is fin…││                                                                              ││                                                          │
 │                                      ││                                                                              ││                                                          │
 │ 2 resolved hidden ·  Space u r       ││                                                                              ││                                                          │
@@ -528,21 +528,30 @@ stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v
 
 exports[`120×40: the Changes tab: the whole branch in words, the files in reading order with viewed boxes, the diff with cards 1`] = `
 "
-stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v2      Round 5   Changes   Drafts 1    ?  
-╭─  Threads   Files   Search  ─────────╮╭─ The whole branch main → v2 · 7 files ────────────────────── unified · wrap ─╮
-│ 7 files · 0 of 5 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2     what changed in v2  p           │
-│                                      ││ 8 threads on this diff · 2 elsewhere ·  ] t  [ t  step ·  Enter  opens       │
-│ CODE (4)                             ││                                                                              │
-│ [ ] src/auth.ts                 +8 ●3││ ▾ src/auth.ts                                                  +8  [ ] viewed│
-│ [ ] src/limiter.ts             +18  1││▌      1 + import { timingSafeEqual } from "node:crypto";                     │
-│ [ ] src/report.ts             +410  1││           ▲ #8   your turn   Nit: the import is fine, but \`KEY\` is a Buffer …│
-│ [ ] src/routes.ts               +7 ●4││       2 +                                                                    │
-│ DOCS (1)                             ││▌      3 + const KEY = Buffer.from(process.env.API_KEY ?? "");                │
-│ [ ] README.md                −1 +3  1││           ▲ #7   agent's turn   Read API_KEY once at startup and refuse to s…│
-│ TESTS WITH ONLY NEW CODE (1)         ││       4 +                                                                    │
-│ [ ] src/limiter.test.ts         +8   ││       5 + export function authorized(req: Request): boolean {                │
-│ GENERATED AND LOCK FILES (1)         ││▌      6 +   const given = Buffer.from(req.headers.get("x-api-key") ?? "");   │
-│ [ ] bun.lock                    +5   ││▌      7 +   return given.length === KEY.length && timingSafeEqual(given, KEY)│
+stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2      Round 6   Changes   Drafts 1    ?  
+╭─  Threads   Files   Search  ─────────╮╭─ The whole branch main → v2 · 9 files ────────────────────── unified · wrap ─╮
+│ 9 files · 0 of 7 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2     what changed in v2  p           │
+│                                      ││ 8 threads on this diff · 2 elsewhere ·  V  select lines ·  i  comment ·  ] t…│
+│ CODE (5)                             ││                                                                              │
+│ [ ] src/admin/routes.ts         +6   ││ ▾ src/admin/routes.ts                                          +6  [ ] viewed│
+│ [ ] src/auth.ts                 +8 ●3││       1 + import { authorized } from "../auth.ts";                           │
+│ [ ] src/limiter.ts             +18  1││       2 +                                                                    │
+│ [ ] src/report.ts             +410  1││       3 + export async function adminRoutes(req: Request): Promise<Response> │
+│ [ ] src/routes.ts               +7 ●4││           {                                                                  │
+│ DOCS (2)                             ││       4 +   if (!authorized(req)) return new Response("unauthorized", { statu│
+│ [ ] README.md                −1 +3  1││           s: 401 });                                                         │
+│ [ ] docs/limits.png                  ││       5 +   return Response.json({ limiter: "on" });                         │
+│ TESTS WITH ONLY NEW CODE (1)         ││       6 + }                                                                  │
+│ [ ] src/limiter.test.ts         +8   ││ ▾ src/auth.ts                                                  +8  [ ] viewed│
+│ GENERATED AND LOCK FILES (1)         ││▌      1 + import { timingSafeEqual } from "node:crypto";                     │
+│ [ ] bun.lock                    +5   ││           ▲ #8   your turn   Nit: the import is fine, but \`KEY\` is a Buffer …│
+│                                      ││       2 +                                                                    │
+│                                      ││▌      3 + const KEY = Buffer.from(process.env.API_KEY ?? "");                │
+│                                      ││           ▲ #7   agent's turn   Read API_KEY once at startup and refuse to s…│
+│                                      ││       4 +                                                                    │
+│                                      ││       5 + export function authorized(req: Request): boolean {                │
+│                                      ││▌      6 +   const given = Buffer.from(req.headers.get("x-api-key") ?? "");   │
+│                                      ││▌      7 +   return given.length === KEY.length && timingSafeEqual(given, KEY)│
 │                                      ││           ;                                                                  │
 │                                      ││           ▲ #1   changed   your turn   \`===\` on secrets leaks timing. Use \`c…│
 │                                      ││       8 + }                                                                  │
@@ -557,37 +566,35 @@ stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v
 │                                      ││       7 +     const list = (this.hits.get(key) ?? []).filter((t) => now - t <│
 │                                      ││            this.windowMs);                                                   │
 │                                      ││       8 +     if (list.length >= this.limit) return false;                   │
-│                                      ││       9 +     list.push(now);                                                │
-│                                      ││      10 +     this.hits.set(key, list);                                      │
-│                                      ││      11 +     if (this.hits.size > 10_000) this.sweep(now);                  │
-│                                      ││      12 +     return true;                                                   │
-│                                      ││      13 +   }                                                                │
-│                                      ││      14 +                                                                    │
-│                                      ││      15 +   private sweep(now: number): void {                               │
-│                                      ││      16 +     for (const [key, list] of this.hits) if (list.every((t) => now │
-│                                      ││           - t >= this.windowMs)) this.hits.delete(key);                      │
 ╰──────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────╯
- CHANGES   j k  line   ] t   [ t  thread   ] b   [ b  file   Enter  open   m  viewed   z a  fold   ] v   [ v  range   h…
+ CHANGES   j k  line   V  select   i  comment   ] t   [ t  thread   ] b   [ b  file   Enter  open   m  viewed   z a  fo…
 "
 `;
 
 exports[`180×46: the cursor on a card, its card open; the strip lights the range's ends 1`] = `
 "
-stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v2                                                                  Round 5   Changes   Drafts 1    ?  
-╭─  Threads   Files   Search  ─────────╮╭─ What changed in v2 v1 → v2 · 7 files ────────────────────────────────────────────────────────────────────────────────── unified · wrap ─╮
-│ 7 files · 0 of 5 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2     whole branch  p                                                                             │
-│                                      ││ 5 threads on this diff · 5 elsewhere ·  ] t  [ t  step ·  Enter  opens                                                                   │
-│ CODE (4)                             ││                                                                                                                                          │
-│ [ ] src/auth.ts              −3 +5 ●3││ ▾ src/auth.ts                                                                                                           −3 +5  [ ] viewed│
-│ [ ] src/db.ts                   −1  1││   1     - const KEY = process.env.API_KEY ?? "";                                                                                         │
-│ [ ] src/limiter.ts              +5  1││▌      1 + import { timingSafeEqual } from "node:crypto";                                                                                 │
-│ [ ] src/report.ts          −13 +16  1││           ╭─ ▲ #8   your turn  ──────────────────────────────────────────────────────────────────────────────────────────── 2 messages ─╮│
-│ DOCS (1)                             ││           │ Nit: the import is fine, but \`KEY\` is a Buffer now; \`KEY_BYTES\`?                                                            ││
-│ [ ] README.md                −1 +3  1││           │ claude · fixed: Renamed in my working tree; it comes with the next version.                                                 ││
-│ TESTS WITH ONLY NEW CODE (1)         ││           ╰─  Enter  opens the thread ·  z a  closes ───────────────────────────────────────────────────────────────────────────────────╯│
-│ [ ] src/limiter.test.ts         +8   ││       2 +                                                                                                                                │
-│ GENERATED AND LOCK FILES (1)         ││▌      3 + const KEY = Buffer.from(process.env.API_KEY ?? "");                                                                            │
-│ [ ] bun.lock                    +5   ││           ▲ #7   agent's turn   Read API_KEY once at startup and refuse to start when it is empty? Today an empty key accepts an empty h…│
+stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2                                                                  Round 6   Changes   Drafts 1    ?  
+╭─  Threads   Files   Search  ─────────╮╭─ What changed in v2 v1 → v2 · 9 files ────────────────────────────────────────────────────────────────────────────────── unified · wrap ─╮
+│ 9 files · 0 of 7 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2     whole branch  p                                                                             │
+│                                      ││ 5 threads on this diff · 5 elsewhere ·  V  select lines ·  i  comment ·  ] t  [ t  step ·  Enter  opens                                  │
+│ CODE (5)                             ││                                                                                                                                          │
+│ [ ] src/admin/routes.ts         +6   ││ ▾ src/admin/routes.ts                                                                                                      +6  [ ] viewed│
+│ [ ] src/auth.ts              −3 +5 ●3││       1 + import { authorized } from "../auth.ts";                                                                                       │
+│ [ ] src/db.ts                   −1  1││       2 +                                                                                                                                │
+│ [ ] src/limiter.ts              +5  1││       3 + export async function adminRoutes(req: Request): Promise<Response> {                                                           │
+│ [ ] src/report.ts          −13 +16  1││       4 +   if (!authorized(req)) return new Response("unauthorized", { status: 401 });                                                  │
+│ DOCS (2)                             ││       5 +   return Response.json({ limiter: "on" });                                                                                     │
+│ [ ] README.md                −1 +3  1││       6 + }                                                                                                                              │
+│ [ ] docs/limits.png                  ││ ▾ src/auth.ts                                                                                                           −3 +5  [ ] viewed│
+│ TESTS WITH ONLY NEW CODE (1)         ││   1     - const KEY = process.env.API_KEY ?? "";                                                                                         │
+│ [ ] src/limiter.test.ts         +8   ││▌      1 + import { timingSafeEqual } from "node:crypto";                                                                                 │
+│ GENERATED AND LOCK FILES (1)         ││           ╭─ ▲ #8   your turn  ──────────────────────────────────────────────────────────────────────────────────────────── 2 messages ─╮│
+│ [ ] bun.lock                    +5   ││           │ Nit: the import is fine, but \`KEY\` is a Buffer now; \`KEY_BYTES\`?                                                            ││
+│                                      ││           │ claude · fixed: Renamed in my working tree; it comes with the next version.                                                 ││
+│                                      ││           ╰─  Enter  opens the thread ·  z a  closes ───────────────────────────────────────────────────────────────────────────────────╯│
+│                                      ││       2 +                                                                                                                                │
+│                                      ││▌      3 + const KEY = Buffer.from(process.env.API_KEY ?? "");                                                                            │
+│                                      ││           ▲ #7   agent's turn   Read API_KEY once at startup and refuse to start when it is empty? Today an empty key accepts an empty h…│
 │                                      ││   2   4                                                                                                                                  │
 │                                      ││   3   5   export function authorized(req: Request): boolean {                                                                            │
 │                                      ││   4     -   const given = req.headers.get("x-api-key") ?? "";                                                                            │
@@ -610,25 +617,27 @@ stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v
 │                                      ││   8   8       if (list.length >= this.limit) return false;                                                                               │
 │                                      ││   9   9       list.push(now);                                                                                                            │
 │                                      ││  10  10       this.hits.set(key, list);                                                                                                  │
-│                                      ││      11 +     if (this.hits.size > 10_000) this.sweep(now);                                                                              │
-│                                      ││  11  12       return true;                                                                                                               │
-│                                      ││  12  13     }                                                                                                                            │
-│                                      ││      14 +                                                                                                                                │
-│                                      ││      15 +   private sweep(now: number): void {                                                                                           │
-│                                      ││      16 +     for (const [key, list] of this.hits) if (list.every((t) => now - t >= this.windowMs)) this.hits.delete(key);               │
-│                                      ││      17 +   }                                                                                                                            │
 ╰──────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
- CHANGES   j k  line   ] t   [ t  thread   ] b   [ b  file   Enter  open   m  viewed   z a  fold   ] v   [ v  range   h  files   Space  menu   ?  keys                              
+ CHANGES   j k  line   V  select   i  comment   ] t   [ t  thread   ] b   [ b  file   Enter  open   m  viewed   z a  fold   ] v   [ v  range   h  files   Space  menu   ?  keys     
 "
 `;
 
 exports[`80×24: one column, the diff; the files slide in over it when they have the focus 1`] = `
 "
-stet rate-limit   v2                               Round 5   Changes   Drafts 1 
-╭─ The whole branch main → v2 · 7 files ────────────────────── unified · wrap ─╮
+stet rate-limit   v2                               Round 6   Changes   Drafts 1 
+╭─ The whole branch main → v2 · 9 files ────────────────────── unified · wrap ─╮
 │  base main  ──▶  v1  ──▶  v2    now = v2     what changed in v2  p           │
-│ 8 threads on this diff · 2 elsewhere ·  ] t  [ t  step ·  Enter  opens       │
+│ 8 threads on this diff · 2 elsewhere ·  V  select lines ·  i  comment ·  ] t…│
 │                                                                              │
+│ ▾ src/admin/routes.ts                                          +6  [ ] viewed│
+│       1 + import { authorized } from "../auth.ts";                           │
+│       2 +                                                                    │
+│       3 + export async function adminRoutes(req: Request): Promise<Response> │
+│           {                                                                  │
+│       4 +   if (!authorized(req)) return new Response("unauthorized", { statu│
+│           s: 401 });                                                         │
+│       5 +   return Response.json({ limiter: "on" });                         │
+│       6 + }                                                                  │
 │ ▾ src/auth.ts                                                  +8  [ ] viewed│
 │▌      1 + import { timingSafeEqual } from "node:crypto";                     │
 │           ▲ #8   your turn   Nit: the import is fine, but \`KEY\` is a Buffer …│
@@ -637,45 +646,382 @@ stet rate-limit   v2                               Round 5   Changes   Drafts 1
 │           ▲ #7   agent's turn   Read API_KEY once at startup and refuse to s…│
 │       4 +                                                                    │
 │       5 + export function authorized(req: Request): boolean {                │
-│▌      6 +   const given = Buffer.from(req.headers.get("x-api-key") ?? "");   │
-│▌      7 +   return given.length === KEY.length && timingSafeEqual(given, KEY)│
-│           ;                                                                  │
-│           ▲ #1   changed   your turn   \`===\` on secrets leaks timing. Use \`c…│
-│       8 + }                                                                  │
-│ ▾ src/limiter.ts                                              +18  [ ] viewed│
-│       1 + export class RateLimiter {                                         │
-│       2 +   private hits = new Map<string, number[]>();                      │
-│       3 +                                                                    │
 ╰──────────────────────────────────────────────────────────────────────────────╯
- CHANGES   j k  line   ] t   [ t  thread   ] b   [ b  file   Enter  open   m  v…
+ CHANGES   j k  line   V  select   i  comment   ] t   [ t  thread   ] b   [ b  …
 "
 `;
 
 exports[`80×24: one column, the diff; the files slide in over it when they have the focus 2`] = `
 "
-stet rate-limit   v2                               Round 5   Changes   Drafts 1 
+stet rate-limit   v2                               Round 6   Changes   Drafts 1 
 ╭─  Threads   Files   Search  ───────────────╮──────────────── unified · wrap ─╮
-│ 7 files · 0 of 5 viewed · 2 hidden         │ what changed in v2  p           │
-│                                            │ [ t  step ·  Enter  opens       │
-│ CODE (4)                                   │                                 │
-│ [ ] src/auth.ts                       +8 ●3│                   +8  [ ] viewed│
-│ [ ] src/limiter.ts                   +18  1│ode:crypto";                     │
-│ [ ] src/report.ts                   +410  1│ is fine, but \`KEY\` is a Buffer …│
+│ 9 files · 0 of 7 viewed · 2 hidden         │ what changed in v2  p           │
+│                                            │elect lines ·  i  comment ·  ] t…│
+│ CODE (5)                                   │                                 │
+│ [ ] src/admin/routes.ts               +6   │                   +6  [ ] viewed│
+│ [ ] src/auth.ts                       +8 ●3│h.ts";                           │
+│ [ ] src/limiter.ts                   +18  1│                                 │
+│ [ ] src/report.ts                   +410  1│req: Request): Promise<Response> │
 │ [ ] src/routes.ts                     +7 ●4│                                 │
-│ DOCS (1)                                   │v.API_KEY ?? "");                │
-│ [ ] README.md                      −1 +3  1│ once at startup and refuse to s…│
+│ DOCS (2)                                   │ Response("unauthorized", { statu│
+│ [ ] README.md                      −1 +3  1│                                 │
+│ [ ] docs/limits.png                        │"on" });                         │
 │ TESTS WITH ONLY NEW CODE (1)               │                                 │
-│ [ ] src/limiter.test.ts               +8   │quest): boolean {                │
-│ GENERATED AND LOCK FILES (1)               │aders.get("x-api-key") ?? "");   │
-│ [ ] bun.lock                          +5   │th && timingSafeEqual(given, KEY)│
+│ [ ] src/limiter.test.ts               +8   │                   +8  [ ] viewed│
+│ GENERATED AND LOCK FILES (1)               │ode:crypto";                     │
+│ [ ] bun.lock                          +5   │ is fine, but \`KEY\` is a Buffer …│
 │                                            │                                 │
-│                                            │ on secrets leaks timing. Use \`c…│
+│                                            │v.API_KEY ?? "");                │
+│                                            │ once at startup and refuse to s…│
 │                                            │                                 │
-│                                            │                  +18  [ ] viewed│
-│                                            │                                 │
-│                                            │umber[]>();                      │
-│                                            │                                 │
+│                                            │quest): boolean {                │
 ╰────────────────────────────────────────────╯─────────────────────────────────╯
  FILES   j k  file   Enter   l  into the diff   m  viewed   z a  fold   Tab  co…
+"
+`;
+
+exports[`120×40: V on removed lines picks the old side; i opens a new thread's box under the diff, the lines in sight above it 1`] = `
+"
+stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2      Round 6   Changes   Drafts 1    ?  
+╭─  Threads   Files   Search  ─────────╮╭─ What changed in v2 v1 → v2 · 9 files ────────────────────── unified · wrap ─╮
+│ 9 files · 0 of 7 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2     whole branch  p                 │
+│                                      ││ 5 threads on this diff · 5 elsewhere ·  V  select lines ·  i  comment ·  ] t…│
+│ CODE (5)                             ││                                                                              │
+│ [ ] src/admin/routes.ts         +6   ││ ▾ src/admin/routes.ts                                          +6  [ ] viewed│
+│ [ ] src/auth.ts              −3 +5 ●3││       3 + export async function adminRoutes(req: Request): Promise<Response> │
+│ [ ] src/db.ts                   −1  1││           {                                                                  │
+│ [ ] src/limiter.ts              +5  1││       4 +   if (!authorized(req)) return new Response("unauthorized", { statu│
+│ [ ] src/report.ts          −13 +16  1││           s: 401 });                                                         │
+│ DOCS (2)                             ││       5 +   return Response.json({ limiter: "on" });                         │
+│ [ ] README.md                −1 +3  1││       6 + }                                                                  │
+│ [ ] docs/limits.png                  ││ ▾ src/auth.ts                                               −3 +5  [ ] viewed│
+│ TESTS WITH ONLY NEW CODE (1)         ││   1     - const KEY = process.env.API_KEY ?? "";                             │
+│ [ ] src/limiter.test.ts         +8   ││▌      1 + import { timingSafeEqual } from "node:crypto";                     │
+│ GENERATED AND LOCK FILES (1)         ││           ▲ #8   your turn   Nit: the import is fine, but \`KEY\` is a Buffer …│
+│ [ ] bun.lock                    +5   ││       2 +                                                                    │
+│                                      ││▌      3 + const KEY = Buffer.from(process.env.API_KEY ?? "");                │
+│                                      ││           ▲ #7   agent's turn   Read API_KEY once at startup and refuse to s…│
+│                                      ││   2   4                                                                      │
+│                                      ││   3   5   export function authorized(req: Request): boolean {                │
+│                                      ││   4     -   const given = req.headers.get("x-api-key") ?? "";                │
+│                                      ││   5     -   return given === KEY;                                            │
+│                                      ││▌      6 +   const given = Buffer.from(req.headers.get("x-api-key") ?? "");   │
+│                                      ││▌      7 +   return given.length === KEY.length && timingSafeEqual(given, KEY)│
+│                                      ││           ;                                                                  │
+│                                      ││           ▲ #1   changed   your turn   \`===\` on secrets leaks timing. Use \`c…│
+│                                      ││   6   8   }                                                                  │
+│                                      ││ ▾ src/db.ts                                                    −1  [ ] viewed│
+│                                      ││       ⋯ 5 unchanged lines                                                    │
+│                                      ││   6   6   const users = new Map<string, User>([["1", { id: "1", name: "Ada" }│
+│                                      ││           ]]);                                                               │
+│                                      ││   7   7                                                                      │
+│                                      ││   8   8   export async function findUser(id: string): Promise<User | null> { │
+│                                      ││▌  9     -   console.log("findUser", id);                                     │
+│                                      ││           ▲ #3   outdated   your turn   Leftover debug log: please drop it.  │
+│                                      ││  10   9     return users.get(id) ?? null;                                    │
+│                                      ││  11  10   }                                                                  │
+╰──────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────╯
+ VISUAL   j k  more lines   o  other end   i  comment on them   V   Esc  drop the selection                             
+"
+`;
+
+exports[`120×40: V on removed lines picks the old side; i opens a new thread's box under the diff, the lines in sight above it 2`] = `
+"
+stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2      Round 6   Changes   Drafts 1    ?  
+╭─  Threads   Files   Search  ─────────╮╭─ What changed in v2 v1 → v2 · 9 files ────────────────────── unified · wrap ─╮
+│ 9 files · 0 of 7 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2     whole branch  p                 │
+│                                      ││ 5 threads on this diff · 5 elsewhere ·  V  select lines ·  i  comment ·  ] t…│
+│ CODE (5)                             ││                                                                              │
+│ [ ] src/admin/routes.ts         +6   ││ ▾ src/admin/routes.ts                                          +6  [ ] viewed│
+│ [ ] src/auth.ts              −3 +5 ●3││       3 + export async function adminRoutes(req: Request): Promise<Response> │
+│ [ ] src/db.ts                   −1  1││           {                                                                  │
+│ [ ] src/limiter.ts              +5  1││       4 +   if (!authorized(req)) return new Response("unauthorized", { statu│
+│ [ ] src/report.ts          −13 +16  1││           s: 401 });                                                         │
+│ DOCS (2)                             ││       5 +   return Response.json({ limiter: "on" });                         │
+│ [ ] README.md                −1 +3  1││       6 + }                                                                  │
+│ [ ] docs/limits.png                  ││ ▾ src/auth.ts                                               −3 +5  [ ] viewed│
+│ TESTS WITH ONLY NEW CODE (1)         ││   1     - const KEY = process.env.API_KEY ?? "";                             │
+│ [ ] src/limiter.test.ts         +8   ││▌      1 + import { timingSafeEqual } from "node:crypto";                     │
+│ GENERATED AND LOCK FILES (1)         ││           ▲ #8   your turn   Nit: the import is fine, but \`KEY\` is a Buffer …│
+│ [ ] bun.lock                    +5   ││       2 +                                                                    │
+│                                      ││▌      3 + const KEY = Buffer.from(process.env.API_KEY ?? "");                │
+│                                      ││           ▲ #7   agent's turn   Read API_KEY once at startup and refuse to s…│
+│                                      ││   2   4                                                                      │
+│                                      ││   3   5   export function authorized(req: Request): boolean {                │
+│                                      ││   4     -   const given = req.headers.get("x-api-key") ?? "";                │
+│                                      ││   5     -   return given === KEY;                                            │
+│                                      ││▌      6 +   const given = Buffer.from(req.headers.get("x-api-key") ?? "");   │
+│                                      ││▌      7 +   return given.length === KEY.length && timingSafeEqual(given, KEY)│
+│                                      ││           ;                                                                  │
+│                                      ││           ▲ #1   changed   your turn   \`===\` on secrets leaks timing. Use \`c…│
+│                                      ││   6   8   }                                                                  │
+│                                      ││ ▾ src/db.ts                                                    −1  [ ] viewed│
+│                                      ││       ⋯ 5 unchanged lines                                                    │
+│                                      ││   6   6   const users = new Map<string, User>([["1", { id: "1", name: "Ada" }│
+│                                      ││           ]]);                                                               │
+│                                      ││   7   7                                                                      │
+│                                      ││ ╭─ New thread on src/auth.ts:4–5 · removed lines (v1) · draft ──────────────╮│
+│                                      ││ │ Both lines leak the key's length through timing as well.                  ││
+│                                      ││ │                                                                           ││
+│                                      ││ │                                                                           ││
+│                                      ││ ╰─  Ctrl+S  save draft ·  Ctrl+G  send now ·  Esc  leave, text kept ────────╯│
+╰──────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────╯
+ NEW THREAD  type the message   Ctrl+S  save as draft   Ctrl+G  send now   Esc  or   j j  leave, the text stays   Ctrl+…
+"
+`;
+
+exports[`180×46, split: the cursor on the new side, V picks added lines there; Left would pick the old side 1`] = `
+"
+stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2                                                                  Round 6   Changes   Drafts 1    ?  
+╭─  Threads   Files   Search  ─────────╮╭─ What changed in v2 v1 → v2 · 9 files ──────────────────────────────────────────────────────────────────────────── split (fixed) · wrap ─╮
+│ 9 files · 0 of 7 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2     whole branch  p                                                                             │
+│                                      ││ 5 threads on this diff · 5 elsewhere ·  V  select lines ·  i  comment ·  ] t  [ t  step ·  Enter  opens                                  │
+│ CODE (5)                             ││                                                                                                                                          │
+│ [ ] src/admin/routes.ts         +6   ││ ▾ src/admin/routes.ts                                                                                                      +6  [ ] viewed│
+│ [ ] src/auth.ts              −3 +5 ●3││                                                                    │   1 + import { authorized } from "../auth.ts";                      │
+│ [ ] src/db.ts                   −1  1││                                                                    │   2 +                                                               │
+│ [ ] src/limiter.ts              +5  1││                                                                    │   3 + export async function adminRoutes(req: Request): Promise<Respo│
+│ [ ] src/report.ts          −13 +16  1││                                                                    │       nse> {                                                        │
+│ DOCS (2)                             ││                                                                    │   4 +   if (!authorized(req)) return new Response("unauthorized", { │
+│ [ ] README.md                −1 +3  1││                                                                    │       status: 401 });                                               │
+│ [ ] docs/limits.png                  ││                                                                    │   5 +   return Response.json({ limiter: "on" });                    │
+│ TESTS WITH ONLY NEW CODE (1)         ││                                                                    │   6 + }                                                             │
+│ [ ] src/limiter.test.ts         +8   ││ ▾ src/auth.ts                                                                                                           −3 +5  [ ] viewed│
+│ GENERATED AND LOCK FILES (1)         ││   1 - const KEY = process.env.API_KEY ?? "";                       │▌  1 + import { timingSafeEqual } from "node:crypto";                │
+│ [ ] bun.lock                    +5   ││       ▲ #8   your turn   Nit: the import is fine, but \`KEY\` is a Buffer now; \`KEY_BYTES\`?                                                │
+│                                      ││                                                                    │   2 +                                                               │
+│                                      ││                                                                    │▌  3 + const KEY = Buffer.from(process.env.API_KEY ?? "");           │
+│                                      ││       ▲ #7   agent's turn   Read API_KEY once at startup and refuse to start when it is empty? Today an empty key accepts an empty heade…│
+│                                      ││   2                                                                │   4                                                                 │
+│                                      ││   3   export function authorized(req: Request): boolean {          │   5   export function authorized(req: Request): boolean {           │
+│                                      ││   4 -   const given = req.headers.get("x-api-key") ?? "";          │▌  6 +   const given = Buffer.from(req.headers.get("x-api-key") ?? ""│
+│                                      ││                                                                    │       );                                                            │
+│                                      ││   5 -   return given === KEY;                                      │▌  7 +   return given.length === KEY.length && timingSafeEqual(given,│
+│                                      ││                                                                    │        KEY);                                                        │
+│                                      ││       ▲ #1   changed   your turn   \`===\` on secrets leaks timing. Use \`crypto.timingSafeEqual\` on equal-length buffers.                  │
+│                                      ││   6   }                                                            │   8   }                                                             │
+│                                      ││ ▾ src/db.ts                                                                                                                −1  [ ] viewed│
+│                                      ││   ⋯ 5 unchanged lines                                                                                                                    │
+│                                      ││   6   const users = new Map<string, User>([["1", { id: "1", name: "│   6   const users = new Map<string, User>([["1", { id: "1", name: "A│
+│                                      ││       Ada" }]]);                                                   │       da" }]]);                                                     │
+│                                      ││   7                                                                │   7                                                                 │
+│                                      ││   8   export async function findUser(id: string): Promise<User | nu│   8   export async function findUser(id: string): Promise<User | nul│
+│                                      ││       ll> {                                                        │       l> {                                                          │
+│                                      ││▌  9 -   console.log("findUser", id);                               │                                                                     │
+│                                      ││       ▲ #3   outdated   your turn   Leftover debug log: please drop it.                                                                  │
+│                                      ││  10     return users.get(id) ?? null;                              │   9     return users.get(id) ?? null;                               │
+│                                      ││  11   }                                                            │  10   }                                                             │
+│                                      ││ ▾ src/limiter.ts                                                                                                           +5  [ ] viewed│
+│                                      ││   ⋯ 7 unchanged lines                                                                                                                    │
+│                                      ││   8       if (list.length >= this.limit) return false;             │   8       if (list.length >= this.limit) return false;              │
+│                                      ││   9       list.push(now);                                          │   9       list.push(now);                                           │
+│                                      ││  10       this.hits.set(key, list);                                │  10       this.hits.set(key, list);                                 │
+╰──────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ VISUAL   j k  more lines   o  other end   i  comment on them   V   Esc  drop the selection                                                                                         
+"
+`;
+
+exports[`80×24: a new thread's box on one column, over the bottom of the diff 1`] = `
+"
+stet rate-limit   v2                               Round 6   Changes   Drafts 1 
+╭─ What changed in v2 v1 → v2 · 9 files ────────────────────── unified · wrap ─╮
+│  base main  ──▶  v1  ──▶  v2    now = v2     whole branch  p                 │
+│ 5 threads on this diff · 5 elsewhere ·  V  select lines ·  i  comment ·  ] t…│
+│                                                                              │
+│ ▾ src/admin/routes.ts                                          +6  [ ] viewed│
+│       5 +   return Response.json({ limiter: "on" });                         │
+│       6 + }                                                                  │
+│ ▾ src/auth.ts                                               −3 +5  [ ] viewed│
+│   1     - const KEY = process.env.API_KEY ?? "";                             │
+│▌      1 + import { timingSafeEqual } from "node:crypto";                     │
+│           ▲ #8   your turn   Nit: the import is fine, but \`KEY\` is a Buffer …│
+│       2 +                                                                    │
+│▌      3 + const KEY = Buffer.from(process.env.API_KEY ?? "");                │
+│           ▲ #7   agent's turn   Read API_KEY once at startup and refuse to s…│
+│   2   4                                                                      │
+│   3   5   export function authorized(req: Request): boolean {                │
+│ ╭─ New thread on src/auth.ts:3 (v2) · draft ────────────────────────────────╮│
+│ │                                                                           ││
+│ │                                                                           ││
+│ │                                                                           ││
+│ ╰─  Ctrl+S  save draft ·  Ctrl+G  send now ·  Esc  leave, text kept ────────╯│
+╰──────────────────────────────────────────────────────────────────────────────╯
+ NEW THREAD  type the message   Ctrl+S  save as draft   Ctrl+G  send now   Esc …
+"
+`;
+
+exports[`180×46: V in a thread's code picks its removed lines on the old side; the new thread's box sits under the code 1`] = `
+"
+stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2                                                                  Round 6   Changes   Drafts 1    ?  
+╭─  Threads   Files   Search  ─────────╮╭─ #1 src/auth.ts:6–7  changed   your turn  written on v1 ─────────── 3 of 10 ─╮╭─ Conversation ────────────────────── 2 messages · 1 new ─╮
+│ open 9 resolved 2 · all 12 · [ ] new ││ Your turn. The agent says it fixed this. Check the code, then resolve (x) or ││                                                          │
+│                                      ││ reply (r).                                                                   ││ you · reviewer @v1 · just now                            │
+│ src/auth.ts                         3││                                                                              ││   \`===\` on secrets leaks timing. Use                     │
+│ ● #8 L1  your turn                   ││  v1  written · L5 · 1 msg  ──▶   v2  changed · L6–7 · 2 msgs                 ││   \`crypto.timingSafeEqual\` on equal-length buffers.      │
+│   Nit: the import is fine, but \`KEY\`…││  Diff  Then · At v2  t      around the thread  all changes · whole file  z   ││                                                          │
+│   #7 L3  agent's turn                ││                                                                              ││ ── NEW ──────────────────────────────────────────────    │
+│   Read API_KEY once at startup and r…││ src/auth.ts · lines 6–7 · how they changed from v1 to v2                −3 +5││ claude · agent  fixed  @v2 · just now                    │
+│ ● #1 L6–7  changed   your turn       ││  1    - const KEY = process.env.API_KEY ?? "";                               ││   Fixed: both sides go through \`Buffer\`, a length check, │
+│   \`===\` on secrets leaks timing. Use…││     1 + import { timingSafeEqual } from "node:crypto";                       ││   then \`timingSafeEqual\`.                                │
+│ src/db.ts                           1││  2  2                                                                        ││                                                          │
+│   #3 L9  outdated   your turn        ││     3 + const KEY = Buffer.from(process.env.API_KEY ?? "");                  ││                                                          │
+│   Leftover debug log: please drop it.││     4 +                                                                      ││                                                          │
+│ src/report.ts                       1││  3  5   export function authorized(req: Request): boolean {                  ││                                                          │
+│   #12 L327  agent's turn             ││  4    -   const given = req.headers.get("x-api-key") ?? "";                  ││                                                          │
+│   \`limit\` grows with the route's ind…││▌ 5    -   return given === KEY;                                              ││                                                          │
+│ src/routes.ts                       4││▌    6 +   const given = Buffer.from(req.headers.get("x-api-key") ?? "");     ││                                                          │
+│   #2 L5  your turn                   ││▌    7 +   return given.length === KEY.length && timingSafeEqual(given, KEY); ││                                                          │
+│   Where do 100 and 60 000 come from?…││         ▲ thread #1 · v2  changed                                            ││                                                          │
+│   #4 L10–11  agent's turn            ││  6  8   }                                                                    ││                                                          │
+│   I am not comfortable keying the li…││                                                                              ││                                                          │
+│ ● #9 L12  your turn                  ││                                                                              ││                                                          │
+│   Checking the key before the route …││                                                                              ││                                                          │
+│   #11 L13  draft                     ││                                                                              ││                                                          │
+│   Should 401 come with a \`www-authen…││                                                                              ││                                                          │
+│ src/server.ts                       1││                                                                              ││                                                          │
+│ ● #10 L3  your turn                  ││                                                                              ││                                                          │
+│   \`Number(undefined ?? 8080)\` is fin…││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│ 2 resolved hidden ·  Space u r       ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││  r  reply ·  x  resolve ·  { }  previous / next message  │
+│                                      ││                                                                              ││                                                          │
+╰──────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────╯╰──────────────────────────────────────────────────────────╯
+ VISUAL   j k  more lines   o  other end   i  comment on them   V   Esc  drop the selection                                                                                         
+"
+`;
+
+exports[`180×46: V in a thread's code picks its removed lines on the old side; the new thread's box sits under the code 2`] = `
+"
+stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2                                                                  Round 6   Changes   Drafts 1    ?  
+╭─  Threads   Files   Search  ─────────╮╭─ #1 src/auth.ts:6–7  changed   your turn  written on v1 ─────────── 3 of 10 ─╮╭─ Conversation ────────────────────── 2 messages · 1 new ─╮
+│ open 9 resolved 2 · all 12 · [ ] new ││ Your turn. The agent says it fixed this. Check the code, then resolve (x) or ││                                                          │
+│                                      ││ reply (r).                                                                   ││ you · reviewer @v1 · just now                            │
+│ src/auth.ts                         3││                                                                              ││   \`===\` on secrets leaks timing. Use                     │
+│ ● #8 L1  your turn                   ││  v1  written · L5 · 1 msg  ──▶   v2  changed · L6–7 · 2 msgs                 ││   \`crypto.timingSafeEqual\` on equal-length buffers.      │
+│   Nit: the import is fine, but \`KEY\`…││  Diff  Then · At v2  t      around the thread  all changes · whole file  z   ││                                                          │
+│   #7 L3  agent's turn                ││                                                                              ││ ── NEW ──────────────────────────────────────────────    │
+│   Read API_KEY once at startup and r…││ src/auth.ts · lines 6–7 · how they changed from v1 to v2                −3 +5││ claude · agent  fixed  @v2 · just now                    │
+│ ● #1 L6–7  changed   your turn       ││  1    - const KEY = process.env.API_KEY ?? "";                               ││   Fixed: both sides go through \`Buffer\`, a length check, │
+│   \`===\` on secrets leaks timing. Use…││     1 + import { timingSafeEqual } from "node:crypto";                       ││   then \`timingSafeEqual\`.                                │
+│ src/db.ts                           1││  2  2                                                                        ││                                                          │
+│   #3 L9  outdated   your turn        ││     3 + const KEY = Buffer.from(process.env.API_KEY ?? "");                  ││                                                          │
+│   Leftover debug log: please drop it.││     4 +                                                                      ││                                                          │
+│ src/report.ts                       1││  3  5   export function authorized(req: Request): boolean {                  ││                                                          │
+│   #12 L327  agent's turn             ││  4    -   const given = req.headers.get("x-api-key") ?? "";                  ││                                                          │
+│   \`limit\` grows with the route's ind…││▌ 5    -   return given === KEY;                                              ││                                                          │
+│ src/routes.ts                       4││▌    6 +   const given = Buffer.from(req.headers.get("x-api-key") ?? "");     ││                                                          │
+│   #2 L5  your turn                   ││▌    7 +   return given.length === KEY.length && timingSafeEqual(given, KEY); ││                                                          │
+│   Where do 100 and 60 000 come from?…││         ▲ thread #1 · v2  changed                                            ││                                                          │
+│   #4 L10–11  agent's turn            ││  6  8   }                                                                    ││                                                          │
+│   I am not comfortable keying the li…││                                                                              ││                                                          │
+│ ● #9 L12  your turn                  ││ ╭─ New thread on src/auth.ts:4–5 · removed lines (v1) · draft ──────────────╮││                                                          │
+│   Checking the key before the route …││ │                                                                           │││                                                          │
+│   #11 L13  draft                     ││ │                                                                           │││                                                          │
+│   Should 401 come with a \`www-authen…││ │                                                                           │││                                                          │
+│ src/server.ts                       1││ ╰─  Ctrl+S  save draft ·  Ctrl+G  send now ·  Esc  leave, text kept ────────╯││                                                          │
+│ ● #10 L3  your turn                  ││                                                                              ││                                                          │
+│   \`Number(undefined ?? 8080)\` is fin…││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│ 2 resolved hidden ·  Space u r       ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││  r  reply ·  x  resolve ·  { }  previous / next message  │
+│                                      ││                                                                              ││                                                          │
+╰──────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────╯╰──────────────────────────────────────────────────────────╯
+ NEW THREAD  type the message   Ctrl+S  save as draft   Ctrl+G  send now   Esc  or   j j  leave, the text stays   Ctrl+C  quit                                                      
+"
+`;
+
+exports[`120×40 and 80×24: the cursor in a thread's code on an added line; the column follows it 1`] = `
+"
+stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2      Round 6   Changes   Drafts 1    ?  
+╭─  Threads   Files   Search  ─────────╮╭─ #1 src/auth.ts:6–7  changed   your turn  written on v1 ─────────── 3 of 10 ─╮
+│ open 9 resolved 2 · all 12 · [ ] new ││ Your turn. The agent says it fixed this. Check the code, then resolve (x) or │
+│                                      ││ reply (r).                                                                   │
+│ src/auth.ts                         3││                                                                              │
+│ ● #8 L1  your turn                   ││  v1  written · L5 · 1 msg  ──▶   v2  changed · L6–7 · 2 msgs                 │
+│   Nit: the import is fine, but \`KEY\`…││  Diff  Then · At v2  t      around the thread  all changes · whole file  z   │
+│   #7 L3  agent's turn                ││                                                                              │
+│   Read API_KEY once at startup and r…││ src/auth.ts · lines 6–7 · how they changed from v1 to v2                −3 +5│
+│ ● #1 L6–7  changed   your turn       ││  1    - const KEY = process.env.API_KEY ?? "";                               │
+│   \`===\` on secrets leaks timing. Use…││     1 + import { timingSafeEqual } from "node:crypto";                       │
+│ src/db.ts                           1││  2  2                                                                        │
+│   #3 L9  outdated   your turn        ││     3 + const KEY = Buffer.from(process.env.API_KEY ?? "");                  │
+│   Leftover debug log: please drop it.││     4 +                                                                      │
+│ src/report.ts                       1││  3  5   export function authorized(req: Request): boolean {                  │
+│   #12 L327  agent's turn             ││  4    -   const given = req.headers.get("x-api-key") ?? "";                  │
+│   \`limit\` grows with the route's ind…││▌ 5    -   return given === KEY;                                              │
+│ src/routes.ts                       4││▌    6 +   const given = Buffer.from(req.headers.get("x-api-key") ?? "");     │
+│   #2 L5  your turn                   ││▌    7 +   return given.length === KEY.length && timingSafeEqual(given, KEY); │
+│   Where do 100 and 60 000 come from?…││         ▲ thread #1 · v2  changed                                            │
+│   #4 L10–11  agent's turn            ││  6  8   }                                                                    │
+│   I am not comfortable keying the li…││                                                                              │
+│ ● #9 L12  your turn                  ││ ── Conversation · 2 messages · 1 new ─────────────────────────────────────   │
+│   Checking the key before the route …││ you · reviewer @v1 · just now                                                │
+│   #11 L13  draft                     ││   \`===\` on secrets leaks timing. Use \`crypto.timingSafeEqual\` on             │
+│   Should 401 come with a \`www-authen…││   equal-length buffers.                                                      │
+│ src/server.ts                       1││                                                                              │
+│ ● #10 L3  your turn                  ││ ── NEW ──────────────────────────────────────────────────────────────────    │
+│   \`Number(undefined ?? 8080)\` is fin…││ claude · agent  fixed  @v2 · just now                                        │
+│                                      ││   Fixed: both sides go through \`Buffer\`, a length check, then                │
+│ 2 resolved hidden ·  Space u r       ││   \`timingSafeEqual\`.                                                         │
+│                                      ││                                                                              │
+│                                      ││                                                                              │
+│                                      ││  r  reply ·  x  resolve ·  { }  previous / next message                      │
+│                                      ││                                                                              │
+│                                      ││                                                                              │
+│                                      ││                                                                              │
+│                                      ││                                                                              │
+╰──────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────╯
+ LINES   j k  line   V  select   i  comment   ] c   [ c  change   Esc  leave the code   ?  keys                         
+"
+`;
+
+exports[`120×40 and 80×24: the cursor in a thread's code on an added line; the column follows it 2`] = `
+"
+stet rate-limit   v2                               Round 6   Changes   Drafts 1 
+╭─ #1 src/auth.ts:6–7  changed   your turn  ───────────────────────── 3 of 10 ─╮
+│ Your turn. The agent says it fixed this. Check the code, then resolve (x) or │
+│ reply (r).                                                                   │
+│  4    -   const given = req.headers.get("x-api-key") ?? "";                  │
+│▌ 5    -   return given === KEY;                                              │
+│▌    6 +   const given = Buffer.from(req.headers.get("x-api-key") ?? "");     │
+│▌    7 +   return given.length === KEY.length && timingSafeEqual(given, KEY); │
+│         ▲ thread #1 · v2  changed                                            │
+│  6  8   }                                                                    │
+│                                                                              │
+│ ── 2 messages · 1 new ────────────────────────────────────────────────────   │
+│ you · reviewer @v1 · just now                                                │
+│   \`===\` on secrets leaks timing. Use \`crypto.timingSafeEqual\` on             │
+│   equal-length buffers.                                                      │
+│                                                                              │
+│ ── NEW ──────────────────────────────────────────────────────────────────    │
+│ claude · agent  fixed  @v2 · just now                                        │
+│   Fixed: both sides go through \`Buffer\`, a length check, then                │
+│   \`timingSafeEqual\`.                                                         │
+│                                                                              │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+ LINES   j k  line   V  select   i  comment   ] c   [ c  change   Esc  leave th…
 "
 `;

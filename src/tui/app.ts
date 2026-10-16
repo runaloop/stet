@@ -12,7 +12,8 @@ import { foldedFiles, type FileRow } from "../ui/compare.ts";
 import { NOTHING, withSpan } from "../ui/reveal.ts";
 import { defaultCompare, shiftRef } from "../ui/state.ts";
 import { barSpans, isCollapsed, presetsOf, rangeTitle, refsOf, syncChanges, viewedChange, wholeBranch } from "./changes.ts";
-import { codeViews, fetchWide, scopesOf, threadCode, wideKey } from "./code.ts";
+import { codeEnds, codeViews, fetchWide, scopesOf, threadCode, wideKey } from "./code.ts";
+import { DiffView } from "./diff/view.ts";
 import { FILE, GAP, GROUP } from "./diff/model.ts";
 import { flushTrace, trace, tracing } from "./trace.ts";
 import { Highlighter } from "./diff/highlight.ts";
@@ -29,7 +30,7 @@ import { columnOf, helpFor, initialView, render, scopeOf, type Writing } from ".
 import { hitAt, hitsOf, type Hit } from "./grid.ts";
 import { fileOf, type Side } from "./views/list.ts";
 import { Screen } from "./screen.ts";
-import { plural } from "./text.ts";
+import { plural, rangeText } from "./text.ts";
 import { Texts, textsPath } from "./texts.ts";
 import type { Toast } from "./views/bars.ts";
 
@@ -45,7 +46,8 @@ const WHEEL_ROWS = 3;
 /** A file the frame count is written to after every frame, for the idle check of the tests. */
 const FRAMES = process.env.STET_TUI_FRAMES;
 
-const textKey = (w: Writing) => (w.kind === "reply" ? `reply:${w.thread}` : w.kind === "edit" ? `edit:${w.comment}` : "summary");
+const textKey = (w: Writing) =>
+  w.kind === "reply" ? `reply:${w.thread}` : w.kind === "edit" ? `edit:${w.comment}` : w.kind === "thread" ? `new:${w.at}:${w.path}:${w.side}:${w.start}-${w.end}` : "summary";
 
 export class App {
   readonly v = initialView();
@@ -363,6 +365,7 @@ export class App {
     if (id === null || id === v.selected) return;
     v.selected = id;
     v.followList = true;
+    this.leaveCode();
     v.view = null;
     v.scope = "around";
     v.wide = null;
@@ -378,6 +381,7 @@ export class App {
   private focus(f: "list" | "code" | "conv"): void {
     const v = this.v;
     v.focus = f;
+    if (f !== "code") this.leaveCode();
     this.markReadSoon();
     this.redraw();
   }
@@ -728,6 +732,18 @@ export class App {
     this.say("no thread on this line: ] t goes to the next one");
   }
 
+  /** i, a, c, gc, gcc: a new thread on the selection or the cursor's line, on its side of the range. */
+  private commentChanges(): void {
+    const c = this.v.changes;
+    const sel = c.diff.selection();
+    if (!sel || !c.data) return this.say("put the cursor on a line of code: a folded file or a picture has none");
+    if (c.diff.anchor < 0) c.diff.startSelection();
+    const old = sel.side === 0;
+    const end = old ? c.data.from : c.data.to;
+    const path = old ? (sel.item.fd.prevName ?? sel.key) : sel.key;
+    this.write({ kind: "thread", path, side: old ? "old" : "new", start: sel.start, end: sel.end, at: end.sha, label: end.label, from: "changes" });
+  }
+
   private shiftRange(which: "from" | "to", dir: 1 | -1): void {
     const c = this.v.changes;
     const refs = refsOf(this.v.data);
@@ -783,6 +799,111 @@ export class App {
     } catch {
       this.say(`${what}: ${url}`);
     }
+  }
+
+  /** V, i on a thread's page: a cursor on its code, at first on the thread's first line. */
+  private intoCode(then: "visual" | "comment"): void {
+    const v = this.v;
+    if (!v.detail || v.selected !== v.detail.thread.id) return;
+    if (v.detail.thread.region || !v.code.enter()) return this.say("this thread has no lines of code to comment on here");
+    v.codeCursor = true;
+    if (v.focus !== "code") v.focus = "code";
+    if (then === "visual") v.code.diff.startSelection();
+    else this.commentThread();
+    this.redraw();
+  }
+
+  private leaveCode(): void {
+    if (!this.v.codeCursor) return;
+    this.v.codeCursor = false;
+    this.v.code.leave();
+  }
+
+  /** A new thread on lines of a thread's code: at the step its side of the code is at. */
+  private commentThread(): void {
+    const v = this.v;
+    const d = v.detail;
+    const sel = v.code.diff.selection();
+    const shown = v.code.drawn;
+    if (!d || !sel || !shown) return this.say("put the cursor on a line of code");
+    const { from, to } = codeEnds(d, shown.view, shown.scope);
+    const step = sel.side === 0 ? from : to;
+    if (!step.path) return this.say(`the thread's code is gone at ${step.label}`);
+    if (v.code.diff.anchor < 0) v.code.diff.startSelection();
+    this.write({ kind: "thread", path: step.path, side: sel.side === 0 ? "old" : "new", start: sel.start, end: sel.end, at: step.sha, label: step.label, from: "thread" });
+  }
+
+  /** The keys of a cursor on a thread's code: the moves, sides and selection of the diff's own. */
+  private runLines(id: string, n: number): boolean {
+    const d = this.v.code.diff;
+    const to = (r: number, align: "nearest" | "center" = "nearest") => {
+      if (r !== -1) d.goTo(r, align);
+      this.redraw();
+      return true;
+    };
+    const repeat = (step: () => number) => {
+      let r = -1;
+      for (let i = 0; i < n; i++) {
+        const next = step();
+        if (next === -1) break;
+        d.goTo((r = next));
+      }
+      if (r === -1) this.say("nothing further that way");
+      return to(-1);
+    };
+    const lines = (by: number) => to(d.lay.rowAt(Math.max(0, Math.min(d.lay.total - 1, d.lay.top(d.cursor) + by))));
+    const half = Math.max(1, Math.floor(this.v.geom.page / 2));
+    switch (id) {
+      case "diff.down":
+      case "diff.up": {
+        let r = d.cursor;
+        for (let i = 0; i < n; i++) {
+          const next = this.codeRow(r, id === "diff.down" ? 1 : -1);
+          if (next === -1) break;
+          r = next;
+        }
+        return to(r);
+      }
+      case "diff.first":
+      case "diff.last":
+        return to(this.codeRow(id === "diff.first" ? -1 : d.rows.len, id === "diff.first" ? 1 : -1));
+      case "diff.pageDown":
+      case "diff.pageUp":
+        return lines(id === "diff.pageDown" ? half : -half);
+      case "diff.nextChange":
+      case "diff.prevChange":
+        return repeat(() => d.nextChange(id === "diff.nextChange" ? 1 : -1));
+      case "diff.nextHunk":
+      case "diff.prevHunk":
+        return repeat(() => d.nextHunk(id === "diff.nextHunk" ? 1 : -1));
+      case "diff.center":
+        return this.redraw(), true;
+      case "diff.visual":
+        if (d.anchor >= 0) d.clearSelection();
+        else d.startSelection();
+        return this.redraw(), true;
+      case "diff.otherEnd":
+        d.swapEnds();
+        return this.redraw(), true;
+      case "diff.comment":
+        return this.commentThread(), true;
+      case "diff.sideOld":
+      case "diff.sideNew":
+        if (!d.setSide(id === "diff.sideOld" ? 0 : 1)) this.say(d.split ? "no line on that side here" : "the sides stand next to each other in split: Space u d");
+        return this.redraw(), true;
+      case "diff.escape":
+        if (d.anchor >= 0) d.clearSelection();
+        else this.leaveCode();
+        return this.redraw(), true;
+    }
+    return false;
+  }
+
+  /** The next row of a thread's code that is a line, from `r` on in `dir`; -1 at the end. */
+  private codeRow(r: number, dir: 1 | -1): number {
+    const d = this.v.code.diff;
+    for (let i = r + dir; i >= 0 && i < d.rows.len; i += dir) if (DiffView.isCode(d.rows.kind[i]!)) return i;
+    return -1;
   }
 
   // --- actions: what the keys run, by the ids of the shared key table (src/ui/keys/table.ts), one record per page.
@@ -1075,7 +1196,7 @@ export class App {
       "choice.pick": () => this.pick(v().choice?.at ?? 0),
       "choice.cancel": () => this.pick(null),
       "composer.draft": () => void this.send("draft"),
-      "composer.now": () => void this.send(v().writing?.kind === "reply" ? "now" : "draft"),
+      "composer.now": () => void this.send(v().writing?.kind === "reply" || v().writing?.kind === "thread" ? "now" : "draft"),
       "composer.leave": () => this.leave(),
     };
   }
@@ -1227,7 +1348,8 @@ export class App {
     const key = textKey(w);
     const d = v.detail;
     const draftThread = w.kind === "reply" && d?.thread.id === w.thread && d.thread.draft;
-    const placeholder = w.kind === "reply" ? (draftThread ? "Add to this draft thread…" : "Reply to the thread…") : w.kind === "edit" ? "" : "Optional summary for the whole review";
+    const placeholder =
+      w.kind === "reply" ? (draftThread ? "Add to this draft thread…" : "Reply to the thread…") : w.kind === "edit" ? "" : w.kind === "thread" ? "What is wrong here?" : "Optional summary for the whole review";
     v.writing = w;
     this.matcher.reset();
     v.prefix = [];
@@ -1268,6 +1390,7 @@ export class App {
       await this.reload();
       return this.showDraft();
     }
+    if (w.kind === "thread") return this.createThread(w, text, mode);
     const r = await this.guard(api.reply(this.review, w.thread, { body: text, draft: mode === "draft" }));
     if (!r) return;
     this.texts.set(key, "");
@@ -1276,6 +1399,22 @@ export class App {
     await this.reload();
     this.v.tops.conv = this.v.tops.thread = Number.MAX_SAFE_INTEGER;
     this.redraw();
+  }
+
+  /** A new thread on the lines picked, as the web makes one: a draft unless sent now. */
+  private async createThread(w: Extract<Writing, { kind: "thread" }>, text: string, mode: "draft" | "now"): Promise<void> {
+    if (!this.api) return;
+    const t = await this.guard(this.api.addThread(this.review, { path: w.path, start: w.start, end: w.end, side: w.side, at: w.at, body: text, draft: mode === "draft" }));
+    if (!t) return;
+    this.texts.set(textKey(w), "");
+    this.leave();
+    const v = this.v;
+    if (w.from === "changes") {
+      v.changes.diff.clearSelection();
+      v.changes.thread = t.id;
+    } else v.code.diff.clearSelection();
+    this.say(mode === "draft" ? `draft #${t.id} saved on ${w.path}:${rangeText(w)} · the agent sees it after you submit the review (S)` : `thread #${t.id} sent to the agent`);
+    await this.reload();
   }
 
   // --- mouse
