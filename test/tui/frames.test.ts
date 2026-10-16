@@ -518,3 +518,28 @@ test("80×24: a name two files share opens the file finder with the name typed i
   expect(text).toContain("routes.ts src/admin/");
   expect(text).toMatchSnapshot();
 });
+
+test("120×40, 180×46, 80×24: “✓ Done up to v2” beside the strip until you went through it; your last pass is marked on the strip", async () => {
+  const v = await changes("1", "2");
+  for (const [w, h] of [[120, 40], [180, 46]] as const) expect(frame(v, w, h)).toContain("✓ Done up to v2  Space r m ");
+  const before = frame(v, 180, 46);
+  v.changes.reviewed = { sha: v.changes.data!.to.sha, label: "v2", version: 2, at: new Date(now).toISOString() };
+  const after = frame(v, 180, 46);
+  expect(after).toContain("✓ you went through v2");
+  expect(after).toContain(" v2 ✓ ");
+  expect(frame(v, 80, 24)).toContain(" v2 ✓ ");
+  expect(before).toMatchSnapshot();
+  expect(after).toMatchSnapshot();
+});
+
+test("120×40, 180×46, 80×24: the worktree moved after “now” was read: “↻ N files changed (R)” in the header, R a click away", async () => {
+  const v = await changes("base", "now");
+  const st = v.data.status!;
+  v.data = { ...v.data, now: { sha: "f".repeat(40), pinned: st.pinnedNow!, pinnedAt: st.pinnedNowAt!, files: 2 } };
+  for (const [w, h] of [[120, 40], [180, 46], [80, 24]] as const) {
+    const rows = render(v, w, h).rows;
+    expect(rowText(rows[0]!)).toContain("↻ 2 files changed (R)");
+    expect(rows[0]!.some((x) => x.hit === "key:R" && x.text.includes("↻"))).toBe(true);
+  }
+  expect(frame(v, 120, 40)).toMatchSnapshot();
+});

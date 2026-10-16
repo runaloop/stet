@@ -1,7 +1,7 @@
 import type { GitStateDto } from "../../core/types.ts";
 import { gitSummary } from "../../ui/gitmarks.ts";
 import { moved, type Data } from "../model.ts";
-import { clip, filled, key, s, spread, type Cls, type Line, type Span } from "../text.ts";
+import { clip, filled, key, s, spansWidth, spread, type Cls, type Line, type Span } from "../text.ts";
 
 export type Tab = "round" | "changes" | "drafts";
 
@@ -20,10 +20,9 @@ export function headerLine(d: Data, git: GitStateDto | null, tab: Tab, w: number
   const branch = narrow ? st.review.branch.slice(st.review.branch.lastIndexOf("/") + 1) : st.review.branch;
   const left: Span[] = [s("stet", "b"), s(narrow ? " " : "  "), s(branch, "b")];
   if (st.review.source === "index") left.push(s(" staged", "mod"));
-  if (git && !narrow) {
-    const parts = gitSummary(git, st.review.source === "index");
-    if (parts.length) left.push(s("  "), s(parts.map((p) => p.text).join(" · "), "mod"));
-  }
+  // the git summary gives way first when the line is short
+  const at = left.length;
+  const parts = git && !narrow ? gitSummary(git, st.review.source === "index") : [];
   const n = st.versions;
   left.push(s("  "));
   if (n === 0) left.push(s("no version yet", "dim"));
@@ -33,11 +32,14 @@ export function headerLine(d: Data, git: GitStateDto | null, tab: Tab, w: number
     left.push(st.now?.changedSinceLatest ? s(`now: ${st.now.files ?? "?"} file${st.now.files === 1 ? "" : "s"} after v${n}`, "mod") : s(`now = v${n}`, "dim"));
   }
   const m = moved(d);
-  if (m !== null) left.push(s(`  ↻ ${m ? `${m} file${m === 1 ? "" : "s"} changed` : "now changed"} (R)`, "warn"));
+  if (m !== null) left.push(s("  "), { ...s(`↻ ${m ? `${m} file${m === 1 ? "" : "s"} changed` : "now changed"} (R)`, "warn"), hit: "key:R" });
   const last = st.lastSubmission;
   if (last?.verdict === "approved" && last.version !== null && !narrow) left.push(s(`  ✓ approved v${last.version}${last.changedAfter ? " · changed after" : ""}`, "ok"));
   if (!d.online) left.push(s("  ● offline · retrying", "bad"));
-  return filled(["hdr"], ...spread(left, tabs(d, tab, narrow), w));
+  const right = tabs(d, tab, narrow);
+  const summary = [s("  "), s(parts.map((p) => p.text).join(" · "), "mod")];
+  if (parts.length && spansWidth(left) + spansWidth(summary) + spansWidth(right) + 1 <= w) left.splice(at, 0, ...summary);
+  return filled(["hdr"], ...spread(left, right, w));
 }
 
 /** The line under the header when a version came that you have not looked at. */

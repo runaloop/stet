@@ -4,14 +4,15 @@
  * file sections, fold groups and thread cards.
  */
 import { foldLabel, sectionTitle, type FileRow } from "../../ui/compare.ts";
-import { nowDirty } from "../../ui/state.ts";
+import { isSha } from "../../ui/commits.ts";
+import { nowDirty, reviewedRef } from "../../ui/state.ts";
 import { foldRuns, keptSteps } from "../../ui/versions.ts";
 import { isViewedIn } from "../../ui/viewed.ts";
-import { fileCounts, isCollapsed, presetsOf, rangeTitle, refsOf, threadOf, viewedIdx, type ChangesState } from "../changes.ts";
+import { fileCounts, isCollapsed, presetsOf, rangeTitle, refLabel, refsOf, threadOf, viewedIdx, type ChangesState } from "../changes.ts";
 import type { Hooks } from "../diff/paint.ts";
 import { pane, type Pane } from "../grid.ts";
 import type { Data } from "../model.ts";
-import { blank, key, line, plural, s, spread, wrap, type Cls, type Line, type Span } from "../text.ts";
+import { blank, key, line, plural, s, spansWidth, spread, wrap, type Cls, type Line, type Span } from "../text.ts";
 import { sideTitle } from "./list.ts";
 import { tags } from "./thread.ts";
 
@@ -76,18 +77,37 @@ export function changesHooks(get: () => { d: Data; c: ChangesState }): Hooks {
   };
 }
 
-/** The strip of versions with the range lit, "now", and the presets with the key that steps through them. */
-export function stripLine(d: Data, c: ChangesState): Line {
+/**
+ * Whether you went through the range's "to" already: then a mark, else the action that remembers it, as the web's
+ * "✓ Done up to vN" next to the strip.
+ */
+export function doneSpans(d: Data, c: ChangesState): Span[] {
+  const r = c.reviewed;
+  const to = c.to;
+  if (!to || to === "base") return [];
+  const n = d.status?.versions ?? 0;
+  const dirty = nowDirty(refsOf(d));
+  const same = !!r && (r.sha === c.data?.to.sha || (r.version !== null && ((/^\d+$/.test(to) && r.version === Number(to)) || (to === "now" && !dirty && r.version === n))));
+  if (same) return [s(`✓ you went through ${refLabel(d, c, to)}`, "ok")];
+  return [s(`✓ Done up to ${refLabel(d, c, to)}`, "acc"), s(" "), key("Space r m")];
+}
+
+/** The strip of versions with the range lit, "now", your last pass, and the presets with the key that steps through them. */
+export function stripLine(d: Data, c: ChangesState, w = Number.MAX_SAFE_INTEGER): Line {
   const refs = refsOf(d);
   const dirty = nowDirty(refs);
+  const rv = c.reviewed;
+  const passes = [...new Set([c.from ?? "", c.to ?? "", reviewedRef(refs, rv) ?? ""].filter(isSha))];
   const steps = [
     { ref: "base", label: `base ${d.status?.review.baseRef ?? ""}`.trim(), kind: "base" },
     ...refs.versions.map((v) => ({ ref: String(v.number), label: `v${v.number}`, kind: "version" })),
+    ...passes.map((sha) => ({ ref: sha, label: rv?.sha === sha ? "last pass" : sha.slice(0, 8), kind: "pass" })),
     ...(dirty ? [{ ref: "now", label: "now", kind: "now" }] : []),
   ];
+  const mine = (x: { ref: string }) => !!rv && ((rv.version !== null && x.ref === String(rv.version)) || x.ref === rv.sha);
   const fi = steps.findIndex((x) => x.ref === c.from);
   const ti = steps.findIndex((x) => x.ref === c.to);
-  const keep = keptSteps(steps, [fi, ti]);
+  const keep = keptSteps(steps, [fi, ti, steps.findIndex(mine)]);
   const spans: Span[] = [s(" ")];
   for (const item of foldRuns(steps.length, (i) => keep.has(i))) {
     if (spans.length > 1) spans.push(s(" ──▶ ", "dim"));
@@ -97,14 +117,29 @@ export function stripLine(d: Data, c: ChangesState): Line {
     }
     const i = item.i;
     const inside = fi !== -1 && ti !== -1 && i >= Math.min(fi, ti) && i <= Math.max(fi, ti);
-    spans.push(s(` ${steps[i]!.label} `, i === fi || i === ti ? "chips" : inside ? "chip" : "dim"));
+    spans.push(s(` ${steps[i]!.label}${mine(steps[i]!) ? " ✓" : ""} `, i === fi || i === ti ? "chips" : inside ? "chip" : "dim"));
   }
-  if (!dirty && refs.versions.length) spans.push(s(`   now = v${refs.versions.length}`, "dim"));
   // the preset `p` goes to next, as the web's chips name it
   const ps = presetsOf(d, c);
   const at = ps.findIndex((p) => p.from === c.from && p.to === c.to);
   const next = ps.length > 1 || at === -1 ? ps[(at + 1) % ps.length] : undefined;
-  if (next) spans.push(s("     "), s(next.label, "dim"), s(" "), key("p"));
+  const done = doneSpans(d, c);
+  // what follows the steps, in its order on the line; on a short line the less needed parts give way
+  const parts: { spans: Span[]; rank: number }[] = [
+    { spans: !dirty && refs.versions.length ? [s(`   now = v${refs.versions.length}`, "dim")] : [], rank: 3 },
+    { spans: done.length ? [s("   "), ...done] : [], rank: 1 },
+    { spans: next ? [s("   "), s(next.label, "dim"), s(" "), key("p")] : [], rank: 2 },
+  ];
+  let room = w - spansWidth(spans);
+  const kept = new Set<number>();
+  for (const i of [1, 2, 0].sort((x, y) => parts[x]!.rank - parts[y]!.rank)) {
+    const need = spansWidth(parts[i]!.spans);
+    if (need && need <= room) {
+      kept.add(i);
+      room -= need;
+    }
+  }
+  parts.forEach((p, i) => kept.has(i) && spans.push(...p.spans));
   return { spans };
 }
 
@@ -204,7 +239,7 @@ export function diffPane(d: Data, c: ChangesState, w: number, height: number, sh
   const inner = height - 2 - foot.length;
   const title: Span[] = [s(rangeTitle(d, c), "b"), ...(c.data ? [s(` · ${plural(c.data.files.length, "file")}`, "dim")] : [])];
   const right = [s(`${c.diff.split ? "split" : "unified"}${c.layout === "auto" ? "" : " (fixed)"} · ${c.wrap ? "wrap" : "no wrap"}`, "dim")];
-  const head = [stripLine(d, c), infoLine(c, shown), blank()];
+  const head = [stripLine(d, c, w - 2), infoLine(c, shown), blank()];
   let body: Line[];
   if (c.error && !c.base) body = [line(s(` ${c.error}`, "bad"))];
   else if (!c.data || !c.base) body = [line(s(` ${c.loading ?? "loading the changes…"}`, "dim"))];

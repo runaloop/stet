@@ -8,11 +8,11 @@ import type { CommentDto, ThreadDetail } from "../core/types.ts";
 import { stepFile, stepThread, stepUnread } from "../ui/nav.ts";
 import { hydratePartialDiff, parsePatchFiles } from "@pierre/diffs";
 import type { ActionTarget } from "../core/module.ts";
-import { foldedFiles, type FileRow } from "../ui/compare.ts";
+import { foldedFiles, viewedCount, type FileRow } from "../ui/compare.ts";
 import { NOTHING, withSpan } from "../ui/reveal.ts";
 import { defaultCompare, shiftRef, tipRef } from "../ui/state.ts";
 import { onlyVersion, withEnd } from "../ui/versions.ts";
-import { barSpans, isCollapsed, presetsOf, rangeTitle, refsOf, searchChanges, syncChanges, viewedChange, wholeBranch } from "./changes.ts";
+import { barSpans, isCollapsed, presetsOf, rangeTitle, refsOf, searchChanges, syncChanges, viewedChange, viewedIdx, wholeBranch } from "./changes.ts";
 import { codeEnds, codeViews, fetchWide, scopesOf, threadCode, wideKey } from "./code.ts";
 import { DiffView } from "./diff/view.ts";
 import { FILE, GAP, GROUP } from "./diff/model.ts";
@@ -657,6 +657,28 @@ export class App {
     this.goToFile(row.fd.name, "nearest");
     this.say(on ? `${row.fd.name}: viewed, folded until it changes` : `${row.fd.name}: not viewed`);
     if (keys.length) await this.guard(this.api.setViewed(this.review, keys, on));
+    if (on) await this.doneIfAllViewed();
+  }
+
+  /** Space r m: you went through the range's "to": "since I last looked" starts there next time. */
+  private async markDone(quiet = false): Promise<void> {
+    const c = this.v.changes;
+    if (this.v.tab !== "changes" || !c.to || !this.api) return this.say("on the Changes tab it marks the version on the right as gone through: Space r v first");
+    if (c.to === "base") return this.say("“base” is where the branch starts: nothing to mark done");
+    const r = await this.guard(this.api.markReviewed(this.review, c.to));
+    if (!r || this.ended) return;
+    c.reviewed = r;
+    if (!quiet) this.say(`remembered: you went through the code up to ${r.label}. “Since I last looked” starts there next time`);
+    this.redraw();
+  }
+
+  /** The last file of the range marked viewed: the pass is remembered, as the web does, unless it was already further. */
+  private async doneIfAllViewed(): Promise<void> {
+    const c = this.v.changes;
+    const n = viewedCount(c.rows, viewedIdx(c));
+    if (n.shown === 0 || n.seen < n.shown || !c.to) return;
+    const rv = c.reviewed;
+    if (!rv || c.to === "now" || (/^\d+$/.test(c.to) && (rv.version === null || Number(c.to) > rv.version))) await this.markDone();
   }
 
   /** Enter on a bar: its unchanged lines, once both texts of the file came. */

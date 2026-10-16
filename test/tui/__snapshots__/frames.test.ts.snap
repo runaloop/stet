@@ -530,7 +530,7 @@ exports[`120×40: the Changes tab: the whole branch in words, the files in readi
 "
 stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2      Round 6   Changes   Drafts 1    ?  
 ╭─  Threads   Files   Search  ─────────╮╭─ The whole branch main → v2 · 9 files ────────────────────── unified · wrap ─╮
-│ 9 files · 0 of 7 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2     what changed in v2  p           │
+│ 9 files · 0 of 7 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2   ✓ Done up to v2  Space r m        │
 │                                      ││ 8 threads on this diff · 2 elsewhere ·  V  select lines ·  i  comment ·  ] t…│
 │ CODE (5)                             ││                                                                              │
 │ [ ] src/admin/routes.ts         +6   ││ ▾ src/admin/routes.ts                                          +6  [ ] viewed│
@@ -575,7 +575,7 @@ exports[`180×46: the cursor on a card, its card open; the strip lights the rang
 "
 stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2                                                                  Round 6   Changes   Drafts 1    ?  
 ╭─  Threads   Files   Search  ─────────╮╭─ What changed in v2 v1 → v2 · 9 files ────────────────────────────────────────────────────────────────────────────────── unified · wrap ─╮
-│ 9 files · 0 of 7 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2     whole branch  p                                                                             │
+│ 9 files · 0 of 7 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2   ✓ Done up to v2  Space r m    whole branch  p                                                 │
 │                                      ││ 5 threads on this diff · 5 elsewhere ·  V  select lines ·  i  comment ·  ] t  [ t  step ·  Enter  opens                                  │
 │ CODE (5)                             ││                                                                                                                                          │
 │ [ ] src/admin/routes.ts         +6   ││ ▾ src/admin/routes.ts                                                                                                      +6  [ ] viewed│
@@ -626,7 +626,7 @@ exports[`80×24: one column, the diff; the files slide in over it when they have
 "
 stet rate-limit   v2                               Round 6   Changes   Drafts 1 
 ╭─ The whole branch main → v2 · 9 files ────────────────────── unified · wrap ─╮
-│  base main  ──▶  v1  ──▶  v2    now = v2     what changed in v2  p           │
+│  base main  ──▶  v1  ──▶  v2    now = v2   ✓ Done up to v2  Space r m        │
 │ 8 threads on this diff · 2 elsewhere ·  V  select lines ·  i  comment ·  ] t…│
 │                                                                              │
 │ ▾ src/admin/routes.ts                                          +6  [ ] viewed│
@@ -655,7 +655,7 @@ exports[`80×24: one column, the diff; the files slide in over it when they have
 "
 stet rate-limit   v2                               Round 6   Changes   Drafts 1 
 ╭─  Threads   Files   Search  ───────────────╮──────────────── unified · wrap ─╮
-│ 9 files · 0 of 7 viewed · 2 hidden         │ what changed in v2  p           │
+│ 9 files · 0 of 7 viewed · 2 hidden         │ Done up to v2  Space r m        │
 │                                            │elect lines ·  i  comment ·  ] t…│
 │ CODE (5)                                   │                                 │
 │ [ ] src/admin/routes.ts               +6   │                   +6  [ ] viewed│
@@ -684,7 +684,7 @@ exports[`120×40: V on removed lines picks the old side; i opens a new thread's 
 "
 stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2      Round 6   Changes   Drafts 1    ?  
 ╭─  Threads   Files   Search  ─────────╮╭─ What changed in v2 v1 → v2 · 9 files ────────────────────── unified · wrap ─╮
-│ 9 files · 0 of 7 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2     whole branch  p                 │
+│ 9 files · 0 of 7 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2   ✓ Done up to v2  Space r m        │
 │                                      ││ 5 threads on this diff · 5 elsewhere ·  V  select lines ·  i  comment ·  ] t…│
 │ CODE (5)                             ││                                                                              │
 │ [ ] src/admin/routes.ts         +6   ││ ▾ src/admin/routes.ts                                          +6  [ ] viewed│
@@ -729,7 +729,7 @@ exports[`120×40: V on removed lines picks the old side; i opens a new thread's 
 "
 stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2      Round 6   Changes   Drafts 1    ?  
 ╭─  Threads   Files   Search  ─────────╮╭─ What changed in v2 v1 → v2 · 9 files ────────────────────── unified · wrap ─╮
-│ 9 files · 0 of 7 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2     whole branch  p                 │
+│ 9 files · 0 of 7 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2   ✓ Done up to v2  Space r m        │
 │                                      ││ 5 threads on this diff · 5 elsewhere ·  V  select lines ·  i  comment ·  ] t…│
 │ CODE (5)                             ││                                                                              │
 │ [ ] src/admin/routes.ts         +6   ││ ▾ src/admin/routes.ts                                          +6  [ ] viewed│
@@ -774,7 +774,7 @@ exports[`180×46, split: the cursor on the new side, V picks added lines there; 
 "
 stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2                                                                  Round 6   Changes   Drafts 1    ?  
 ╭─  Threads   Files   Search  ─────────╮╭─ What changed in v2 v1 → v2 · 9 files ──────────────────────────────────────────────────────────────────────────── split (fixed) · wrap ─╮
-│ 9 files · 0 of 7 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2     whole branch  p                                                                             │
+│ 9 files · 0 of 7 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2   ✓ Done up to v2  Space r m    whole branch  p                                                 │
 │                                      ││ 5 threads on this diff · 5 elsewhere ·  V  select lines ·  i  comment ·  ] t  [ t  step ·  Enter  opens                                  │
 │ CODE (5)                             ││                                                                                                                                          │
 │ [ ] src/admin/routes.ts         +6   ││ ▾ src/admin/routes.ts                                                                                                      +6  [ ] viewed│
@@ -825,7 +825,7 @@ exports[`80×24: a new thread's box on one column, over the bottom of the diff 1
 "
 stet rate-limit   v2                               Round 6   Changes   Drafts 1 
 ╭─ What changed in v2 v1 → v2 · 9 files ────────────────────── unified · wrap ─╮
-│  base main  ──▶  v1  ──▶  v2    now = v2     whole branch  p                 │
+│  base main  ──▶  v1  ──▶  v2    now = v2   ✓ Done up to v2  Space r m        │
 │ 5 threads on this diff · 5 elsewhere ·  V  select lines ·  i  comment ·  ] t…│
 │                                                                              │
 │ ▾ src/admin/routes.ts                                          +6  [ ] viewed│
@@ -1030,7 +1030,7 @@ exports[`180×46: / opens the search box at the bottom; the matches are marked a
 "
 stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2                                                                  Round 6   Changes   Drafts 1    ?  
 ╭─  Threads   Files   Search  ─────────╮╭─ What changed in v2 v1 → v2 · 9 files ────────────────────────────────────────────────────────────────────────────────── unified · wrap ─╮
-│ 9 files · 0 of 7 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2     whole branch  p                                                                             │
+│ 9 files · 0 of 7 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2   ✓ Done up to v2  Space r m    whole branch  p                                                 │
 │                                      ││ 5 threads on this diff · 5 elsewhere ·  V  select lines ·  i  comment ·  ] t  [ t  step ·  Enter  opens                                  │
 │ CODE (5)                             ││                                                                                                                                          │
 │ [ ] src/admin/routes.ts         +6   ││ ▾ src/admin/routes.ts                                                                                                      +6  [ ] viewed│
@@ -1081,7 +1081,7 @@ exports[`120×40 and 80×24: after Enter the info line counts the matches; the c
 "
 stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2      Round 6   Changes   Drafts 1    ?  
 ╭─  Threads   Files   Search  ─────────╮╭─ What changed in v2 v1 → v2 · 9 files ────────────────────── unified · wrap ─╮
-│ 9 files · 0 of 7 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2     whole branch  p                 │
+│ 9 files · 0 of 7 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2   ✓ Done up to v2  Space r m        │
 │                                      ││ /KEY · match 2 of 5 ·  n  N  next / previous ·  Esc  clears                  │
 │ CODE (5)                             ││                                                                              │
 │ [ ] src/admin/routes.ts         +6   ││ ▾ src/admin/routes.ts                                          +6  [ ] viewed│
@@ -1126,7 +1126,7 @@ exports[`120×40 and 80×24: after Enter the info line counts the matches; the c
 "
 stet rate-limit   v2                               Round 6   Changes   Drafts 1 
 ╭─ What changed in v2 v1 → v2 · 9 files ────────────────────── unified · wrap ─╮
-│  base main  ──▶  v1  ──▶  v2    now = v2     whole branch  p                 │
+│  base main  ──▶  v1  ──▶  v2    now = v2   ✓ Done up to v2  Space r m        │
 │ /KEY · match 2 of 5 ·  n  N  next / previous ·  Esc  clears                  │
 │                                                                              │
 │ ▾ src/admin/routes.ts                                          +6  [ ] viewed│
@@ -1155,7 +1155,7 @@ exports[`120×40: Space f f finds a file of the diff by its letters, the best fi
 "
 stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2      Round 6   Changes   Drafts 1    ?  
 ╭─  Threads   Files   Search  ─────────╮╭─ The whole branch main → v2 · 9 files ────────────────────── unified · wrap ─╮
-│ 9 files · 0 of 7 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2     what changed in v2  p           │
+│ 9 files · 0 of 7 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2   ✓ Done up to v2  Space r m        │
 │                                      ││ 8 threads on this diff · 2 elsewhere ·  V  select lines ·  i  comment ·  ] t…│
 │ CODE (5)                             ││                                                                              │
 │ [ ] src/admin/routes.ts         +6   ││ ▾ src/admin/routes.ts                                          +6  [ ] viewed│
@@ -1200,7 +1200,7 @@ exports[`180×46: Space f v lists the versions newest first under their rounds; 
 "
 stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2                                                                  Round 6   Changes   Drafts 1    ?  
 ╭─  Threads   Files   Search  ─────────╮╭─ What changed in v2 v1 → v2 · 9 files ────────────────────────────────────────────────────────────────────────────────── unified · wrap ─╮
-│ 9 files · 0 of 7 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2     whole branch  p                                                                             │
+│ 9 files · 0 of 7 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2   ✓ Done up to v2  Space r m    whole branch  p                                                 │
 │                                      ││ 5 threads on this diff · 5 elsewhere ·  V  select lines ·  i  comment ·  ] t  [ t  step ·  Enter  opens                                  │
 │ CODE (5)                             ││                                                                                                                                          │
 │ [ ] src/admin/routes.ts         +6   ││ ▾ src/admin/routes.ts                                                                                                      +6  [ ] viewed│
@@ -1273,5 +1273,152 @@ stet rate-limit   v2                               Round 6   Changes   Drafts 1
 │                                                                              │
 ╰──────────────────────────────────────────────────────────────────────────────╯
  FIND  type to narrow   ↑ ↓   Ctrl+J   Ctrl+K  move   Enter  pick   Esc  close  
+"
+`;
+
+exports[`120×40, 180×46, 80×24: “✓ Done up to v2” beside the strip until you went through it; your last pass is marked on the strip 1`] = `
+"
+stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2                                                                  Round 6   Changes   Drafts 1    ?  
+╭─  Threads   Files   Search  ─────────╮╭─ What changed in v2 v1 → v2 · 9 files ────────────────────────────────────────────────────────────────────────────────── unified · wrap ─╮
+│ 9 files · 0 of 7 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2   ✓ Done up to v2  Space r m    whole branch  p                                                 │
+│                                      ││ 5 threads on this diff · 5 elsewhere ·  V  select lines ·  i  comment ·  ] t  [ t  step ·  Enter  opens                                  │
+│ CODE (5)                             ││                                                                                                                                          │
+│ [ ] src/admin/routes.ts         +6   ││ ▾ src/admin/routes.ts                                                                                                      +6  [ ] viewed│
+│ [ ] src/auth.ts              −3 +5 ●3││       1 + import { authorized } from "../auth.ts";                                                                                       │
+│ [ ] src/db.ts                   −1  1││       2 +                                                                                                                                │
+│ [ ] src/limiter.ts              +5  1││       3 + export async function adminRoutes(req: Request): Promise<Response> {                                                           │
+│ [ ] src/report.ts          −13 +16  1││       4 +   if (!authorized(req)) return new Response("unauthorized", { status: 401 });                                                  │
+│ DOCS (2)                             ││       5 +   return Response.json({ limiter: "on" });                                                                                     │
+│ [ ] README.md                −1 +3  1││       6 + }                                                                                                                              │
+│ [ ] docs/limits.png                  ││ ▾ src/auth.ts                                                                                                           −3 +5  [ ] viewed│
+│ TESTS WITH ONLY NEW CODE (1)         ││   1     - const KEY = process.env.API_KEY ?? "";                                                                                         │
+│ [ ] src/limiter.test.ts         +8   ││▌      1 + import { timingSafeEqual } from "node:crypto";                                                                                 │
+│ GENERATED AND LOCK FILES (1)         ││           ▲ #8   your turn   Nit: the import is fine, but \`KEY\` is a Buffer now; \`KEY_BYTES\`?                                            │
+│ [ ] bun.lock                    +5   ││       2 +                                                                                                                                │
+│                                      ││▌      3 + const KEY = Buffer.from(process.env.API_KEY ?? "");                                                                            │
+│                                      ││           ▲ #7   agent's turn   Read API_KEY once at startup and refuse to start when it is empty? Today an empty key accepts an empty h…│
+│                                      ││   2   4                                                                                                                                  │
+│                                      ││   3   5   export function authorized(req: Request): boolean {                                                                            │
+│                                      ││   4     -   const given = req.headers.get("x-api-key") ?? "";                                                                            │
+│                                      ││   5     -   return given === KEY;                                                                                                        │
+│                                      ││▌      6 +   const given = Buffer.from(req.headers.get("x-api-key") ?? "");                                                               │
+│                                      ││▌      7 +   return given.length === KEY.length && timingSafeEqual(given, KEY);                                                           │
+│                                      ││           ▲ #1   changed   your turn   \`===\` on secrets leaks timing. Use \`crypto.timingSafeEqual\` on equal-length buffers.              │
+│                                      ││   6   8   }                                                                                                                              │
+│                                      ││ ▾ src/db.ts                                                                                                                −1  [ ] viewed│
+│                                      ││       ⋯ 5 unchanged lines                                                                                                                │
+│                                      ││   6   6   const users = new Map<string, User>([["1", { id: "1", name: "Ada" }]]);                                                        │
+│                                      ││   7   7                                                                                                                                  │
+│                                      ││   8   8   export async function findUser(id: string): Promise<User | null> {                                                             │
+│                                      ││▌  9     -   console.log("findUser", id);                                                                                                 │
+│                                      ││           ▲ #3   outdated   your turn   Leftover debug log: please drop it.                                                              │
+│                                      ││  10   9     return users.get(id) ?? null;                                                                                                │
+│                                      ││  11  10   }                                                                                                                              │
+│                                      ││ ▾ src/limiter.ts                                                                                                           +5  [ ] viewed│
+│                                      ││       ⋯ 7 unchanged lines                                                                                                                │
+│                                      ││   8   8       if (list.length >= this.limit) return false;                                                                               │
+│                                      ││   9   9       list.push(now);                                                                                                            │
+│                                      ││  10  10       this.hits.set(key, list);                                                                                                  │
+│                                      ││      11 +     if (this.hits.size > 10_000) this.sweep(now);                                                                              │
+│                                      ││  11  12       return true;                                                                                                               │
+│                                      ││  12  13     }                                                                                                                            │
+╰──────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ CHANGES   j k  line   V  select   i  comment   ] t   [ t  thread   ] b   [ b  file   Enter  open   m  viewed   z a  fold   ] v   [ v  range   h  files   Space  menu   ?  keys     
+"
+`;
+
+exports[`120×40, 180×46, 80×24: “✓ Done up to v2” beside the strip until you went through it; your last pass is marked on the strip 2`] = `
+"
+stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2                                                                  Round 6   Changes   Drafts 1    ?  
+╭─  Threads   Files   Search  ─────────╮╭─ What changed in v2 v1 → v2 · 9 files ────────────────────────────────────────────────────────────────────────────────── unified · wrap ─╮
+│ 9 files · 0 of 7 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2 ✓    now = v2   ✓ you went through v2   whole branch  p                                                     │
+│                                      ││ 5 threads on this diff · 5 elsewhere ·  V  select lines ·  i  comment ·  ] t  [ t  step ·  Enter  opens                                  │
+│ CODE (5)                             ││                                                                                                                                          │
+│ [ ] src/admin/routes.ts         +6   ││ ▾ src/admin/routes.ts                                                                                                      +6  [ ] viewed│
+│ [ ] src/auth.ts              −3 +5 ●3││       1 + import { authorized } from "../auth.ts";                                                                                       │
+│ [ ] src/db.ts                   −1  1││       2 +                                                                                                                                │
+│ [ ] src/limiter.ts              +5  1││       3 + export async function adminRoutes(req: Request): Promise<Response> {                                                           │
+│ [ ] src/report.ts          −13 +16  1││       4 +   if (!authorized(req)) return new Response("unauthorized", { status: 401 });                                                  │
+│ DOCS (2)                             ││       5 +   return Response.json({ limiter: "on" });                                                                                     │
+│ [ ] README.md                −1 +3  1││       6 + }                                                                                                                              │
+│ [ ] docs/limits.png                  ││ ▾ src/auth.ts                                                                                                           −3 +5  [ ] viewed│
+│ TESTS WITH ONLY NEW CODE (1)         ││   1     - const KEY = process.env.API_KEY ?? "";                                                                                         │
+│ [ ] src/limiter.test.ts         +8   ││▌      1 + import { timingSafeEqual } from "node:crypto";                                                                                 │
+│ GENERATED AND LOCK FILES (1)         ││           ▲ #8   your turn   Nit: the import is fine, but \`KEY\` is a Buffer now; \`KEY_BYTES\`?                                            │
+│ [ ] bun.lock                    +5   ││       2 +                                                                                                                                │
+│                                      ││▌      3 + const KEY = Buffer.from(process.env.API_KEY ?? "");                                                                            │
+│                                      ││           ▲ #7   agent's turn   Read API_KEY once at startup and refuse to start when it is empty? Today an empty key accepts an empty h…│
+│                                      ││   2   4                                                                                                                                  │
+│                                      ││   3   5   export function authorized(req: Request): boolean {                                                                            │
+│                                      ││   4     -   const given = req.headers.get("x-api-key") ?? "";                                                                            │
+│                                      ││   5     -   return given === KEY;                                                                                                        │
+│                                      ││▌      6 +   const given = Buffer.from(req.headers.get("x-api-key") ?? "");                                                               │
+│                                      ││▌      7 +   return given.length === KEY.length && timingSafeEqual(given, KEY);                                                           │
+│                                      ││           ▲ #1   changed   your turn   \`===\` on secrets leaks timing. Use \`crypto.timingSafeEqual\` on equal-length buffers.              │
+│                                      ││   6   8   }                                                                                                                              │
+│                                      ││ ▾ src/db.ts                                                                                                                −1  [ ] viewed│
+│                                      ││       ⋯ 5 unchanged lines                                                                                                                │
+│                                      ││   6   6   const users = new Map<string, User>([["1", { id: "1", name: "Ada" }]]);                                                        │
+│                                      ││   7   7                                                                                                                                  │
+│                                      ││   8   8   export async function findUser(id: string): Promise<User | null> {                                                             │
+│                                      ││▌  9     -   console.log("findUser", id);                                                                                                 │
+│                                      ││           ▲ #3   outdated   your turn   Leftover debug log: please drop it.                                                              │
+│                                      ││  10   9     return users.get(id) ?? null;                                                                                                │
+│                                      ││  11  10   }                                                                                                                              │
+│                                      ││ ▾ src/limiter.ts                                                                                                           +5  [ ] viewed│
+│                                      ││       ⋯ 7 unchanged lines                                                                                                                │
+│                                      ││   8   8       if (list.length >= this.limit) return false;                                                                               │
+│                                      ││   9   9       list.push(now);                                                                                                            │
+│                                      ││  10  10       this.hits.set(key, list);                                                                                                  │
+│                                      ││      11 +     if (this.hits.size > 10_000) this.sweep(now);                                                                              │
+│                                      ││  11  12       return true;                                                                                                               │
+│                                      ││  12  13     }                                                                                                                            │
+╰──────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ CHANGES   j k  line   V  select   i  comment   ] t   [ t  thread   ] b   [ b  file   Enter  open   m  viewed   z a  fold   ] v   [ v  range   h  files   Space  menu   ?  keys     
+"
+`;
+
+exports[`120×40, 180×46, 80×24: the worktree moved after “now” was read: “↻ N files changed (R)” in the header, R a click away 1`] = `
+"
+stet  feature/rate-limit   v1   v2  now = v2  ↻ 2 files changed (R)                  Round 6   Changes   Drafts 1    ?  
+╭─  Threads   Files   Search  ─────────╮╭─ The branch up to now main → now · 9 files ───────────────── unified · wrap ─╮
+│ 9 files · 0 of 7 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2   ✓ Done up to now  Space r m       │
+│                                      ││ 8 threads on this diff · 2 elsewhere ·  V  select lines ·  i  comment ·  ] t…│
+│ CODE (5)                             ││                                                                              │
+│ [ ] src/admin/routes.ts         +6   ││ ▾ src/admin/routes.ts                                          +6  [ ] viewed│
+│ [ ] src/auth.ts                 +8 ●3││       1 + import { authorized } from "../auth.ts";                           │
+│ [ ] src/limiter.ts             +18  1││       2 +                                                                    │
+│ [ ] src/report.ts             +410  1││       3 + export async function adminRoutes(req: Request): Promise<Response> │
+│ [ ] src/routes.ts               +7 ●4││           {                                                                  │
+│ DOCS (2)                             ││       4 +   if (!authorized(req)) return new Response("unauthorized", { statu│
+│ [ ] README.md                −1 +3  1││           s: 401 });                                                         │
+│ [ ] docs/limits.png                  ││       5 +   return Response.json({ limiter: "on" });                         │
+│ TESTS WITH ONLY NEW CODE (1)         ││       6 + }                                                                  │
+│ [ ] src/limiter.test.ts         +8   ││ ▾ src/auth.ts                                                  +8  [ ] viewed│
+│ GENERATED AND LOCK FILES (1)         ││▌      1 + import { timingSafeEqual } from "node:crypto";                     │
+│ [ ] bun.lock                    +5   ││           ▲ #8   your turn   Nit: the import is fine, but \`KEY\` is a Buffer …│
+│                                      ││       2 +                                                                    │
+│                                      ││▌      3 + const KEY = Buffer.from(process.env.API_KEY ?? "");                │
+│                                      ││           ▲ #7   agent's turn   Read API_KEY once at startup and refuse to s…│
+│                                      ││       4 +                                                                    │
+│                                      ││       5 + export function authorized(req: Request): boolean {                │
+│                                      ││▌      6 +   const given = Buffer.from(req.headers.get("x-api-key") ?? "");   │
+│                                      ││▌      7 +   return given.length === KEY.length && timingSafeEqual(given, KEY)│
+│                                      ││           ;                                                                  │
+│                                      ││           ▲ #1   changed   your turn   \`===\` on secrets leaks timing. Use \`c…│
+│                                      ││       8 + }                                                                  │
+│                                      ││ ▾ src/limiter.ts                                              +18  [ ] viewed│
+│                                      ││       1 + export class RateLimiter {                                         │
+│                                      ││       2 +   private hits = new Map<string, number[]>();                      │
+│                                      ││       3 +                                                                    │
+│                                      ││       4 +   constructor(private readonly limit = 100, private readonly window│
+│                                      ││           Ms = 60_000) {}                                                    │
+│                                      ││       5 +                                                                    │
+│                                      ││       6 +   allow(key: string, now = Date.now()): boolean {                  │
+│                                      ││       7 +     const list = (this.hits.get(key) ?? []).filter((t) => now - t <│
+│                                      ││            this.windowMs);                                                   │
+│                                      ││       8 +     if (list.length >= this.limit) return false;                   │
+╰──────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────╯
+ CHANGES   j k  line   V  select   i  comment   ] t   [ t  thread   ] b   [ b  file   Enter  open   m  viewed   z a  fo…
 "
 `;
