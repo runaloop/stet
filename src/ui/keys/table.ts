@@ -62,7 +62,7 @@ export interface KeyRow {
   before?: Step[];
   /** Read by one UI only, where the two differ in the same place. */
   ui?: "web" | "tui";
-  /** Keys only a terminal reads, standing in for this row's keys a terminal may never deliver (`<Tab>` for `<C-i>`). */
+  /** Keys only a terminal reads, standing in for this row's keys a terminal may never deliver (`<C-g>` for `<C-S-CR>`). */
   fallback?: string[];
 }
 
@@ -278,7 +278,8 @@ const drafts: KeyRow[] = [
 const global: KeyRow[] = [
   { id: "help", keys: ["?", "<Space>?"], scope: "global", desc: "all keys" },
   { id: "jump.back", keys: ["<C-o>"], scope: "global", desc: "jump back (page, search hit, file jump)" },
-  { id: "jump.forward", keys: ["<C-i>"], scope: "global", fallback: ["<Tab>"], desc: "jump forward" },
+  // Vim reads Tab as Ctrl+I; the terminal UI has Tab for its columns, so ]j stands in there.
+  { id: "jump.forward", keys: ["<C-i>"], scope: "global", fallback: ["]j"], desc: "jump forward" },
   { id: "tab.changes", keys: ["v", "<Space>rv"], scope: "global", desc: "changes since you last looked", short: "changes since last look" },
   { id: "tab.drafts", keys: ["s"], scope: "global", desc: "your drafts" },
   { id: "tab.drafts", keys: ["<Space>rd"], scope: "global", desc: "drafts" },

@@ -86,7 +86,7 @@ describe("the key table", () => {
     expect(workingKeys(row("composer.draft", "composer"), legacy)).toEqual(["<C-s>"]);
     expect(workingKeys(row("picker.from", "picker"), legacy)).toEqual(["<C-f>", "<C-r>"]);
     expect(workingKeys(row("picker.from", "picker"), orca)).toEqual(["<C-r>"]);
-    expect(workingKeys(row("jump.forward", "global"), legacy)).toEqual(["<Tab>"]);
+    expect(workingKeys(row("jump.forward", "global"), legacy)).toEqual(["]j"]);
     expect(arrives("<C-f>", orca)).toBe(false);
     expect(arrives("<C-f>", legacy)).toBe(true);
     const enter = arrivingAs("<CR>", KEYS.filter((r) => r.scope === "composer"), legacy);
