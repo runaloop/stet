@@ -18,8 +18,10 @@ import { flushTrace, trace, tracing } from "./trace.ts";
 import { Highlighter } from "./diff/highlight.ts";
 import { ComposerView } from "./composer.ts";
 import { KeyReader } from "./keys/input.ts";
-import { KeyMatcher, rowsIn } from "./keys/match.ts";
-import { KEYS, tokens, type Scope } from "./keys/table.ts";
+import { KeyMatcher, rowFor, runRow, type Actions } from "../ui/keys/match.ts";
+import { tokens } from "../ui/keys/names.ts";
+import { COUNT_SCOPES, KEYS, type KeyRow, type Scope } from "../ui/keys/table.ts";
+import { menuEntries, OFF, rowOf, SCOPE, tuiReader } from "./keys/menu.ts";
 import { ordered, threadGroups } from "./model.ts";
 import { columnOf, helpFor, initialView, render, scopeOf, type Writing } from "./render.ts";
 import { hitAt, hitsOf, type Hit } from "./grid.ts";
@@ -61,7 +63,10 @@ export class App {
   private hits: Hit[] = [];
   private landedTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly keys = new KeyReader();
-  private readonly matcher = new KeyMatcher(KEYS, (row) => this.run(row.id));
+  private readonly actions = this.registry();
+  private readonly conditions = { drafts: () => this.v.data.drafts.length > 0 };
+  private readonly reader = tuiReader(new Set(Object.keys(this.actions)));
+  private readonly matcher = new KeyMatcher(() => KEYS, this.reader, (row) => this.runRow(row));
   readonly screen: Screen;
   private readonly composer: ComposerView;
   private readonly texts: Texts;
@@ -777,324 +782,325 @@ export class App {
     }
   }
 
-  /** The Changes tab's keys; false for the others. */
-  private runChanges(id: string, n: number): boolean {
-    const v = this.v;
-    const c = v.changes;
-    const d = c.diff;
-    const move = (to: number, align: "nearest" | "top" | "center" = "nearest") => {
-      if (to === -1) return;
-      d.goTo(to, align);
+  // --- actions: what the keys run, by the ids of the shared key table (src/ui/keys/table.ts), one record per page.
+  // The records only make closures: nothing in them reads the state until a key runs, so App.ids() can list them.
+
+  /** Every action the terminal runs, and the rows it lists without running them yet (OFF). */
+  private registry(): Actions {
+    return { ...this.roundActions(), ...this.draftsActions(), ...this.changesActions(), ...this.globalActions(), ...this.boxActions(), ...this.offActions() };
+  }
+
+  /** The ids the terminal reads rows for, where there is no app: the menus and help in frame tests. */
+  static ids(): ReadonlySet<string> {
+    return new Set(Object.keys(App.prototype.registry.call(Object.create(App.prototype) as App)));
+  }
+
+  /** The Round tab: the thread list, the files, the thread's code and conversation. */
+  private roundActions(): Actions {
+    const v = () => this.v;
+    const half = () => Math.max(1, Math.floor(this.v.geom.page / 2));
+    const list = () => ordered(this.v.data, this.v.filter, this.v.selected);
+    const toFile = (dir: 1 | -1) => () => {
+      const cur = this.v.selected;
+      const next = stepFile(threadGroups(this.v.data, this.v.filter, cur), cur, dir);
+      if (next === cur || next === null) return this.say(dir === 1 ? "the last file" : "the first file");
+      this.select(next);
+      this.land(next);
+    };
+    const unread = (dir: 1 | -1) => () => {
+      const next = stepUnread(list(), this.v.selected, dir);
+      if (next === null) return this.say("no unread threads");
+      this.select(next);
+    };
+    const thread = (dir: 1 | -1) => () => {
+      const cur = this.v.selected;
+      const next = stepThread(list(), cur, dir);
+      if (next === cur) return this.say(dir === 1 ? "the last thread" : "the first thread");
+      this.select(next);
+    };
+    const focusStep = (dir: 1 | -1) => () => {
+      if (v().tab === "changes") {
+        v().changes.focus = v().changes.focus === "list" ? "diff" : "list";
+        return this.redraw();
+      }
+      if (v().tab !== "round") return;
+      const cols = v().geom.columns;
+      if (cols === 1) return this.focus(v().focus === "list" ? "code" : "list");
+      const order = cols === 3 ? (["list", "code", "conv"] as const) : (["list", "code"] as const);
+      const at = Math.max(0, order.indexOf(v().focus as never));
+      this.focus(order[(at + (dir === 1 ? 1 : order.length - 1)) % order.length]!);
+    };
+    const wider = (next: () => void) => () => {
+      next();
+      v().tops.code = v().tops.thread = 0;
+      void this.loadWide();
+      this.redraw();
+    };
+    return {
+      quit: () => this.end({ code: 0 }),
+      "list.down": () => this.moveList(1),
+      "list.up": () => this.moveList(-1),
+      "list.first": () => this.moveList("first"),
+      "list.last": () => this.moveList("last"),
+      "list.pageDown": () => this.moveList(Math.max(1, Math.floor(half() / 2))),
+      "list.pageUp": () => this.moveList(-Math.max(1, Math.floor(half() / 2))),
+      "files.down": () => this.moveFile(1),
+      "files.up": () => this.moveFile(-1),
+      "files.first": () => this.moveFile("first"),
+      "files.last": () => this.moveFile("last"),
+      "files.open": () => {
+        const path = v().fileSel;
+        if (!path || !v().data.threads.some((t) => fileOf(t) === path)) return this.say("no threads in this file");
+        this.focus("code");
+      },
+      "side.files": () => this.setSide("files"),
+      "side.threads": () => this.setSide("threads"),
+      "list.open": () => void (v().selected !== null && this.focus("code")),
+      "list.close": () => {
+        if (v().tab === "changes") {
+          v().changes.focus = "diff";
+          return this.redraw();
+        }
+        if (v().geom.columns === 1 && v().detail) this.focus("code");
+      },
+      "list.reply": () => {
+        const id = v().selected;
+        if (id === null) return;
+        this.focus(v().geom.columns === 3 ? "conv" : "code");
+        this.write({ kind: "reply", thread: id });
+      },
+      "thread.nextFile": toFile(1),
+      "thread.prevFile": toFile(-1),
+      "unread.next": unread(1),
+      "unread.prev": unread(-1),
+      "thread.next": thread(1),
+      "thread.prev": thread(-1),
+      "focus.next": focusStep(1),
+      "focus.prev": focusStep(-1),
+      "focus.left": () => {
+        const cols = v().geom.columns;
+        if (v().back === "changes" && !(cols === 3 && v().focus === "conv")) {
+          v().back = null;
+          return this.setTab("changes");
+        }
+        this.focus(cols === 3 && v().focus === "conv" ? "code" : "list");
+      },
+      "focus.right": () => this.focus("conv"),
+      "scroll.down": () => this.scroll(1),
+      "scroll.up": () => this.scroll(-1),
+      "scroll.pageDown": () => this.scroll(half()),
+      "scroll.pageUp": () => this.scroll(-half()),
+      "scroll.top": () => this.scroll("top"),
+      "scroll.bottom": () => this.scroll("bottom"),
+      "msg.next": () => this.message(1),
+      "msg.prev": () => this.message(-1),
+      "code.view": () => {
+        const d = v().detail;
+        if (!d) return;
+        const views = codeViews(d);
+        if (views.length < 2) return this.say("the thread's code has one view only");
+        wider(() => {
+          const view = views[(views.indexOf(v().view ?? views[0]!) + 1) % views.length]!;
+          v().view = view;
+          if (!scopesOf(d, view).includes(v().scope)) v().scope = "around";
+        })();
+      },
+      "code.more": () => {
+        const d = v().detail;
+        if (!d) return;
+        const scopes = scopesOf(d, threadCode(d, v().view).view);
+        if (scopes.length < 2) return this.say("the thread's code has no wider scope");
+        wider(() => (v().scope = scopes[(Math.max(0, scopes.indexOf(v().scope)) + 1) % scopes.length]!))();
+      },
+      "thread.reply": () => {
+        const id = v().selected;
+        if (id !== null) this.write({ kind: "reply", thread: id });
+      },
+      "thread.resolve": () => void this.resolve(),
+      "thread.reopen": () => void this.reopen(),
+    };
+  }
+
+  /** The Drafts tab. */
+  private draftsActions(): Actions {
+    const v = () => this.v;
+    return {
+      "drafts.down": () => this.moveDraft(1),
+      "drafts.up": () => this.moveDraft(-1),
+      "drafts.open": () => {
+        const c = this.selectedDraft();
+        if (!c) return;
+        v().tab = "round";
+        if (!ordered(v().data, v().filter, c.threadId).some((t) => t.id === c.threadId)) v().filter = { status: "all", newOnly: false };
+        this.select(c.threadId);
+        this.focus("code");
+      },
+      "drafts.edit": () => {
+        const c = this.selectedDraft();
+        if (c) this.write({ kind: "edit", comment: c.id, thread: c.threadId }, c.body);
+      },
+      "drafts.discard": () => void this.discard(),
+      "drafts.summary": () => this.write({ kind: "summary" }, v().summary),
+      "review.changes": () => void this.requestChanges(),
+      "review.approve": () => void this.approve(),
+      "drafts.guide": () => {
+        if (!v().data.drafts.length) return this.say("a guide goes with Request changes: there are no drafts", "error");
+        v().guide = !v().guide;
+        this.redraw();
+      },
+      "tab.round": () => this.setTab("round"),
+    };
+  }
+
+  /** The Changes tab: its diff and its files. */
+  private changesActions(): Actions {
+    const c = () => this.v.changes;
+    const d = () => this.v.changes.diff;
+    const move = (to: () => number, align: "nearest" | "top" | "center" = "nearest") => () => {
+      const at = to();
+      if (at === -1) return;
+      d().goTo(at, align);
       this.followDiff();
     };
-    const repeat = (step: () => number, align: "nearest" | "top" | "center" = "nearest") => {
+    const repeat = (step: () => number, align: "nearest" | "top" | "center" = "nearest") => (n: number) => {
       let to = -1;
       for (let i = 0; i < n; i++) {
         const next = step();
         if (next === -1) break;
         to = next;
-        d.goTo(next, align);
+        d().goTo(next, align);
       }
       if (to === -1) this.say("nothing further that way");
       this.followDiff();
     };
-    switch (id) {
-      case "diff.down":
-        return move(d.cursor + n), true;
-      case "diff.up":
-        return move(d.cursor - n), true;
-      case "diff.first":
-        return move(0, "top"), true;
-      case "diff.last":
-        return move(d.rows.len - 1), true;
-      case "diff.pageDown":
-      case "diff.pageUp":
-        d.page(id === "diff.pageDown" ? 1 : -1);
-        return this.followDiff(), true;
-      case "diff.nextChange":
-      case "diff.prevChange":
-        return repeat(() => d.nextChange(id === "diff.nextChange" ? 1 : -1)), true;
-      case "diff.nextHunk":
-      case "diff.prevHunk":
-        return repeat(() => d.nextHunk(id === "diff.nextHunk" ? 1 : -1)), true;
-      case "diff.nextFile":
-      case "diff.prevFile":
-        return repeat(() => d.nextFile(id === "diff.nextFile" ? 1 : -1), "top"), true;
-      case "diff.nextThread":
-      case "diff.prevThread":
-        return this.stepThread(id === "diff.nextThread" ? 1 : -1), true;
-      case "diff.center":
-        d.reveal("center");
-        return this.redraw(), true;
-      case "diff.open":
-      case "diff.close":
-      case "diff.toggle":
-        return this.fold(id === "diff.open" ? true : id === "diff.close" ? false : "toggle", c.focus === "list"), true;
-      case "diff.openAll":
-      case "diff.closeAll":
-        return this.foldAll(id === "diff.openAll"), true;
-      case "diff.right":
-      case "diff.left":
-        if (c.wrap) return this.say("w turns wrap off; then the code scrolls sideways"), true;
-        d.scrollSide((id === "diff.right" ? 8 : -8) * n);
-        return this.redraw(), true;
-      case "diff.enter":
-        return this.enter(), true;
-      case "diff.viewed":
-        return void this.toggleViewed(), true;
-      case "range.toNext":
-      case "range.toPrev":
-        return this.shiftRange("to", id === "range.toNext" ? 1 : -1), true;
-      case "range.fromNext":
-      case "range.fromPrev":
-        return this.shiftRange("from", id === "range.fromNext" ? 1 : -1), true;
-      case "range.preset":
-        return this.nextPreset(), true;
-      case "changes.files":
-        c.focus = "list";
-        return this.redraw(), true;
-      case "cfiles.down":
-      case "cfiles.up":
-        return this.moveListFile(id === "cfiles.down" ? n : -n), true;
-      case "cfiles.first":
-      case "cfiles.last":
-        return this.moveListFile(id === "cfiles.first" ? "first" : "last"), true;
-      case "cfiles.open": {
-        const row = c.rows.find((r) => r.fd.name === c.sel);
+    const side = (by: number) => (n: number) => {
+      if (c().wrap) return this.say("w turns wrap off; then the code scrolls sideways");
+      d().scrollSide(by * n);
+      this.redraw();
+    };
+    return {
+      "diff.down": (n) => move(() => d().cursor + n)(),
+      "diff.up": (n) => move(() => d().cursor - n)(),
+      "diff.first": move(() => 0, "top"),
+      "diff.last": move(() => d().rows.len - 1),
+      "diff.pageDown": () => (d().page(1), this.followDiff()),
+      "diff.pageUp": () => (d().page(-1), this.followDiff()),
+      "diff.nextChange": repeat(() => d().nextChange(1)),
+      "diff.prevChange": repeat(() => d().nextChange(-1)),
+      "diff.nextHunk": repeat(() => d().nextHunk(1)),
+      "diff.prevHunk": repeat(() => d().nextHunk(-1)),
+      "diff.nextFile": repeat(() => d().nextFile(1), "top"),
+      "diff.prevFile": repeat(() => d().nextFile(-1), "top"),
+      "diff.nextThread": () => this.stepThread(1),
+      "diff.prevThread": () => this.stepThread(-1),
+      "diff.center": () => (d().reveal("center"), this.redraw()),
+      "diff.open": () => this.fold(true, c().focus === "list"),
+      "diff.close": () => this.fold(false, c().focus === "list"),
+      "diff.toggle": () => this.fold("toggle", c().focus === "list"),
+      "diff.openAll": () => this.foldAll(true),
+      "diff.closeAll": () => this.foldAll(false),
+      "diff.right": side(8),
+      "diff.left": side(-8),
+      "diff.enter": () => this.enter(),
+      "diff.viewed": () => void this.toggleViewed(),
+      "range.toNext": () => this.shiftRange("to", 1),
+      "range.toPrev": () => this.shiftRange("to", -1),
+      "range.fromNext": () => this.shiftRange("from", 1),
+      "range.fromPrev": () => this.shiftRange("from", -1),
+      "range.preset": () => this.nextPreset(),
+      "changes.files": () => ((c().focus = "list"), this.redraw()),
+      "changes.back": () => this.setTab("round"),
+      "cfiles.down": (n) => this.moveListFile(n),
+      "cfiles.up": (n) => this.moveListFile(-n),
+      "cfiles.first": () => this.moveListFile("first"),
+      "cfiles.last": () => this.moveListFile("last"),
+      "cfiles.open": () => {
+        const row = c().rows.find((r) => r.fd.name === c().sel);
         if (row?.hidden && row.group) this.toggleGroup(row.group, true);
-        if (c.sel) this.goToFile(c.sel);
-        c.focus = "diff";
-        return this.redraw(), true;
-      }
-      case "diff.wrap":
-        c.wrap = !c.wrap;
-        d.setWrap(c.wrap);
-        v.code.diff.setWrap(c.wrap);
-        v.draftCode.diff.setWrap(c.wrap);
-        return this.say(c.wrap ? "long lines wrap" : "long lines are cut: zl / zh scroll sideways"), true;
-      case "diff.layout":
-        c.layout = d.split ? "unified" : "split";
-        d.setLayout(c.layout);
-        return this.say(`${c.layout} diff`), true;
-      case "diff.tests":
-        return this.toggleGroup("tests"), true;
-    }
-    return false;
+        if (c().sel) this.goToFile(c().sel!);
+        c().focus = "diff";
+        this.redraw();
+      },
+      "diff.wrap": () => {
+        c().wrap = !c().wrap;
+        d().setWrap(c().wrap);
+        this.v.code.diff.setWrap(c().wrap);
+        this.v.draftCode.diff.setWrap(c().wrap);
+        this.say(c().wrap ? "long lines wrap" : "long lines are cut: zl / zh scroll sideways");
+      },
+      "diff.layout": () => {
+        c().layout = d().split ? "unified" : "split";
+        d().setLayout(c().layout);
+        this.say(`${c().layout} diff`);
+      },
+      "diff.tests": () => this.toggleGroup("tests"),
+    };
   }
 
-  // --- actions
+  /** The keys of every tab. */
+  private globalActions(): Actions {
+    const v = () => this.v;
+    return {
+      "filter.resolved": () => {
+        v().filter = { ...v().filter, status: v().filter.status === "open" ? "all" : "open", newOnly: false };
+        if (v().changes.data) syncChanges(v().data, v().changes, v().filter.status === "all");
+        this.say(v().filter.status === "all" ? "showing all threads" : "showing open threads and drafts");
+      },
+      "filter.news": () => {
+        v().filter = { ...v().filter, newOnly: !v().filter.newOnly };
+        if (v().tab !== "round") this.setTab("round");
+        this.say(v().filter.newOnly ? "showing only threads with news" : "showing every thread again");
+      },
+      "tab.drafts": () => this.setTab("drafts"),
+      "tab.changes": () => {
+        const r = defaultCompare(refsOf(v().data), v().changes.reviewed);
+        this.openRange(r.from, r.to);
+      },
+      submit: () => this.setTab("drafts"),
+      refresh: () => void this.refreshNow(),
+      help: () => this.openHelp(),
+    };
+  }
 
-  private run(id: string, n = 1): void {
-    const v = this.v;
-    if (this.runChanges(id, n)) return;
-    const off = KEYS.find((r) => r.id === id)?.off;
-    if (off === "browser") return void this.browser(KEYS.find((r) => r.id === id)!.short ?? KEYS.find((r) => r.id === id)!.desc);
-    if (off === "later") return this.say(`${KEYS.find((r) => r.id === id)!.desc}: not in the terminal yet`);
-    const half = Math.max(1, Math.floor(v.geom.page / 2));
-    const cur = v.selected;
-    const list = () => ordered(v.data, v.filter, cur);
-    const cols = v.geom.columns;
-    switch (id) {
-      case "quit":
-        return this.end({ code: 0 });
-      case "list.down":
-        return this.moveList(1);
-      case "list.up":
-        return this.moveList(-1);
-      case "list.first":
-        return this.moveList("first");
-      case "list.last":
-        return this.moveList("last");
-      case "list.pageDown":
-        return this.moveList(Math.max(1, Math.floor(half / 2)));
-      case "list.pageUp":
-        return this.moveList(-Math.max(1, Math.floor(half / 2)));
-      case "files.down":
-        return this.moveFile(1);
-      case "files.up":
-        return this.moveFile(-1);
-      case "files.first":
-        return this.moveFile("first");
-      case "files.last":
-        return this.moveFile("last");
-      case "files.open": {
-        const path = v.fileSel;
-        if (!path || !v.data.threads.some((t) => fileOf(t) === path)) return this.say("no threads in this file");
-        return this.focus("code");
-      }
-      case "side.files":
-        return this.setSide("files");
-      case "side.threads":
-        return this.setSide("threads");
-      case "list.open":
-        if (v.selected !== null) this.focus("code");
-        return;
-      case "list.close":
-        if (v.tab === "changes") {
-          v.changes.focus = "diff";
-          return this.redraw();
-        }
-        if (cols === 1 && v.detail) this.focus("code");
-        return;
-      case "list.reply":
-        if (v.selected === null) return;
-        this.focus(cols === 3 ? "conv" : "code");
-        return this.write({ kind: "reply", thread: v.selected });
-      case "list.nextFile":
-      case "list.prevFile":
-      case "thread.nextFile":
-      case "thread.prevFile": {
-        const next = stepFile(threadGroups(v.data, v.filter, cur), cur, id.endsWith("nextFile") ? 1 : -1);
-        if (next === cur || next === null) return this.say(id.endsWith("nextFile") ? "the last file" : "the first file");
-        this.select(next);
-        return this.land(next);
-      }
-      case "unread.next":
-      case "unread.prev": {
-        const next = stepUnread(list(), cur, id === "unread.next" ? 1 : -1);
-        if (next === null) return this.say("no unread threads");
-        return this.select(next);
-      }
-      case "thread.next":
-      case "thread.prev": {
-        const next = stepThread(list(), cur, id === "thread.next" ? 1 : -1);
-        if (next === cur) return this.say(id === "thread.next" ? "the last thread" : "the first thread");
-        return this.select(next);
-      }
-      case "filter.resolved":
-        v.filter = { ...v.filter, status: v.filter.status === "open" ? "all" : "open", newOnly: false };
-        if (v.changes.data) syncChanges(v.data, v.changes, v.filter.status === "all");
-        return this.say(v.filter.status === "all" ? "showing all threads" : "showing open threads and drafts");
-      case "filter.news":
-        v.filter = { ...v.filter, newOnly: !v.filter.newOnly };
-        if (v.tab !== "round") this.setTab("round");
-        return this.say(v.filter.newOnly ? "showing only threads with news" : "showing every thread again");
-      case "focus.next":
-      case "focus.prev": {
-        if (v.tab === "changes") {
-          v.changes.focus = v.changes.focus === "list" ? "diff" : "list";
-          return this.redraw();
-        }
-        if (v.tab !== "round") return;
-        if (cols === 1) return this.focus(v.focus === "list" ? "code" : "list");
-        const order = cols === 3 ? (["list", "code", "conv"] as const) : (["list", "code"] as const);
-        const at = Math.max(0, order.indexOf(v.focus as never));
-        return this.focus(order[(at + (id === "focus.next" ? 1 : order.length - 1)) % order.length]!);
-      }
-      case "focus.left":
-        if (v.back === "changes" && !(cols === 3 && v.focus === "conv")) {
-          v.back = null;
-          return this.setTab("changes");
-        }
-        return this.focus(cols === 3 && v.focus === "conv" ? "code" : "list");
-      case "focus.right":
-        return this.focus("conv");
-      case "scroll.down":
-        return this.scroll(1);
-      case "scroll.up":
-        return this.scroll(-1);
-      case "scroll.pageDown":
-        return this.scroll(half);
-      case "scroll.pageUp":
-        return this.scroll(-half);
-      case "scroll.top":
-        return this.scroll("top");
-      case "scroll.bottom":
-        return this.scroll("bottom");
-      case "msg.next":
-        return this.message(1);
-      case "msg.prev":
-        return this.message(-1);
-      case "code.view": {
-        const d = v.detail;
-        if (!d) return;
-        const views = codeViews(d);
-        if (views.length < 2) return this.say("the thread's code has one view only");
-        const at = views.indexOf(v.view ?? views[0]!);
-        v.view = views[(at + 1) % views.length]!;
-        if (!scopesOf(d, v.view).includes(v.scope)) v.scope = "around";
-        v.tops.code = v.tops.thread = 0;
-        void this.loadWide();
-        return this.redraw();
-      }
-      case "code.more": {
-        const d = v.detail;
-        if (!d) return;
-        const scopes = scopesOf(d, threadCode(d, v.view).view);
-        if (scopes.length < 2) return this.say("the thread's code has no wider scope");
-        v.scope = scopes[(Math.max(0, scopes.indexOf(v.scope)) + 1) % scopes.length]!;
-        v.tops.code = v.tops.thread = 0;
-        void this.loadWide();
-        return this.redraw();
-      }
-      case "thread.reply":
-        if (v.selected !== null) this.write({ kind: "reply", thread: v.selected });
-        return;
-      case "thread.resolve":
-        return void this.resolve();
-      case "thread.reopen":
-        return void this.reopen();
-      case "drafts.down":
-        return this.moveDraft(1);
-      case "drafts.up":
-        return this.moveDraft(-1);
-      case "drafts.open": {
-        const c = this.selectedDraft();
-        if (!c) return;
-        v.tab = "round";
-        if (!ordered(v.data, v.filter, c.threadId).some((t) => t.id === c.threadId)) v.filter = { status: "all", newOnly: false };
-        this.select(c.threadId);
-        return this.focus("code");
-      }
-      case "drafts.edit": {
-        const c = this.selectedDraft();
-        if (c) this.write({ kind: "edit", comment: c.id, thread: c.threadId }, c.body);
-        return;
-      }
-      case "drafts.discard":
-        return void this.discard();
-      case "drafts.summary":
-        return this.write({ kind: "summary" }, v.summary);
-      case "drafts.approve":
-        return void this.approve();
-      case "drafts.changes":
-        return void (v.data.drafts.length ? this.requestChanges() : this.approve());
-      case "drafts.guide":
-        if (!v.data.drafts.length) return this.say("a guide goes with Request changes: there are no drafts", "error");
-        v.guide = !v.guide;
-        return this.redraw();
-      case "tab.round":
-        return this.setTab("round");
-      case "tab.drafts":
-        return this.setTab("drafts");
-      case "tab.changes": {
-        const r = defaultCompare(refsOf(v.data), v.changes.reviewed);
-        return this.openRange(r.from, r.to);
-      }
-      case "submit":
-        return this.setTab("drafts");
-      case "refresh":
-        return void this.refreshNow();
-      case "help":
-        return this.openHelp();
-      case "help.down":
-      case "help.up":
-        v.tops.help = Math.max(0, v.tops.help + (id === "help.down" ? 1 : -1));
-        return this.redraw();
-      case "help.close":
-        v.help = null;
-        return this.redraw();
-      case "choice.down":
-      case "choice.up": {
-        const c = v.choice;
-        if (c) c.at = (c.at + (id === "choice.down" ? 1 : c.options.length - 1)) % c.options.length;
-        return this.redraw();
-      }
-      case "choice.pick":
-        return this.pick(v.choice?.at ?? 0);
-      case "choice.cancel":
-        return this.pick(null);
-    }
+  /** The boxes over a tab: the keys list and a question. The reply box runs its keys in composerKey. */
+  private boxActions(): Actions {
+    const v = () => this.v;
+    return {
+      "help.down": () => ((v().tops.help = Math.max(0, v().tops.help + 1)), this.redraw()),
+      "help.up": () => ((v().tops.help = Math.max(0, v().tops.help - 1)), this.redraw()),
+      "help.close": () => ((v().help = null), this.redraw()),
+      "choice.down": () => this.moveChoice(1),
+      "choice.up": () => this.moveChoice(-1),
+      "choice.pick": () => this.pick(v().choice?.at ?? 0),
+      "choice.cancel": () => this.pick(null),
+      "composer.draft": () => void this.send("draft"),
+      "composer.now": () => void this.send(v().writing?.kind === "reply" ? "now" : "draft"),
+      "composer.leave": () => this.leave(),
+    };
+  }
+
+  /** The rows the terminal lists but does not run yet. */
+  private offActions(): Actions {
+    return Object.fromEntries(
+      Object.entries(OFF).map(([id, off]) => [
+        id,
+        () => {
+          const row = rowOf(id);
+          if (off === "browser") void this.browser(row?.short ?? row?.desc ?? id);
+          else this.say(`${row?.desc ?? id}: not in the terminal yet`);
+        },
+      ]),
+    );
+  }
+
+  private moveChoice(dir: 1 | -1): void {
+    const c = this.v.choice;
+    if (c) c.at = (c.at + (dir === 1 ? 1 : c.options.length - 1)) % c.options.length;
+    this.redraw();
+  }
+
+  private runRow(row: KeyRow, n = 1): void {
+    runRow(row, n, this.actions, this.conditions);
   }
 
   private async resolve(): Promise<void> {
@@ -1371,9 +1377,8 @@ export class App {
   /** A key chip clicked: its keys run as if typed. */
   private runKeys(keys: string): void {
     if (this.composer.open) {
-      const row = rowsIn(KEYS, ["composer"]).find((c) => c.keys === keys)?.row;
-      if (row?.id === "composer.leave") this.leave();
-      else if (row) void this.send(row.id === "composer.now" && this.v.writing?.kind === "reply" ? "now" : "draft");
+      const row = rowFor(KEYS, keys, ["composer"], this.reader);
+      if (row) this.runRow(row);
       return;
     }
     if (this.v.choice && /^[1-9]$/.test(keys)) return this.pick(Number(keys) - 1);
@@ -1382,18 +1387,19 @@ export class App {
     for (const token of tokens(keys)) {
       const m = this.matcher.feed(token, this.scopes());
       this.syncPrefix();
-      if ("fire" in m) this.run(m.fire.id);
+      if ("fire" in m) this.runRow(m.fire);
     }
     this.redraw();
   }
 
   // --- keys
 
+  /** Where keys go: the box over the screen alone, else the column in focus and then everywhere. */
   private scopes(): Scope[] {
     const sc = scopeOf(this.v);
-    if (sc === "menu") return [columnOf(this.v), "global"];
-    if (sc === "help" || sc === "choice" || sc === "composer") return [sc];
-    return [sc, "global"];
+    if (sc === "menu") return [SCOPE[columnOf(this.v)], "global"];
+    if (sc === "help" || sc === "choice" || sc === "composer") return [SCOPE[sc]];
+    return [SCOPE[sc], "global"];
   }
 
   private key(k: KeyEvent): void {
@@ -1410,8 +1416,7 @@ export class App {
       if (at < v.choice.options.length) this.pick(at);
       return;
     }
-    const sc = scopeOf(v);
-    if ((sc === "changes" || sc === "cfiles") && !this.matcher.prefix.length && /^[0-9]$/.test(token) && (token !== "0" || v.count)) {
+    if (COUNT_SCOPES.has(this.scopes()[0]!) && !this.matcher.prefix.length && /^[0-9]$/.test(token) && (token !== "0" || v.count)) {
       v.count += token;
       return this.redraw();
     }
@@ -1427,7 +1432,7 @@ export class App {
         this.syncPrefix();
         const n = m.fire.count ? Math.max(1, Number(v.count) || 1) : 1;
         v.count = "";
-        return this.run(m.fire.id, n);
+        return this.runRow(m.fire, n);
       }
     }
     this.syncPrefix();
@@ -1436,7 +1441,7 @@ export class App {
 
   private syncPrefix(): void {
     this.v.prefix = [...this.matcher.prefix];
-    this.v.next = this.v.prefix.length ? this.matcher.next(this.scopes()) : [];
+    this.v.next = this.v.prefix.length ? menuEntries(this.matcher.next(this.scopes())) : [];
   }
 
   private composerKey(k: KeyEvent, token: string): void {
@@ -1448,15 +1453,14 @@ export class App {
       return this.leave();
     }
     this.lastJ = token === "j" ? now : 0;
-    const row = rowsIn(KEYS, ["composer"]).find((c) => c.keys === token)?.row;
+    const row = rowFor(KEYS, token, ["composer"], this.reader);
     if (!row) return;
     k.preventDefault();
-    if (row.id === "composer.leave") this.leave();
-    else void this.send(row.id === "composer.now" && this.v.writing?.kind === "reply" ? "now" : "draft");
+    this.runRow(row);
   }
 
   private openHelp(): void {
-    this.v.help = helpFor(columnOf(this.v));
+    this.v.help = helpFor(columnOf(this.v), this.reader);
     this.v.tops.help = 0;
     this.redraw();
   }

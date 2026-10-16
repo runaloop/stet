@@ -170,13 +170,13 @@ stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v
 │   #11 L13  draft                     ││   this branch.                                                               │
 │   Should 401 come with a \`www-authen…││                                                                              │
 │ src/server.ts                       1││                                                                              │
-│   #10 L3  agent's turn               ││  Enter  or  l  go into the thread ·  r  reply here                           │
-│   \`Number(undefined ?? 8080)\` is fin…││                            ╭─ Space ────────────────────────────────────────╮│
-│                                      ││                            │ f +find                 r +review              ││
-│ 2 resolved hidden ·  Space u r       ││                            │ s +search               g +git                 ││
-│                                      ││                            │ u +ui toggles           e files of the review  ││
+│   #10 L3  agent's turn               ││  Enter  or  l  go into the ╭─ Space ────────────────────────────────────────╮│
+│   \`Number(undefined ?? 8080)\` is fin…││                            │ f +find                 r +review              ││
+│                                      ││                            │ s +search               g +git                 ││
+│ 2 resolved hidden ·  Space u r       ││                            │ u +ui toggles           e files of the review  ││
 │                                      ││                            │ Space find a file       / search all files ↗   ││
 │                                      ││                            │ n threads with news     ? all keys             ││
+│                                      ││                            │ w +columns                                     ││
 │                                      ││                            │                                                ││
 │                                      ││                            │ ↗ opens in the browser · grey: comes later     ││
 │                                      ││                            │ a key runs it or opens its group · Esc closes  ││
@@ -366,14 +366,14 @@ stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v
 │ │  Shift+drag           selects text in most terminals while the mouse is on (Option+drag in iTerm2)               │ │
 │ │                                                                                                                  │ │
 │ │ Everywhere                                                                                                       │ │
-│ │  Space e              the changed files, in the left column                                                      │ │
-│ │  Space s t            the threads, in the left column                                                            │ │
-│ │  Tab                  next column                                                                                │ │
-│ │  Shift+Tab            previous column                                                                            │ │
-│ │  S  Space r s         drafts, then S again submits: request changes (approve when there are no drafts)           │ │
+│ │  ?  Space ?           all keys                                                                                   │ │
+│ │  v  Space r v         changes since you last looked                                                              │ │
 │ │  s  Space r d         your drafts                                                                                │ │
-│ │  Space r v            changes since you last looked                                                              │ │
+│ │  S  Space r s         drafts, then S again submits (approves when there are no drafts)                           │ │
+│ │  w  Space u w         wrap long lines                                                                            │ │
 │ │  R  Space r r         re-read “now” from the working tree                                                        │ │
+│ │  Space g s            git state: pushed or not, staged, not staged, new files · not in the terminal yet          │ │
+│ │  Space f v            find a version: what changed in it, or make it from / to · not in the terminal yet         │ │
 ╰─╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯─╯
  KEYS   j k  scroll   Esc  close                                                                                        
 "

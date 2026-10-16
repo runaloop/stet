@@ -10,13 +10,16 @@ import { colorMode } from "../../src/tui/diff/colors.ts";
 import { Screen } from "../../src/tui/screen.ts";
 import { fetchWide, scopesOf, wideKey } from "../../src/tui/code.ts";
 import { rowText } from "../../src/tui/grid.ts";
-import { KeyMatcher } from "../../src/tui/keys/match.ts";
-import { KEYS } from "../../src/tui/keys/table.ts";
+import { App } from "../../src/tui/app.ts";
+import { menuEntries, tuiReader } from "../../src/tui/keys/menu.ts";
+import { KeyMatcher } from "../../src/ui/keys/match.ts";
+import { KEYS } from "../../src/ui/keys/table.ts";
 import { helpFor, initialView, render, type ViewState } from "../../src/tui/render.ts";
 import { width } from "../../src/tui/text.ts";
 import { seedTui, type Seeded } from "../fixtures/tui-seed.ts";
 import { Fixture, GIT_ENV } from "../helpers/fixture.ts";
 
+const reader = tuiReader(App.ids());
 const CLI = join(import.meta.dir, "..", "..", "src", "cli.ts");
 const f = new Fixture();
 let server: ReturnType<typeof Bun.spawn> | null = null;
@@ -99,10 +102,10 @@ test("120×40: the reply box at the bottom of the thread's column", async () => 
 
 test("120×40: the Space menu lists the groups this UI has", async () => {
   const v = await view(ids.magic);
-  const m = new KeyMatcher(KEYS, () => {});
-  m.feed("<Space>", ["list", "global"]);
+  const m = new KeyMatcher(() => KEYS, reader, () => {});
+  m.feed("<Space>", ["round.list", "global"]);
   v.prefix = [...m.prefix];
-  v.next = m.next(["list", "global"]);
+  v.next = menuEntries(m.next(["round.list", "global"]));
   m.reset();
   const text = frame(v, 120, 40);
   expect(text).toContain("+review");
@@ -171,7 +174,7 @@ test("120×40: J lands in another file and its header row is marked", async () =
 
 test("120×40: ? lists the column's keys, how to move around and the mouse", async () => {
   const v = await view(ids.magic);
-  v.help = helpFor("list");
+  v.help = helpFor("list", reader);
   const text = frame(v, 120, 40);
   expect(text).toContain("Moving around");
   expect(text).toContain("Space e  Space s t");
@@ -274,7 +277,7 @@ test("80×24: one column, the diff; the files slide in over it when they have th
 
 test("? on the Changes tab lists its keys: lines, files, threads, folds, viewed, the range", async () => {
   const v = await changes("base", "2");
-  v.help = helpFor("changes");
+  v.help = helpFor("changes", reader);
   const text = v.help.map((l) => l.spans.map((x) => x.text).join("")).join("\n");
   for (const k of ["] t ", "[ t ", "] b  L", "] c", "z a", "m ", "] v", "{", "p ", "Enter  o"]) expect(text).toContain(k);
 });

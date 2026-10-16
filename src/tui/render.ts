@@ -9,7 +9,10 @@ import { DiffView, type Want } from "./diff/view.ts";
 import { initialChanges, type ChangesState } from "./changes.ts";
 import { changesHooks, diffPane, filesPane, filesWidth } from "./views/changes.ts";
 import { bar, hcat, overlay, pane, type Pane, type Row } from "./grid.ts";
-import { KEYS, keyLabel, type Scope } from "./keys/table.ts";
+import { reads, type Reader } from "../ui/keys/match.ts";
+import { keyLabel } from "../ui/keys/names.ts";
+import { KEYS, type Scope } from "../ui/keys/table.ts";
+import { OFF, SCOPE, type MenuEntry } from "./keys/menu.ts";
 import { ordered, type Data, type ListFilter } from "./model.ts";
 import { blank, key, line, plural, s, spansWidth, wrap, type Cls, type Line, type Span } from "./text.ts";
 import { bannerLine, footerLine, headerLine, type Hint, type Tab, type Toast } from "./views/bars.ts";
@@ -92,7 +95,7 @@ export interface ViewState {
   count: string;
   /** Keys typed of a binding not complete yet: `<Space>` opens the menu. */
   prefix: string[];
-  next: { key: string; desc: string; off?: "browser" | "later" }[];
+  next: MenuEntry[];
   choice: Choice | null;
   help: Line[] | null;
   toast: Toast | null;
@@ -168,8 +171,10 @@ export function scopeOf(v: ViewState): Place {
   return columnOf(v);
 }
 
+export type Column = "list" | "files" | "search" | "code" | "conv" | "thread" | "drafts" | "changes" | "cfiles";
+
 /** The column in focus, under any box over it. */
-export function columnOf(v: ViewState): "list" | "files" | "search" | "code" | "conv" | "thread" | "drafts" | "changes" | "cfiles" {
+export function columnOf(v: ViewState): Column {
   if (v.tab === "drafts") return "drafts";
   if (v.tab === "changes") return v.changes.focus === "list" ? "cfiles" : "changes";
   const cols = v.geom.columns;
@@ -632,13 +637,13 @@ const PLACE_NAMES: Record<string, string> = {
 };
 
 /** `?`: the keys of the place in focus, how to move around, and the keys that work everywhere. */
-export function helpFor(scope: Scope): Line[] {
+export function helpFor(place: Column, reader: Reader): Line[] {
   const group = (sc: Scope) => {
     const byId = new Map<string, { keys: string[]; desc: string }>();
-    for (const r of KEYS.filter((x) => x.scope === sc)) {
+    for (const r of KEYS.filter((x) => x.scope === sc && reads(x, reader))) {
       const had = byId.get(r.id);
-      if (had) had.keys.push(...r.keys);
-      else byId.set(r.id, { keys: [...r.keys], desc: r.off === "browser" ? `${r.desc} · opens in the browser` : r.off === "later" ? `${r.desc} · not in the terminal yet` : r.desc });
+      if (had) had.keys.push(...r.keys.filter((k) => !had.keys.includes(k)));
+      else byId.set(r.id, { keys: [...r.keys], desc: OFF[r.id] === "browser" ? `${r.desc} · opens in the browser` : OFF[r.id] === "later" ? `${r.desc} · not in the terminal yet` : r.desc });
     }
     return [...byId.values()];
   };
@@ -649,7 +654,7 @@ export function helpFor(scope: Scope): Line[] {
     for (const r of rows) out.push(line(s(`  ${r.keys.padEnd(20)}`, "wk"), s(` ${r.desc}`)));
   };
   const keys = (sc: Scope) => group(sc).map((r) => ({ keys: r.keys.map(keyLabel).join("  "), desc: r.desc }));
-  section(PLACE_NAMES[scope] ?? scope, keys(scope));
+  section(PLACE_NAMES[place] ?? place, keys(SCOPE[place]));
   section("Moving around", MOVING);
   section("Everywhere", keys("global"));
   out.push(blank(), line(s("  Ctrl+C quits from anywhere", "dim")));
