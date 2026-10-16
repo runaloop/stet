@@ -18,6 +18,7 @@ import { KeyMatcher } from "../../src/ui/keys/match.ts";
 import { KEYS } from "../../src/ui/keys/table.ts";
 import { browserTarget } from "../../src/tui/browser.ts";
 import { parseHash, takeToken } from "../../src/ui/route.ts";
+import { fileIndex } from "../../src/ui/filerefs.ts";
 import { helpFor, initialView, render, type ViewState } from "../../src/tui/render.ts";
 import { width } from "../../src/tui/text.ts";
 import { seedTui, type Seeded } from "../fixtures/tui-seed.ts";
@@ -581,4 +582,48 @@ test("g x opens the same lines in the browser: the selection on its side, a pict
   expect(await opened(t)).toEqual({ name: "compare", from: "1", to: "2", file: "src/auth.ts", line: 6 });
   t.peek = { path: "src/limiter.ts", sha: t.detail!.timeline[1]!.sha, label: "v2", line: 4, end: 5 };
   expect(await opened(t)).toEqual({ name: "compare", from: "base", to: "2", file: "src/limiter.ts", line: 4, end: 5 });
+});
+
+/** The thread `id` with the branch's files known, as the app loads them for names in messages. */
+async function withFiles(id: number): Promise<ViewState> {
+  const v = await view(id);
+  const d = await api.compare(review, "base", "2");
+  const paths = d.files.filter((f) => f.status !== "D").map((f) => f.path);
+  v.branch = { key: "k", ref: "2", sha: d.to.sha, label: d.to.label, paths, index: fileIndex(paths) };
+  v.trees = new Map([[d.to.sha, fileIndex((await api.files(d.to.sha)).paths ?? [])]]);
+  return v;
+}
+
+const linkTexts = (v: ViewState, w: number, h: number) => render(v, w, h).rows.flatMap((r) => r.filter((x) => x.c?.includes("fref")).map((x) => `${x.text}=${x.hit}`));
+
+test("120×40: the files a message names are links, a name two files have too; a name of no file stays text", async () => {
+  const v = await withFiles(ids.port);
+  v.focus = "code";
+  const links = linkTexts(v, 120, 40);
+  const reply = v.detail!.comments.find((c) => c.role === "agent")!.id;
+  expect(links.join(" ")).toContain(`src/server.ts:3-4=fref:${reply}:0`);
+  expect(links.join(" ")).toContain(`routes.ts:12=fref:${reply}:1`);
+  expect(links.join(" ")).toContain("src/limiter.ts#L4");
+  expect(frame(v, 120, 40)).toMatchSnapshot();
+});
+
+test("180×46 and 80×24: a file a message named opens over the thread's code at the message's code, its lines in sight", async () => {
+  const v = await withFiles(ids.port);
+  v.focus = "code";
+  const d = v.detail!;
+  const reply = d.comments.find((c) => c.role === "agent")!;
+  const blob = await api.blob(reply.snapshot!, "src/server.ts");
+  v.peek = { path: "src/server.ts", sha: reply.snapshot!, label: "v2", line: 3, end: 4, note: "as in the agent's reply on #10 (v2)", text: blob.contents };
+  v.toPeek = true;
+  const wide = frame(v, 180, 46);
+  expect(wide).toContain("src/server.ts · as in the agent's reply on #10 (v2) · lines 3–4");
+  expect(wide).toContain("Esc  back to the thread's code");
+  expect(wide).toContain("const PORT = Number(process.env.PORT ?? 8080);");
+  expect(wide).toMatch(/▌\s+3\s+const PORT/);
+  expect(wide).toMatchSnapshot();
+  v.toPeek = true;
+  const narrow = frame(v, 80, 24);
+  expect(narrow).toContain("src/server.ts · as in the agent's reply");
+  expect(narrow).toContain("export function start()");
+  expect(narrow).toMatchSnapshot();
 });

@@ -1,11 +1,12 @@
 import type { CommentDto, ThreadDetail, ThreadSummary, TimelineStepDto } from "../../core/types.ts";
 import { readingOrder } from "../../ui/msgs.ts";
 import { threadStrip } from "../../ui/strip.ts";
-import { codeViews, fileHeader, scopesOf, threadBlock, threadCode, type CodeView, type Scope, type ThreadBlock, type Wide } from "../code.ts";
+import { codeViews, fileHeader, scopesOf, threadBlock, threadCode, wholeFile, type CodeView, type Scope, type ThreadBlock, type Wide } from "../code.ts";
 import type { FileItem } from "../diff/model.ts";
 import type { Hooks, TokenSource } from "../diff/paint.ts";
 import { DiffView, type Want } from "../diff/view.ts";
-import { ago, blank, filled, key, line, plural, rangeText, s, wrap, type Cls, type Line, type Span } from "../text.ts";
+import type { RefLink } from "../filerefs.ts";
+import { ago, blank, clean, filled, key, line, plural, rangeText, s, wrap, type Cls, type Line, type Span } from "../text.ts";
 
 const tag = (text: string, c: Cls) => s(` ${text} `, c);
 
@@ -196,6 +197,59 @@ export class CodePane {
   }
 }
 
+/** A file a message named, over the thread's code: the whole file as it was then, the lines named marked. */
+export interface PeekView {
+  path: string;
+  label: string;
+  line: number;
+  end?: number;
+  note?: string;
+  /** The text, once it came; null when the file is not text there. */
+  text?: string | null;
+}
+
+export class PeekPane {
+  readonly diff: DiffView;
+  private key = "";
+
+  constructor(tokens: TokenSource, want: (w: Want[]) => void) {
+    const hooks: Hooks = {
+      header: () => blank(),
+      group: () => blank(),
+      note: (f) => line(s(`   ${f.note || "no lines to show"}`, "dim")),
+      card: () => [],
+    };
+    this.diff = new DiffView(hooks, tokens);
+    this.diff.cursor = -1;
+    this.diff.onWant = want;
+  }
+
+  /** The file's lines in `w` cells under a line that says whose code it is, and the line the marked ones start on. */
+  lines(p: PeekView, w: number): { lines: Line[]; at: number } {
+    const lines = p.end !== undefined ? (p.end > p.line ? `lines ${p.line}–${p.end}` : `line ${p.line}`) : `line ${p.line}`;
+    const head: Line[] = [
+      { spans: [s(" "), s(p.path, "fh"), s(` · ${p.note ?? `at ${p.label}`} · ${lines}`, "dim")] },
+      line(s(" "), key("Esc"), s(" back to the thread's code · ", "dim"), key("g x"), s(" in the browser", "dim")),
+      blank(),
+    ];
+    if (p.text === undefined) return { lines: [...head, line(s(" loading…", "dim"))], at: head.length };
+    if (p.text === null) return { lines: [...head, line(s(` ${p.path} is not a text file at ${p.label}.`, "dim"))], at: head.length };
+    const key1 = `peek:${p.label}:${p.path}:${p.text.length}`;
+    const fd = wholeFile(key1, p.path, p.text);
+    if (!fd) return { lines: [...head, line(s(" an empty file", "dim"))], at: head.length };
+    this.diff.setSize(w, 1000);
+    this.diff.marks.set(p.path, { old: [], new: p.end !== undefined ? [{ start: p.line, end: p.end, strong: true }] : [] });
+    if (this.key !== `${key1}:${p.line}:${p.end ?? ""}`) {
+      this.key = `${key1}:${p.line}:${p.end ?? ""}`;
+      this.diff.setItems([{ kind: "file", key: p.path, fd, collapsed: false, single: true, excerpt: true, reveal: { spans: [], full: true } }]);
+    }
+    // the file's header row stays out: the line over it names the file
+    const all = this.diff.allLines().slice(1);
+    const row = this.diff.lineRow(p.path, 1, p.line);
+    return { lines: [...head, ...all], at: head.length + Math.max(0, row === -1 ? 0 : this.diff.lay.top(row) - 1) };
+  }
+}
+
 /** What sits over the code in a thread's column: the strip, the steps, the views. */
 export function threadHead(d: ThreadDetail, view: CodeView, scope: Scope, w: number): Line[] {
   return [...stripLines(d, w), blank(), timelineLine(d), viewsLine(d, view, scope), blank()];
@@ -214,16 +268,52 @@ function head(c: CommentDto, d: ThreadDetail, now: number): Line {
   return line(s(" "), ...who, ...marks, ...(when ? [s(` ${when}`, "dim")] : []));
 }
 
-function body(text: string, w: number): Line[] {
+/** A wrapped piece of a line, `at` cells into it, with the file references in it as links. */
+function linked(part: string, at: number, refs: readonly { a: number; b: number; hit: string }[], fenced: boolean): Span[] {
+  const out: Span[] = [];
+  const plainOf = (t: string) => (fenced ? s(t, "acc") : s(t));
+  let pos = 0;
+  for (const r of refs) {
+    const a = Math.max(r.a - at, pos);
+    const b = Math.min(r.b - at, part.length);
+    if (b <= a) continue;
+    if (a > pos) out.push(plainOf(part.slice(pos, a)));
+    out.push({ ...s(part.slice(a, b), "fref"), hit: r.hit });
+    pos = b;
+  }
+  if (pos < part.length || !out.length) out.push(plainOf(part.slice(pos)));
+  return out;
+}
+
+/** A message's text wrapped to `w`, its code blocks in colour, the files it names as links. */
+function body(text: string, w: number, links: readonly RefLink[] = []): Line[] {
   const out: Line[] = [];
   let fenced = false;
+  let start = 0;
   for (const raw of text.split("\n")) {
+    const end = start + raw.length;
+    const mine = links.filter((l) => l.ref.index >= start && l.ref.index < end);
+    start = end + 1;
     if (raw.trimStart().startsWith("```")) {
       fenced = !fenced;
       out.push(line(s(`   ${raw}`, "dim")));
       continue;
     }
-    for (const part of wrap(raw, w - 4)) out.push(line(s("   "), fenced ? s(part, "acc") : s(part)));
+    const text1 = clean(raw);
+    const refs: { a: number; b: number; hit: string }[] = [];
+    let from = 0;
+    for (const l of mine) {
+      const a = text1.indexOf(l.ref.text, from);
+      if (a === -1) continue;
+      refs.push({ a, b: a + l.ref.text.length, hit: l.hit });
+      from = a + l.ref.text.length;
+    }
+    let cur = 0;
+    for (const part of wrap(raw, w - 4)) {
+      const at = part ? Math.max(cur, text1.indexOf(part, cur)) : cur;
+      out.push(line(s("   "), ...linked(part, at, refs, fenced)));
+      cur = at + part.length;
+    }
   }
   return out;
 }
@@ -238,7 +328,7 @@ export interface Conversation {
 }
 
 /** The messages in reading order, with resolve and reopen events by time; a red NEW rule before the first new one. */
-export function conversation(d: ThreadDetail, fresh: ReadonlySet<number>, w: number, now = Date.now()): Conversation {
+export function conversation(d: ThreadDetail, fresh: ReadonlySet<number>, w: number, now = Date.now(), links: (c: CommentDto) => RefLink[] = () => []): Conversation {
   const lines: Line[] = [];
   const starts: number[] = [];
   let newAt: number | null = null;
@@ -250,7 +340,7 @@ export function conversation(d: ThreadDetail, fresh: ReadonlySet<number>, w: num
         lines.push(line(s(" "), s(`── NEW ${"─".repeat(Math.max(0, w - 12))}`, "new")));
       }
       starts.push(lines.length);
-      lines.push(head(c, d, now), ...body(c.body, w));
+      lines.push(head(c, d, now), ...body(c.body, w, links(c)));
       if (c.restore) {
         const v = c.restore.version === "base" ? "the base" : `v${c.restore.version}`;
         lines.push(line(s(`   ↺ asks to restore ${c.restore.path}:${rangeText(c.restore.range)} as in ${v}`, "acc")));

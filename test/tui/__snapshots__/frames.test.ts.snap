@@ -1423,3 +1423,128 @@ stet  feature/rate-limit   v1   v2  now = v2  ↻ 2 files changed (R)           
  CHANGES   j k  line   V  select   i  comment   ] t   [ t  thread   ] b   [ b  file   Enter  open   m  viewed   z a  fo…
 "
 `;
+
+exports[`120×40: the files a message names are links, a name two files have too; a name of no file stays text 1`] = `
+"
+stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2      Round 6   Changes   Drafts 1    ?  
+╭─  Threads   Files   Search  ─────────╮╭─ #10 src/server.ts:3  your turn  written on v2 ─────────────────── 10 of 10 ─╮
+│ open 9 resolved 2 · all 12 · [ ] new ││ Your turn. The agent asked you a question and waits for your answer.         │
+│                                      ││                                                                              │
+│ src/auth.ts                         3││  v2  written · L3 · 2 msgs                                                   │
+│ ● #8 L1  your turn                   ││ Diff · Then  At v2   t      around the thread  whole file  z                 │
+│   Nit: the import is fine, but \`KEY\`…││                                                                              │
+│   #7 L3  agent's turn                ││ src/server.ts · line 3 at v2                                                 │
+│   Read API_KEY once at startup and r…││     1   import { handle } from "./routes.ts";                                │
+│ ● #1 L6–7  changed   your turn       ││     2                                                                        │
+│   \`===\` on secrets leaks timing. Use…││▌    3   const PORT = Number(process.env.PORT ?? 8080);                       │
+│ src/db.ts                           1││         ▲ thread #10 · v2                                                    │
+│   #3 L9  outdated   your turn        ││     4                                                                        │
+│   Leftover debug log: please drop it.││     5   export function start() {                                            │
+│ src/report.ts                       1││     6     return Bun.serve({                                                 │
+│   #12 L327  agent's turn             ││                                                                              │
+│   \`limit\` grows with the route's ind…││ ── Conversation · 2 messages · 1 new ─────────────────────────────────────   │
+│ src/routes.ts                       4││ you · reviewer @v2 · just now                                                │
+│   #2 L5  your turn                   ││   \`Number(undefined ?? 8080)\` is fine, but \`PORT=abc\` gives NaN and Bun      │
+│   Where do 100 and 60 000 come from?…││   picks a random port. Validate it?                                          │
+│   #4 L10–11  agent's turn            ││                                                                              │
+│   I am not comfortable keying the li…││ ── NEW ──────────────────────────────────────────────────────────────────    │
+│ ● #9 L12  your turn                  ││ claude · agent  question  @v2 · just now                                     │
+│   Checking the key before the route …││   Should it refuse to start? The check would sit next to the read of PORT    │
+│   #11 L13  draft                     ││   (src/server.ts:3-4), before any route runs: routes.ts:12 checks the key on │
+│   Should 401 come with a \`www-authen…││   every request. The limiter takes its settings the same way                 │
+│ src/server.ts                       1││   (src/limiter.ts#L4).                                                       │
+│ ● #10 L3  your turn                  ││                                                                              │
+│   \`Number(undefined ?? 8080)\` is fin…││                                                                              │
+│                                      ││  r  reply ·  x  resolve ·  { }  previous / next message                      │
+│ 2 resolved hidden ·  Space u r       ││                                                                              │
+│                                      ││                                                                              │
+│                                      ││                                                                              │
+│                                      ││                                                                              │
+│                                      ││                                                                              │
+│                                      ││                                                                              │
+│                                      ││                                                                              │
+│                                      ││                                                                              │
+╰──────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────╯
+ THREAD   j k  scroll   ] t   [ t  thread   J K  file   n  unread   h  list   r  reply   x  resolve   t  diff / then / …
+"
+`;
+
+exports[`180×46 and 80×24: a file a message named opens over the thread's code at the message's code, its lines in sight 1`] = `
+"
+stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2                                                                  Round 6   Changes   Drafts 1    ?  
+╭─  Threads   Files   Search  ─────────╮╭─ #10 src/server.ts:3  your turn  written on v2 ─────────────────── 10 of 10 ─╮╭─ Conversation ────────────────────── 2 messages · 1 new ─╮
+│ open 9 resolved 2 · all 12 · [ ] new ││ src/server.ts · as in the agent's reply on #10 (v2) · lines 3–4              ││                                                          │
+│                                      ││  Esc  back to the thread's code ·  g x  in the browser                       ││ you · reviewer @v2 · just now                            │
+│ src/auth.ts                         3││                                                                              ││   \`Number(undefined ?? 8080)\` is fine, but \`PORT=abc\`    │
+│ ● #8 L1  your turn                   ││     1   import { handle } from "./routes.ts";                                ││   gives NaN and Bun picks a random port. Validate it?    │
+│   Nit: the import is fine, but \`KEY\`…││     2                                                                        ││                                                          │
+│   #7 L3  agent's turn                ││▌    3   const PORT = Number(process.env.PORT ?? 8080);                       ││ ── NEW ──────────────────────────────────────────────    │
+│   Read API_KEY once at startup and r…││▌    4                                                                        ││ claude · agent  question  @v2 · just now                 │
+│ ● #1 L6–7  changed   your turn       ││     5   export function start() {                                            ││   Should it refuse to start? The check would sit next to │
+│   \`===\` on secrets leaks timing. Use…││     6     return Bun.serve({                                                 ││   the read of PORT (src/server.ts:3-4), before any route │
+│ src/db.ts                           1││     7       port: PORT,                                                      ││   runs: routes.ts:12 checks the key on every request.    │
+│   #3 L9  outdated   your turn        ││     8       fetch(req) {                                                     ││   The limiter takes its settings the same way            │
+│   Leftover debug log: please drop it.││     9         return handle(req);                                            ││   (src/limiter.ts#L4).                                   │
+│ src/report.ts                       1││    10       },                                                               ││                                                          │
+│   #12 L327  agent's turn             ││    11     });                                                                ││                                                          │
+│   \`limit\` grows with the route's ind…││    12   }                                                                    ││                                                          │
+│ src/routes.ts                       4││                                                                              ││                                                          │
+│   #2 L5  your turn                   ││                                                                              ││                                                          │
+│   Where do 100 and 60 000 come from?…││                                                                              ││                                                          │
+│   #4 L10–11  agent's turn            ││                                                                              ││                                                          │
+│   I am not comfortable keying the li…││                                                                              ││                                                          │
+│ ● #9 L12  your turn                  ││                                                                              ││                                                          │
+│   Checking the key before the route …││                                                                              ││                                                          │
+│   #11 L13  draft                     ││                                                                              ││                                                          │
+│   Should 401 come with a \`www-authen…││                                                                              ││                                                          │
+│ src/server.ts                       1││                                                                              ││                                                          │
+│ ● #10 L3  your turn                  ││                                                                              ││                                                          │
+│   \`Number(undefined ?? 8080)\` is fin…││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│ 2 resolved hidden ·  Space u r       ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││                                                          │
+│                                      ││                                                                              ││  r  reply ·  x  resolve ·  { }  previous / next message  │
+│                                      ││                                                                              ││                                                          │
+╰──────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────╯╰──────────────────────────────────────────────────────────╯
+ CODE   j k  scroll   ] t   [ t  thread   J K  file   n  unread   Tab  next column   h  list   r  reply   x  resolve   t  diff / then / at   Space  menu   ?  all keys              
+"
+`;
+
+exports[`180×46 and 80×24: a file a message named opens over the thread's code at the message's code, its lines in sight 2`] = `
+"
+stet rate-limit   v2                               Round 6   Changes   Drafts 1 
+╭─ #10 src/server.ts:3  your turn  ───────────────────────────────── 10 of 10 ─╮
+│ src/server.ts · as in the agent's reply on #10 (v2) · lines 3–4              │
+│  Esc  back to the thread's code ·  g x  in the browser                       │
+│                                                                              │
+│     1   import { handle } from "./routes.ts";                                │
+│     2                                                                        │
+│▌    3   const PORT = Number(process.env.PORT ?? 8080);                       │
+│▌    4                                                                        │
+│     5   export function start() {                                            │
+│     6     return Bun.serve({                                                 │
+│     7       port: PORT,                                                      │
+│     8       fetch(req) {                                                     │
+│     9         return handle(req);                                            │
+│    10       },                                                               │
+│    11     });                                                                │
+│    12   }                                                                    │
+│                                                                              │
+│ ── 2 messages · 1 new ────────────────────────────────────────────────────   │
+│ you · reviewer @v2 · just now                                                │
+│   \`Number(undefined ?? 8080)\` is fine, but \`PORT=abc\` gives NaN and Bun      │
+│   picks a random port. Validate it?                                          │
+╰──────────────────────────────────────────────────────────────────────────────╯
+ THREAD   h  list   j k  scroll   ] t   [ t  thread   r  reply   x  resolve   ?…
+"
+`;

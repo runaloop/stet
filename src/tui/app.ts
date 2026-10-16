@@ -19,6 +19,8 @@ import { FILE, GAP, GROUP } from "./diff/model.ts";
 import { flushTrace, trace, tracing } from "./trace.ts";
 import { Highlighter } from "./diff/highlight.ts";
 import { browserTarget } from "./browser.ts";
+import { linksOf, messageCode, messageRefs, statesOf, type MessageCode, type RefLink } from "./filerefs.ts";
+import { fileIndex, linesText, type FileRef } from "../ui/filerefs.ts";
 import { ComposerView } from "./composer.ts";
 import { editLine, KeyReader } from "./keys/input.ts";
 import { KeyMatcher, rowFor, runRow, type Actions } from "../ui/keys/match.ts";
@@ -321,6 +323,98 @@ export class App {
     v.detail = d;
     if (v.view && !codeViews(d).includes(v.view)) v.view = null;
     this.markReadSoon();
+    if (d.comments.some((c) => messageRefs(c.body).length)) void this.loadRefs();
+  }
+
+  // --- files named in messages
+
+  /** What a message's file names resolve against: the branch's files, then the tip's tree. */
+  private async loadRefs(): Promise<void> {
+    const b = await this.loadBranch();
+    if (!b || !this.api || this.v.trees.has(b.sha)) return this.redraw();
+    const r = await this.api.files(b.sha).catch(() => null);
+    if (this.ended) return;
+    this.v.trees = new Map(this.v.trees).set(b.sha, fileIndex(r?.paths ?? []));
+    this.redraw();
+  }
+
+  /** The references of the thread's messages that name files of the review, newest message first. */
+  private threadLinks(): { c: CommentDto; link: RefLink }[] {
+    const v = this.v;
+    const d = v.detail;
+    if (!d) return [];
+    const tree = v.branch ? (v.trees.get(v.branch.sha) ?? null) : null;
+    return [...d.comments].reverse().flatMap((c) => linksOf(c, v.branch?.index ?? null, tree).map((link) => ({ c, link })));
+  }
+
+  /** g f: the file a message names; several references are a choice, newest message first. */
+  private async filesOfMessages(): Promise<void> {
+    const v = this.v;
+    const d = v.detail;
+    if (!d || v.selected !== d.thread.id) return;
+    await this.loadRefs();
+    const all = this.threadLinks();
+    if (!all.length) return this.say(v.branch ? "no message here names a file of the review" : "the review's files did not come: try again");
+    if (all.length === 1) return this.followRef(all[0]!.c, all[0]!.link);
+    const who = (c: CommentDto) => (c.role === "reviewer" ? "you" : c.author);
+    const at = await this.ask(
+      "Files the messages name",
+      "Newest message first. A name several files have opens the file finder.",
+      all.map((x, i) => ({ value: String(i), label: `${x.link.ref.text} · ${who(x.c)}${x.link.paths.length > 1 ? ` · ${x.link.paths.length} files have this name` : ""}` })),
+    );
+    if (at !== null) this.followRef(all[Number(at)]!.c, all[Number(at)]!.link);
+  }
+
+  /** A reference followed: one file opens over the thread's code; several, the file finder with the name typed in. */
+  private followRef(c: CommentDto, link: RefLink): void {
+    const v = this.v;
+    const from = messageCode(v.detail!.thread.id, c);
+    if (link.paths.length === 1) return void this.openFileRef(link.paths[0]!, link.ref, from);
+    const range = { from: v.changes.from ?? "base", to: v.changes.to ?? "now" };
+    v.picker = { kind: "files", query: link.ref.path, at: 0, paths: link.paths, name: { lines: linesText(link.ref) }, verb: "open it", range };
+    this.choosing = (path) => void this.openFileRef(path, link.ref, from);
+    this.redraw();
+  }
+
+  /** The file over the thread's code as the message's code had it, its lines marked in the middle, as the web's peek. */
+  private async openFileRef(path: string, ref: FileRef, from: MessageCode): Promise<void> {
+    const v = this.v;
+    const api = this.api;
+    if (!api) return;
+    const b = await this.loadBranch();
+    const states = statesOf(from, v.data.status?.versionsList ?? [], b ? { sha: b.sha, label: b.label } : null);
+    let at = states[0];
+    let text: string | null = null;
+    for (const st of states) {
+      const blob = await api.blob(st.sha, path).catch(() => null);
+      if (blob?.exists) {
+        at = st;
+        text = blob.contents;
+        break;
+      }
+    }
+    if (!at || this.ended) return this.say(`${path} is not in the review's code`, "error");
+    this.leaveCode();
+    v.peek = {
+      path,
+      sha: at.sha,
+      label: at.label,
+      line: ref.start ?? 1,
+      ...(ref.start !== null ? { end: ref.end ?? ref.start } : {}),
+      ...(at.note ? { note: at.note } : {}),
+      ...(b && b.sha !== at.sha ? { latest: { sha: b.sha, label: b.label } } : {}),
+      text,
+    };
+    v.toPeek = true;
+    if (v.focus === "list") v.focus = "code";
+    this.redraw();
+  }
+
+  private closePeek(): boolean {
+    if (!this.v.peek) return false;
+    this.v.peek = null;
+    this.redraw();
+    return true;
   }
 
   /** A thread you went into is read after a moment, as the web marks it; a preview in the list is not. */
@@ -369,6 +463,7 @@ export class App {
     v.selected = id;
     v.followList = true;
     this.leaveCode();
+    v.peek = null;
     v.view = null;
     v.scope = "around";
     v.wide = null;
@@ -774,13 +869,15 @@ export class App {
     if (v.branch?.key === key) return v.branch;
     const d = await this.guard(api.compare(this.review, "base", tip));
     if (!d || this.ended) return v.branch;
-    v.branch = { key, ref: tip, sha: d.to.sha, label: d.to.label, paths: d.files.filter((f) => f.status !== "D").map((f) => f.path) };
+    const paths = d.files.filter((f) => f.status !== "D").map((f) => f.path);
+    v.branch = { key, ref: tip, sha: d.to.sha, label: d.to.label, paths, index: fileIndex(paths) };
     return v.branch;
   }
 
   /** Space f f: the diff's files on the Changes tab; elsewhere the branch's, and the last diff's, opened there. */
   private async findFile(): Promise<void> {
     const v = this.v;
+    this.choosing = null;
     const c = v.changes;
     const range = { from: c.from ?? "base", to: c.to ?? "now" };
     if (v.tab === "changes") {
@@ -1677,7 +1774,10 @@ export class App {
         v.picker.at = Number(hit.slice(5));
         return this.pickRow("pick");
       }
-      if (!hit?.startsWith("focus:picker")) v.picker = null;
+      if (!hit?.startsWith("focus:picker")) {
+        v.picker = null;
+        this.choosing = null;
+      }
       return this.redraw();
     }
     if (!hit) return;
@@ -1692,6 +1792,13 @@ export class App {
     if (kind === "thread") {
       if (v.focus !== "list") this.focus("list");
       return this.select(Number(arg));
+    }
+    if (kind === "fref") {
+      const [cid, n] = arg.split(":").map(Number);
+      const c = v.detail?.comments.find((x) => x.id === cid);
+      const link = this.threadLinks().find((x) => x.link.hit === hit)?.link;
+      if (c && link && n !== undefined) this.followRef(c, link);
+      return;
     }
     if (kind === "file") {
       this.focus("list");

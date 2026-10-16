@@ -19,9 +19,12 @@ import { blank, key, line, plural, rangeText, s, spansWidth, wrap, type Cls, typ
 import { bannerLine, footerLine, headerLine, type Hint, type Tab, type Toast } from "./views/bars.ts";
 import { fileCounts, fileOf, filesLines, listLines, listWidth, sideTitle, type Side } from "./views/list.ts";
 import { pickerBox, type PickerState } from "./views/picker.ts";
+import type { FileIndex } from "../ui/filerefs.ts";
+import { linksOf } from "./filerefs.ts";
 import {
   CodePane,
   conversation,
+  PeekPane,
   messagesNote,
   PREVIEW_HINT,
   rule,
@@ -55,6 +58,7 @@ export interface Branch {
   sha: string;
   label: string;
   paths: string[];
+  index: FileIndex;
 }
 
 /** Lines a new thread is on: of `path` at the commit `at` (its version `label`), on the old or the new side of the diff shown. */
@@ -143,6 +147,11 @@ export interface ViewState {
   branch: Branch | null;
   /** A file a message named, shown in place of the thread's code until Esc. */
   peek: Peek | null;
+  peekPane: PeekPane;
+  /** Scroll the code to the peek's marked lines on the next frame. */
+  toPeek: boolean;
+  /** The files of commits, by sha, for names in messages that the branch's diff does not have. */
+  trees: ReadonlyMap<string, FileIndex>;
   help: Help | null;
   toast: Toast | null;
   connecting: string | null;
@@ -193,6 +202,9 @@ export function initialView(): ViewState {
     picker: null,
     branch: null,
     peek: null,
+    peekPane: new PeekPane(tokens, want),
+    toPeek: false,
+    trees: new Map(),
     help: null,
     toast: null,
     connecting: null,
@@ -443,15 +455,24 @@ function threadPanes(v: ViewState, cols: 1 | 2 | 3, widths: number[], height: nu
   }
   const writing = v.writing?.kind === "reply" && v.writing.thread === d.thread.id;
   const newHere = v.writing?.kind === "thread" && v.writing.from === "thread";
+  const links = (c: CommentDto) => linksOf(c, v.branch?.index ?? null, v.branch ? (v.trees.get(v.branch.sha) ?? null) : null);
+  // the marked lines of a file a message named, in the middle of the room the code has
+  const peekTop = (at: number, room: number) => Math.max(0, at - Math.floor(room / 3));
   if (cols === 3) {
     const [codeW, convW] = widths as [number, number];
-    const part = v.code.lines(d, v.view, v.scope, v.wide, codeW - 2);
-    const head = threadHead(d, part.view, part.scope, codeW - 2);
-    const codeLinesAll = [...head, ...part.lines];
-    v.tops.code = followCursor(v, head.length, v.tops.code, inner - (newHere ? composerBox(v, codeW - 2).lines.length : 0));
-    const code = place(codeLinesAll, v.tops.code, inner, codeW - 2, v, newHere);
+    let code: Placed;
+    if (v.peek) {
+      const pk = v.peekPane.lines(v.peek, codeW - 2);
+      if (v.toPeek) v.tops.code = peekTop(pk.at, inner);
+      code = place(pk.lines, v.tops.code, inner, codeW - 2, v, false);
+    } else {
+      const part = v.code.lines(d, v.view, v.scope, v.wide, codeW - 2);
+      const head = threadHead(d, part.view, part.scope, codeW - 2);
+      v.tops.code = followCursor(v, head.length, v.tops.code, inner - (newHere ? composerBox(v, codeW - 2).lines.length : 0));
+      code = place([...head, ...part.lines], v.tops.code, inner, codeW - 2, v, newHere);
+    }
     v.tops.code = code.top;
-    const conv = conversation(d, v.fresh, convW - 2, v.now);
+    const conv = conversation(d, v.fresh, convW - 2, v.now, links);
     const convAll = [blank(), ...conv.lines];
     if (v.toNews && conv.newAt !== null) v.tops.conv = conv.newAt;
     const c = place(convAll, v.tops.conv, inner, convW - 2, v, writing, v.focus === "conv" || v.focus === "code" ? [THREAD_HINT, blank()] : [PREVIEW_HINT, blank()]);
@@ -468,10 +489,12 @@ function threadPanes(v: ViewState, cols: 1 | 2 | 3, widths: number[], height: nu
   }
   const w = widths[0]!;
   const narrow = cols === 1;
-  const part = v.code.lines(d, v.view, v.scope, v.wide, w - 2, narrow && v.scope === "around" ? 1 : null);
-  const head = narrow ? stripLines(d, w - 2) : threadHead(d, part.view, part.scope, w - 2);
-  const codeRows = narrow ? part.lines.slice(1) : part.lines;
-  const conv = conversation(d, v.fresh, w - 2, v.now);
+  const pk = v.peek ? v.peekPane.lines(v.peek, w - 2) : null;
+  const part = pk ? null : v.code.lines(d, v.view, v.scope, v.wide, w - 2, narrow && v.scope === "around" ? 1 : null);
+  const head = pk ? [] : narrow ? stripLines(d, w - 2) : threadHead(d, part!.view, part!.scope, w - 2);
+  const codeRows = pk ? pk.lines : narrow ? part!.lines.slice(1) : part!.lines;
+  if (pk && v.toPeek) v.tops.thread = peekTop(pk.at, inner);
+  const conv = conversation(d, v.fresh, w - 2, v.now, links);
   const ruleText = `${narrow ? "" : "Conversation · "}${plural(d.comments.length, "message")}${conv.fresh ? ` · ${conv.fresh} new` : ""}`;
   const before = [...head, ...codeRows, blank(), rule(ruleText, w - 2)];
   const all = [...before, ...conv.lines];
@@ -688,6 +711,7 @@ export function render(v: ViewState, w: number, h: number): Frame {
   else if (v.tab === "changes") body = changesTab(v, w, height, head.length);
   else body = roundTab(v, w, height, head.length);
   v.toNews = false;
+  v.toPeek = false;
   let rows = [...head, ...body.rows, bar(footer(v, w), w)];
   if (v.prefix[0] === "<Space>" && !v.writing) {
     const m = menuBox(v, w);
