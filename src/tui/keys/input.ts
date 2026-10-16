@@ -1,5 +1,5 @@
 import type { KeyEvent } from "@opentui/core";
-import { ALT, CTRL, LayoutGuess, normalize, SHIFT, SUPER, type KeyInput } from "./normalize.ts";
+import { ALT, CTRL, LayoutGuess, normalize, SHIFT, SUPER, type KeyInput } from "../../ui/keys/normalize.ts";
 
 const NAMES: Record<string, string> = {
   return: "Enter", enter: "Enter", linefeed: "Enter", escape: "Escape", tab: "Tab", backspace: "Backspace", delete: "Delete",

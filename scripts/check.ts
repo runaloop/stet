@@ -16,7 +16,7 @@ const ACCEPTED_SEMGREP: { rule: string; path: string; why: string }[] = [
   { rule: "node_insecure_random_generator", path: "scripts/guide/lib.ts", why: "picks a debugging port for a local headless Firefox that takes the guide screenshots; not a secret" },
   { rule: "node_timing_attack", path: "web/state.ts", why: "compares location.hash, not a secret" },
   { rule: "node_timing_attack", path: "src/tui/app.ts", why: "compares the key tokens typed in the terminal UI, not a secret" },
-  { rule: "regex_dos", path: "src/tui/keys/normalize.ts", why: "/[a-z]/, /^F\\d{1,2}$/ and /^\\p{L}$/u on the name of one key: linear, no nested quantifiers" },
+  { rule: "regex_dos", path: "src/ui/keys/normalize.ts", why: "/[a-z]/, /^F\\d{1,2}$/ and /^\\p{L}$/u on the name of one key: linear, no nested quantifiers" },
   { rule: "regex_dos", path: "src/tui/diff/cells.ts", why: "/^[\\x20-\\x7e]*$/ tells a line of code is plain ASCII: one character class, linear" },
 ];
 
