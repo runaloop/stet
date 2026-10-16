@@ -191,3 +191,60 @@ test("colours come from the worker for the lines on screen, the code plain until
   // the words that changed in a pair of lines keep their mark under the colours
   expect(after.flatMap((l) => l.spans).some((x) => x.c?.includes("addw") && x.fg)).toBe(true);
 }, 20_000);
+
+test("V on a removed line picks lines on the old side, on an added one on the new side; the lines between go along on that side only", () => {
+  const v = view(80, 30);
+  const del = v.lineRow("src/auth.ts", 0, 1);
+  v.goTo(del);
+  expect(v.startSelection()).toBe(true);
+  v.goTo(v.lineRow("src/auth.ts", 0, 4));
+  expect(v.selection()).toMatchObject({ key: "src/auth.ts", side: 0, start: 1, end: 4 });
+  expect(v.lines().some((l) => l.spans.some((x) => x.c?.includes("vis")))).toBe(true);
+  v.swapEnds();
+  expect(v.cursor).toBe(del);
+  v.clearSelection();
+  const add = v.lineRow("src/auth.ts", 1, 2);
+  v.goTo(add);
+  v.startSelection();
+  v.goTo(v.lineRow("src/auth.ts", 1, 6));
+  expect(v.selection()).toMatchObject({ side: 1, start: 2, end: 6 });
+  // past the file's end the selection stays in its file
+  v.goTo(v.lineRow("src/db.ts", 1, 2));
+  expect(v.selection()).toMatchObject({ key: "src/auth.ts", side: 1, start: 2, end: 2 });
+  v.clearSelection();
+  v.goTo(v.itemRow(0));
+  expect(v.startSelection()).toBe(false);
+  expect(v.selection()).toBeNull();
+});
+
+test("in split the cursor stands on one side: Left and Right pick it on a row with two lines, the selection keeps its side", () => {
+  const v = view(170, 30);
+  expect(v.split).toBe(true);
+  const r = v.lineRow("src/auth.ts", 0, 1);
+  expect(v.lineRow("src/auth.ts", 1, 1)).toBe(r);
+  v.goTo(r);
+  expect(v.sideAt()).toBe(1);
+  expect(v.setSide(0)).toBe(true);
+  expect(v.sideAt()).toBe(0);
+  v.startSelection();
+  v.setSide(1);
+  v.goTo(v.lineRow("src/auth.ts", 0, 6));
+  expect(v.selection()).toMatchObject({ side: 0, start: 1, end: 6 });
+  v.clearSelection();
+  // a row with only an added line has no old side
+  const added = v.lineRow("src/auth.ts", 1, 3);
+  v.goTo(added);
+  expect(v.setSide(0)).toBe(false);
+  expect(v.sideAt()).toBe(1);
+});
+
+test("search matches are marked on their lines, the current one stronger", () => {
+  const v = view(80, 30);
+  const found = new Map([["src/auth.ts", { old: new Map([[4, [[8, 13]] as [number, number][]]]), new: new Map([[6, [[8, 13]] as [number, number][]]]) }]]);
+  v.setFound(found, { key: "src/auth.ts", side: 1, line: 6 });
+  const spans = v.lines().flatMap((l) => l.spans);
+  expect(spans.filter((x) => x.text === "given" && x.c?.includes("hitc")).length).toBe(1);
+  expect(spans.filter((x) => x.text === "given" && x.c?.includes("hit")).length).toBe(1);
+  v.setFound(new Map(), null);
+  expect(v.lines().flatMap((l) => l.spans).some((x) => x.c?.includes("hit") || x.c?.includes("hitc"))).toBe(false);
+});

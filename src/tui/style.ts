@@ -71,6 +71,10 @@ export const LOOKS: Record<Cls, Look> = {
   agentc: { fg: "#d2a8ff", bold: true },
   hunk: { bg: "#141c19" },
   void: { bg: "#131917" },
+  vis: { bg: "#264f78", fg: "#e6f0ff" },
+  hit: { bg: "#5c4a00" },
+  hitc: { bg: "#f2cc60", fg: BG, bold: true },
+  fref: { fg: "#79c0ff", underline: true },
 };
 
 /** The classes of a span in order: a later one wins for a colour it sets. */

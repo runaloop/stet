@@ -7,8 +7,8 @@ import type { FileDiffMetadata } from "@pierre/diffs";
 import { blank, type Line } from "../text.ts";
 import { lineCells } from "./cells.ts";
 import { Layout } from "./layout.ts";
-import { ADD, buildRows, CARD, CTX, DEL, FILE, GAP, GROUP, isLine, lastRow, lineText, PAIR, type FileItem, type Item, type Rows } from "./model.ts";
-import { Painter, type Hooks, type LineMarks, type PaintOpts, type TokenSource } from "./paint.ts";
+import { ADD, buildRows, CARD, CTX, DEL, FILE, GAP, GROUP, isLine, lastRow, lineText, PAIR, rowOfLine, type FileItem, type Item, type Rows } from "./model.ts";
+import { Painter, type Found, type Hooks, type LineMarks, type PaintOpts, type TokenSource } from "./paint.ts";
 
 export type LayoutPref = "auto" | "split" | "unified";
 
@@ -36,6 +36,15 @@ export interface RowInfo {
   newNo: number;
   /** The thread of a card. */
   thread: number | null;
+}
+
+/** Lines picked in the diff: of the file `key`, on the old side (0) or the new one (1). */
+export interface LineSel {
+  key: string;
+  item: FileItem;
+  side: 0 | 1;
+  start: number;
+  end: number;
 }
 
 interface Anchor {
@@ -70,6 +79,14 @@ export class DiffView {
   marks = new Map<string, LineMarks>();
   /** Called with the lines on screen and around it, when they change. */
   onWant: ((w: Want[]) => void) | null = null;
+  /** The side the cursor is on in split, on a row with a line on each: 0 the old one, 1 the new one. */
+  side: 0 | 1 = 1;
+  /** The row a selection of lines (V) started on, and its side; -1 without one. */
+  anchor = -1;
+  anchorSide: 0 | 1 = 1;
+  /** Search matches by item key, and the match the search stands on. */
+  found = new Map<string, Found>();
+  current: { key: string; side: 0 | 1; line: number } | null = null;
   private num = 3;
   private readonly painted = new Map<number, Line[]>();
   private readonly cells = new WeakMap<FileDiffMetadata, [Int32Array, Int32Array]>();
@@ -168,6 +185,7 @@ export class DiffView {
     const topRow = this.lay.len ? this.lay.rowAt(this.top) : 0;
     const anchor = this.anchorAt(topRow, this.top - this.lay.top(topRow));
     const cur = this.anchorAt(this.cursor, 0);
+    const picked = this.anchor >= 0 ? this.anchorAt(this.anchor, 0) : null;
     const screenY = this.lay.len ? this.lay.top(this.cursor) - this.top : 0;
     if (rebuild) this.items = rebuild;
     let most = 1;
@@ -190,6 +208,7 @@ export class DiffView {
       const r = this.find(cur);
       this.cursor = r === -1 ? Math.min(this.cursor, Math.max(0, this.rows.len - 1)) : r;
     } else this.cursor = Math.min(this.cursor, Math.max(0, this.rows.len - 1));
+    this.anchor = picked ? this.find(picked) : -1;
     this.painted.clear();
     // the cursor's line keeps its place on the screen when it was on it, else the line at the top does
     if (cur && screenY >= 0 && screenY < this.height) this.top = this.lay.top(this.cursor) - screenY;
@@ -341,6 +360,9 @@ export class DiffView {
       focus: this.focus,
       open: !!placed && this.opened.has(placed.threadId),
       height: isLine(k) ? Math.max(1, height) : 1,
+      rm: f && isLine(k)
+        ? { found: this.found.get(f.key), current: this.current?.key === f.key ? this.current : null, selected: this.picked(r) ? this.anchorSide : null, side: this.sideAt(r) }
+        : undefined,
     });
     if (!this.all && this.painted.size > 4000) this.painted.clear();
     this.painted.set(r, lines);
@@ -468,6 +490,7 @@ export class DiffView {
     if (!this.rows.len) return;
     const was = this.cursor;
     this.cursor = Math.max(0, Math.min(this.rows.len - 1, r));
+    if (this.anchor >= 0) this.painted.clear();
     this.painted.delete(was);
     this.painted.delete(this.cursor);
     this.reveal(align);
@@ -589,6 +612,101 @@ export class DiffView {
       return n > 0 && n >= p.range.start && n <= p.range.end;
     });
     return hit?.threadId ?? null;
+  }
+
+  // --- lines and sides
+
+  /** The side of a code row the cursor (or a selection) is on: the only one it has a line on, else the chosen one. */
+  sideAt(r = this.cursor): 0 | 1 {
+    const k = this.rows.kind[r];
+    if (k === DEL) return 0;
+    if (k === ADD || k === CTX) return 1;
+    if (k !== PAIR) return 1;
+    const want = this.anchor >= 0 ? this.anchorSide : this.side;
+    const has = (s: 0 | 1) => (s === 0 ? this.rows.a[r]! : this.rows.b[r]!) >= 0;
+    return has(want) ? want : has(1) ? 1 : 0;
+  }
+
+  /** In split, the cursor to the old side (0) or the new one; false when the row has no line there. */
+  setSide(side: 0 | 1): boolean {
+    if (!this.split || this.anchor >= 0) return false;
+    const r = this.cursor;
+    if (this.rows.kind[r] === PAIR && (side === 0 ? this.rows.a[r]! : this.rows.b[r]!) < 0) return false;
+    this.side = side;
+    this.painted.delete(r);
+    return true;
+  }
+
+  /** V: lines picked from the cursor's line on its side; false when the cursor is not on a line of code. */
+  startSelection(): boolean {
+    if (!isLine(this.rows.kind[this.cursor] ?? 0)) return false;
+    this.anchorSide = this.sideAt(this.cursor);
+    this.anchor = this.cursor;
+    this.painted.clear();
+    return true;
+  }
+
+  clearSelection(): void {
+    if (this.anchor < 0) return;
+    this.anchor = -1;
+    this.painted.clear();
+  }
+
+  /** `o`: the cursor to the other end of the selection. */
+  swapEnds(): void {
+    if (this.anchor < 0) return;
+    const a = this.anchor;
+    this.anchor = this.cursor;
+    this.goTo(a);
+  }
+
+  private picked(r: number): boolean {
+    const a = this.anchor;
+    if (a < 0 || this.rows.item[r] !== this.rows.item[a]) return false;
+    const c = this.rows.item[this.cursor] === this.rows.item[a] ? this.cursor : a;
+    return r >= Math.min(a, c) && r <= Math.max(a, c);
+  }
+
+  /** The line of a row on a side, 0 where it has none there. */
+  lineOn(r: number, side: 0 | 1): number {
+    const k = this.rows.kind[r]!;
+    if (!isLine(k)) return 0;
+    if (side === 0) return k === ADD || (k === PAIR && this.rows.a[r]! < 0) ? 0 : this.rows.oldNo[r]!;
+    return k === DEL || (k === PAIR && this.rows.b[r]! < 0) ? 0 : this.rows.newNo[r]!;
+  }
+
+  /**
+   * The lines picked: from the selection's start to the cursor in the same file, on the start's side; the cursor's
+   * line alone without a selection. Null off a line of code.
+   */
+  selection(): LineSel | null {
+    const a = this.anchor >= 0 ? this.anchor : this.cursor;
+    const item = this.items[this.rows.item[a] ?? -1];
+    if (!item || item.kind !== "file" || !isLine(this.rows.kind[a] ?? 0)) return null;
+    const side = this.anchor >= 0 ? this.anchorSide : this.sideAt(a);
+    const c = this.rows.item[this.cursor] === this.rows.item[a] ? this.cursor : a;
+    let start = Infinity;
+    let end = -Infinity;
+    for (let r = Math.min(a, c); r <= Math.max(a, c); r++) {
+      const n = this.lineOn(r, side);
+      if (!n) continue;
+      start = Math.min(start, n);
+      end = Math.max(end, n);
+    }
+    return start === Infinity ? null : { key: item.key, item, side, start, end };
+  }
+
+  /** The row that shows a line of a file on a side, or -1. */
+  lineRow(key: string, side: 0 | 1, line: number): number {
+    const i = this.items.findIndex((x) => x.key === key);
+    return i === -1 ? -1 : rowOfLine(this.rows, i, side === 0 ? "deletions" : "additions", line);
+  }
+
+  /** Search matches to mark, and the one the search stands on. */
+  setFound(found: Map<string, Found>, current: DiffView["current"]): void {
+    this.found = found;
+    this.current = current;
+    this.painted.clear();
   }
 
   /** The first row of item `i`. */

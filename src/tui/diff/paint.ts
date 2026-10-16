@@ -42,6 +42,21 @@ export interface LineMarks {
   new: { start: number; end: number; strong: boolean }[];
 }
 
+/** Search matches of a file by side and line number, and the match the search stands on. */
+export interface Found {
+  old: ReadonlyMap<number, Ranges>;
+  new: ReadonlyMap<number, Ranges>;
+}
+
+export interface RowMarks {
+  found?: Found;
+  current?: { side: 0 | 1; line: number } | null;
+  /** The row is in a selection of lines on this side. */
+  selected?: 0 | 1 | null;
+  /** The side the cursor is on, in split: its half of the gutter shows the cursor. */
+  side?: 0 | 1;
+}
+
 type Run = Span;
 
 function tokenRuns(text: string, tk: Uint32Array | undefined, src: TokenSource): Run[] {
@@ -95,10 +110,11 @@ export class Painter {
 
   constructor(private readonly tokens: TokenSource) {}
 
-  private runs(fd: FileDiffMetadata, side: 0 | 1, i: number, words: Ranges | null): Run[] {
+  private runs(fd: FileDiffMetadata, side: 0 | 1, i: number, words: Ranges | null, hits: Ranges | null = null, current = false): Run[] {
     const text = lineText(fd, side, i);
     const runs = tokenRuns(text, this.tokens.line(fd, side, i), this.tokens);
-    return words?.length ? markRuns(runs, words, withClass(side === 0 ? "delw" : "addw")) : runs;
+    const marked = words?.length ? markRuns(runs, words, withClass(side === 0 ? "delw" : "addw")) : runs;
+    return hits?.length ? markRuns(marked, hits, current ? (r) => ({ text: r.text, c: [...(r.c ?? []), "hitc"] }) : withClass("hit")) : marked;
   }
 
   /** The changed words of a removed line and the added line it is paired with. */
@@ -117,7 +133,13 @@ export class Painter {
    * Row `r` as `height` screen lines. `pair` is the line a removed or added row's words are compared with in unified
    * (-1 for none); `at` marks the cursor's row; `focus` whether the diff has the focus.
    */
-  row(rows: Rows, r: number, item: FileItem | GroupItem, o: PaintOpts, h: { hooks: Hooks; marks: LineMarks; pair: number; at: boolean; focus: boolean; open: boolean; height: number }): Line[] {
+  row(
+    rows: Rows,
+    r: number,
+    item: FileItem | GroupItem,
+    o: PaintOpts,
+    h: { hooks: Hooks; marks: LineMarks; pair: number; at: boolean; focus: boolean; open: boolean; height: number; rm?: RowMarks },
+  ): Line[] {
     const k = rows.kind[r]!;
     const w = o.width;
     const cur: Cls = h.focus ? "sel" : "seli";
@@ -137,9 +159,13 @@ export class Painter {
       return p ? h.hooks.card(f, p, w, h.open, gutter + 2, h.at) : [line()];
     }
     const fd = f.fd;
+    const rm = h.rm ?? {};
+    const hitsOf = (side: 0 | 1, no: number) => (no > 0 ? (side === 0 ? rm.found?.old : rm.found?.new)?.get(no) ?? null : null);
+    const isCurrent = (side: 0 | 1, no: number) => !!rm.current && rm.current.side === side && rm.current.line === no;
     if (!o.split) {
       const side: 0 | 1 = k === DEL ? 0 : 1;
       const idx = k === DEL ? rows.a[r]! : rows.b[r]!;
+      const no = side === 0 ? rows.oldNo[r]! : rows.newNo[r]!;
       const fill: Cls | null = k === DEL ? "del" : k === ADD ? "add" : null;
       let words: Ranges | null = null;
       if (h.pair >= 0) {
@@ -147,42 +173,46 @@ export class Painter {
         words = wm ? (k === DEL ? wm.old : wm.new) : null;
       }
       const cw = Math.max(1, w - gutter - 2);
-      const code = codeLines(this.runs(fd, side, idx, words), cw, o, fill, h.height);
+      const code = codeLines(this.runs(fd, side, idx, words, hitsOf(side, no), isCurrent(side, no)), cw, o, fill, h.height);
       const sign = k === DEL ? "-" : k === ADD ? "+" : " ";
       const markOld = k !== ADD ? marked(h.marks.old, rows.oldNo[r]!) : null;
       const markNew = k !== DEL ? marked(h.marks.new, rows.newNo[r]!) : null;
       const mark = markNew ?? markOld;
       const field = `${f.single ? " ".repeat(o.num) : num(rows.oldNo[r]!, o.num)}${num(rows.newNo[r]!, o.num)}`;
-      const g: Cls[] = h.at ? [cur, "ln"] : ["ln"];
+      const picked = rm.selected === 0 ? k !== ADD : rm.selected === 1 ? k !== DEL : false;
+      const g: Cls[] = h.at ? [cur, "ln"] : picked ? ["vis", "ln"] : ["ln"];
       return code.map((c, y) => {
         const head: Span[] =
           y === 0
             ? mark
-              ? [s("▌", ...(h.at ? [cur] : []), mark === "strong" ? "acc" : "mk"), s(field.slice(1), ...g)]
+              ? [s("▌", ...(h.at ? [cur] : picked ? (["vis"] as Cls[]) : []), mark === "strong" ? "acc" : "mk"), s(field.slice(1), ...g)]
               : [s(field, ...g)]
             : [s(" ".repeat(field.length), ...g)];
         const signSpan = s(y === 0 ? ` ${sign} ` : "   ", ...(fill ? [fill] : []), ...(k === DEL ? (["delc"] as Cls[]) : k === ADD ? (["addc"] as Cls[]) : []));
         return { spans: [...head, signSpan, ...c] };
       });
     }
-    // split: the old line on the left, the new one on the right
+    // split: the old line on the left, the new one on the right; the cursor is on one of them
     const left = Math.floor((w - 1) / 2);
     const right = w - 1 - left;
     const ctx = rows.n[r]! === 0;
     const a = rows.a[r]!;
     const b = rows.b[r]!;
     const wm = !ctx && a >= 0 && b >= 0 ? this.wordsOf(fd, a, b) : null;
+    const on = rm.side ?? 1;
     const half = (side: 0 | 1, idx: number, no: number, width: number): Span[][] => {
       const cw = Math.max(1, width - o.num - 3);
-      const g: Cls[] = h.at ? [cur, "ln"] : ["ln"];
-      if (idx < 0) return Array.from({ length: h.height }, () => [s(" ".repeat(width), "void")]);
+      const at = h.at && side === on;
+      const picked = rm.selected === side;
+      const g: Cls[] = at ? [cur, "ln"] : picked ? ["vis", "ln"] : ["ln"];
+      if (idx < 0) return Array.from({ length: h.height }, () => [s(" ".repeat(width), at ? cur : "void")]);
       const fill: Cls | null = ctx ? null : side === 0 ? "del" : "add";
-      const code = codeLines(this.runs(fd, side, idx, wm ? (side === 0 ? wm.old : wm.new) : null), cw, o, fill, h.height);
+      const code = codeLines(this.runs(fd, side, idx, wm ? (side === 0 ? wm.old : wm.new) : null, hitsOf(side, no), isCurrent(side, no)), cw, o, fill, h.height);
       const mark = marked(side === 0 ? h.marks.old : h.marks.new, no);
       const sign = ctx ? " " : side === 0 ? "-" : "+";
       return code.map((c, y) => {
         const field = y === 0 ? num(no, o.num) : " ".repeat(o.num);
-        const head = y === 0 && mark ? [s("▌", ...(h.at ? [cur] : []), mark === "strong" ? "acc" : "mk"), s(field.slice(1), ...g)] : [s(field, ...g)];
+        const head = y === 0 && mark ? [s("▌", ...(at ? [cur] : picked ? (["vis"] as Cls[]) : []), mark === "strong" ? "acc" : "mk"), s(field.slice(1), ...g)] : [s(field, ...g)];
         return [...head, s(y === 0 ? ` ${sign} ` : "   ", ...(fill ? [fill] : []), ...(fill === "del" ? (["delc"] as Cls[]) : fill === "add" ? (["addc"] as Cls[]) : [])), ...c];
       });
     };

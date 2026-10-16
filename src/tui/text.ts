@@ -5,7 +5,8 @@ export type Cls =
   | "b" | "dim" | "bd" | "bdt" | "bf" | "bft" | "hdr" | "info" | "state" | "sel" | "seli" | "cur"
   | "add" | "addw" | "del" | "delw" | "addc" | "delc" | "ln" | "mk" | "key" | "tab" | "tabin" | "chip" | "chips" | "seg"
   | "fon" | "mod" | "tchg" | "tyou" | "tag" | "tout" | "tdr" | "tok" | "tq" | "tbad" | "ok" | "bad" | "new" | "acc" | "fh"
-  | "rule" | "cf" | "cft" | "wk" | "wg" | "ftr" | "fk" | "you" | "agentc" | "warn" | "hunk" | "void";
+  | "rule" | "cf" | "cft" | "wk" | "wg" | "ftr" | "fk" | "you" | "agentc" | "warn" | "hunk" | "void"
+  | "vis" | "hit" | "hitc" | "fref";
 
 export interface Span {
   text: string;
