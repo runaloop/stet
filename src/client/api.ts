@@ -63,6 +63,8 @@ export function clientApi(server: Address) {
     /** The diff from one commit to another as a unified patch; of `paths` only when given. */
     patch: (from: string, to: string, paths: string[] = []) => text("/api/patch", [["from", from], ["to", to], ...paths.map((p): [string, string] => ["path", p])]),
     blob: (sha: string, path: string) => call<BlobDto>("GET", "/api/blob", { query: { sha, path } }),
+    /** The paths of a commit's tree; null for a tree too big to list. */
+    files: (sha: string) => call<{ sha: string; paths: string[] | null }>("GET", "/api/files", { query: { sha } }),
     action: (review: number, id: string, target: ActionTarget) => call<{ launch: Launch; launched: boolean; command: string }>("POST", `/api/actions/${id}`, { query: { review }, body: target }),
     reviews: () => call<{ reviews: ReviewDto[]; default: number | null }>("GET", "/api/reviews"),
     review: (review: number) => call<ReviewStatusDto>("GET", "/api/review", { query: { review } }),
@@ -71,6 +73,9 @@ export function clientApi(server: Address) {
     refreshNow: (review: number) => call<{ sha: string | null; changed: boolean }>("POST", "/api/now/refresh", { query: { review } }),
     threads: (review: number) => call<ThreadSummary[]>("GET", "/api/threads", { query: { review, status: "all" } }),
     thread: (review: number, id: number) => call<ThreadDetail>("GET", `/api/threads/${id}`, { query: { review } }),
+    /** A new thread on lines of a file at a commit: `side` old for lines of the old side of a diff. */
+    addThread: (review: number, b: { path: string; start: number; end: number; side: "new" | "old"; at: string; body: string; draft: boolean }) =>
+      call<ThreadSummary>("POST", "/api/threads", { query: { review }, body: b }),
     reply: (review: number, id: number, b: { body: string; parentId?: number | null; draft: boolean; intent?: Intent | null }) =>
       call<CommentDto>("POST", `/api/threads/${id}/comments`, { query: { review }, body: b }),
     editDraft: (review: number, id: number, body: string) => call<{ ok: boolean }>("PATCH", `/api/comments/${id}`, { query: { review }, body: { body } }),

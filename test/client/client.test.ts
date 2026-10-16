@@ -116,6 +116,11 @@ test("the API answers with the token and fails with typed errors", async () => {
   expect(await api.patch(range.from.sha, range.to.sha, ["a.kt"])).toContain("@@");
   expect(await api.patch(range.from.sha, range.to.sha, ["../x"]).catch((e) => e)).toMatchObject({ status: 400 });
   expect((await api.blob(range.to.sha, "a.kt")).contents).toContain("line 21");
+  expect(await api.files(range.to.sha)).toEqual({ sha: range.to.sha, paths: ["a.kt"] });
+  const added = await api.addThread(review, { path: "a.kt", start: 2, end: 3, side: "old", at: range.from.sha, body: "and these?", draft: true });
+  expect(added).toMatchObject({ path: "a.kt", draft: true });
+  expect((await api.drafts(review)).map((d) => d.threadId)).toEqual([added.id]);
+  await api.discardDraft(review, (await api.drafts(review))[0]!.id);
 
   const draft = await api.reply(review, thread, { body: "because", draft: true });
   expect((await api.drafts(review)).map((d) => d.id)).toEqual([draft.id]);
