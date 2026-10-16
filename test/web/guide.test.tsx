@@ -361,4 +361,13 @@ describe("the Guide tab", () => {
     to(3);
     expect(guide.guideOpen.value).toBe(false);
   });
+
+  test("a link with guide=1, as a terminal's browser key builds it, opens on the Guide tab", () => {
+    guide.guideOpen.value = false;
+    compare.compareData.value = DATA;
+    state.route.value = { name: "compare", from: "1", to: "2", guide: true };
+    expect(guide.guideOpen.value).toBe(true);
+    expect(guide.guideShown.value).toBe(true);
+    guide.guideOpen.value = false;
+  });
 });

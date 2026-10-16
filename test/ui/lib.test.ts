@@ -196,6 +196,14 @@ describe("routes", () => {
     expect(parseHash("#/compare/base..3")).toEqual({ name: "compare", from: "base", to: "3" });
   });
 
+  test("a compare link can ask for the agent's guide to its version", () => {
+    const r = { name: "compare" as const, from: "1", to: "2", guide: true as const };
+    expect(routeHash(r)).toBe("#/compare/1..2?guide=1");
+    expect(parseHash(routeHash(r))).toEqual(r);
+    expect(parseHash("#/compare/1..2?file=a.kt&line=3&guide=1")).toEqual({ name: "compare", from: "1", to: "2", file: "a.kt", line: 3, guide: true });
+    expect(parseHash("#/compare/1..2?guide=0")).toEqual({ name: "compare", from: "1", to: "2" });
+  });
+
   test("a compare link can carry a range of lines: start-end, one number for one line", () => {
     const r = { name: "compare" as const, from: "1", to: "2", file: "a.md", line: 40, end: 55, side: "old" as const, review: 3 };
     expect(routeHash(r)).toBe("#/compare/1..2?file=a.md&line=40-55&side=old&review=3");

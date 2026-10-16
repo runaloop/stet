@@ -2,7 +2,7 @@ export type Route = (
   | { name: "home" }
   | { name: "overview" }
   | { name: "thread"; id: number }
-  | { name: "compare"; from: string; to: string; file?: string; line?: number; end?: number; side?: "old" | "new" }
+  | { name: "compare"; from: string; to: string; file?: string; line?: number; end?: number; side?: "old" | "new"; guide?: true }
   | { name: "drafts" }
 ) & { review?: number };
 
@@ -29,6 +29,7 @@ export function parseHash(hash: string): Route {
       }
       if (params.get("side") === "old") r.side = "old";
     }
+    if (params.get("guide") === "1") r.guide = true;
     return withReview(r);
   }
   if (h.startsWith("/drafts")) return withReview({ name: "drafts" });
@@ -50,6 +51,7 @@ export function routeHash(r: Route, review?: number | null): string {
         if (r.line) params.set("line", r.end && r.end > r.line ? `${r.line}-${r.end}` : String(r.line));
         if (r.side === "old") params.set("side", "old");
       }
+      if (r.guide) params.set("guide", "1");
       break;
     case "drafts":
       path = "/drafts";

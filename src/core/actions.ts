@@ -108,11 +108,13 @@ const editorOpen: ActionDef = {
   },
 };
 
-/** The page's route for a target: the thread, the file's line in the compare `from..at`, or the review. */
+/** The page's route for a target: the thread, the file's lines in the compare `from..at` (its guide), or the review. */
 export function routeOf(t: ActionTarget): Route {
   if (t.thread !== undefined) return { name: "thread", id: t.thread };
-  if (t.path === undefined) return { name: "home" };
-  return { name: "compare", from: t.from ?? "base", to: t.at ?? "now", file: repoPath(t.path), ...(t.line !== undefined ? { line: lineOf(t.line) } : {}) };
+  const guide = t.guide ? { guide: true as const } : {};
+  if (t.path === undefined) return t.guide ? { name: "compare", from: t.from ?? "base", to: t.at ?? "now", ...guide } : { name: "home" };
+  const lines = t.line !== undefined ? { line: lineOf(t.line), ...(t.end !== undefined && t.end > t.line ? { end: lineOf(t.end) } : {}), ...(t.side === "old" ? { side: "old" as const } : {}) } : {};
+  return { name: "compare", from: t.from ?? "base", to: t.at ?? "now", file: repoPath(t.path), ...lines, ...guide };
 }
 
 const browserOpen: ActionDef = {
@@ -147,6 +149,15 @@ export function actionTarget(body: unknown): ActionTarget {
   }
   if (b.path !== undefined) t.path = repoPath(b.path);
   if (b.line !== undefined) t.line = lineOf(b.line);
+  if (b.end !== undefined) t.end = lineOf(b.end);
+  if (b.side !== undefined) {
+    if (b.side !== "old" && b.side !== "new") throw usage("side must be old or new");
+    t.side = b.side;
+  }
+  if (b.guide !== undefined) {
+    if (typeof b.guide !== "boolean") throw usage("guide must be true or false");
+    t.guide = b.guide;
+  }
   for (const k of ["at", "from"] as const) {
     if (b[k] === undefined) continue;
     if (typeof b[k] !== "string" || !b[k]) throw usage(`${k} must be a version or a commit`);

@@ -2,7 +2,7 @@ import { computed, effect, signal } from "@preact/signals";
 import type { GuideDto } from "../src/core/types.ts";
 import { api } from "./api.ts";
 import { compareData, compareNav, cursor, guideFiles, guideOpen, guideShown, guideVersion, type FileView } from "./compare.ts";
-import { navigate, notify, reviewId, routeHash, versions, type Route } from "./state.ts";
+import { navigate, notify, reviewId, route, routeHash, versions, type Route } from "./state.ts";
 
 export { guideOpen, guideShown, guideVersion } from "./compare.ts";
 
@@ -51,6 +51,12 @@ effect(() => {
   guideViews.value = new Map();
   guideAt.value = null;
   guideStep.value = null;
+});
+
+// A link that asks for the guide (another UI's browser key) opens on the Guide tab.
+effect(() => {
+  const r = route.value;
+  if (r.name === "compare" && r.guide) guideOpen.value = true;
 });
 
 // A version whose guide the reviewer asked for opens on the Guide tab the first time it is on the right; after that

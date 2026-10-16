@@ -144,6 +144,14 @@ describe("browser.open", () => {
     expect((await post(state, "browser.open", { thread: 999 })).status).toBe(404);
   });
 
+  test("a range of lines, the old side and the guide go into the route; a wrong side is refused", async () => {
+    const open = async (target: object) => route((await post(state, "browser.open", target)).body.launch.url).route;
+    expect(await open({ path: "a.kt", line: 3, end: 5, side: "old", from: "base", at: "1" })).toEqual({ name: "compare", from: "base", to: "1", file: "a.kt", line: 3, end: 5, side: "old", review: review.id });
+    expect(await open({ path: "a.kt", line: 3, end: 3, side: "new" })).toEqual({ name: "compare", from: "base", to: "now", file: "a.kt", line: 3, review: review.id });
+    expect(await open({ from: "base", at: "1", guide: true })).toEqual({ name: "compare", from: "base", to: "1", guide: true, review: review.id });
+    expect((await post(state, "browser.open", { path: "a.kt", line: 3, side: "left" })).status).toBe(400);
+  });
+
   test("stet open --browser gives the same URL as the route", async () => {
     const cli = await ok(stet(["open", String(thread), "--browser", "--print"], { cwd: f.root }));
     expect(cli.url).toBe((await post(state, "browser.open", { thread })).body.launch.url);

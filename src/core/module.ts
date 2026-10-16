@@ -82,13 +82,20 @@ export interface ActionDef {
   resolve(ctx: Ctx, review: ReviewRow, target: ActionTarget): Promise<Launch>;
 }
 
-/** What an action runs on: a thread, or a file's line at a version (`at`, in a compare from `from`), or the review. */
+/**
+ * What an action runs on: a thread, or a file's lines at a version (`at`, in a compare from `from`; `side` old for
+ * the lines of `from`), or the review. `guide`: the agent's guide to the version `at`, where a UI shows one.
+ */
 export interface ActionTarget {
   thread?: number;
   path?: string;
   line?: number;
+  /** The last line of a range from `line`. */
+  end?: number;
+  side?: "old" | "new";
   at?: string;
   from?: string;
+  guide?: boolean;
 }
 
 /** `file`: an absolute `file` that is `path` under `root`, at `line`. */
