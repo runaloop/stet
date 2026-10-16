@@ -12,6 +12,7 @@ import { bar, hcat, overlay, pane, type Pane, type Row } from "./grid.ts";
 import { reads, type Reader } from "../ui/keys/match.ts";
 import { keyLabel } from "../ui/keys/names.ts";
 import { KEYS, type Scope } from "../ui/keys/table.ts";
+import { workingKeys, type Terminal } from "../ui/keys/terminal.ts";
 import { OFF, SCOPE, type MenuEntry } from "./keys/menu.ts";
 import { ordered, type Data, type ListFilter } from "./model.ts";
 import { blank, key, line, plural, s, spansWidth, wrap, type Cls, type Line, type Span } from "./text.ts";
@@ -97,7 +98,7 @@ export interface ViewState {
   prefix: string[];
   next: MenuEntry[];
   choice: Choice | null;
-  help: Line[] | null;
+  help: Help | null;
   toast: Toast | null;
   connecting: string | null;
   now: number;
@@ -210,7 +211,7 @@ const HINTS: Record<Place, Hint[]> = {
   cfiles: [["j k", "file"], ["Enter", "l", "into the diff"], ["m", "viewed"], ["z a", "fold"], ["Tab", "column"], ["Space", "menu"], ["?", "keys"], ["q", "round"]],
   composer: [["type the message"], ["Ctrl+S", "save as draft"], ["Ctrl+G", "send now"], ["Esc", "or"], ["j j", "leave, the text stays"], ["Ctrl+C", "quit"]],
   choice: [["j k", "choose"], ["Enter", "confirm"], ["Esc", "cancel"]],
-  help: [["j k", "scroll"], ["Esc", "close"]],
+  help: [["any key", "what it does here"], ["Esc", "q", "close"]],
   menu: [["press a key from the box"], ["Esc", "close"], ["Backspace", "up a level"]],
 };
 
@@ -569,12 +570,16 @@ function choiceBox(c: Choice, w: number): Row[] {
 }
 
 function helpBox(v: ViewState, w: number, height: number): Row[] {
-  const lines = v.help ?? [];
+  const h = v.help!;
+  const lines = h.lines.map((l, i) => (i === h.lit ? { ...l, fill: ["sel" as const] } : l));
   const bw = Math.min(w - 4, Math.max(40, ...lines.map((l) => spansWidth(l.spans) + 3)));
-  const rows = Math.min(height, lines.length + 2);
-  v.tops.help = Math.max(0, Math.min(v.tops.help, lines.length - (rows - 2)));
-  const more = lines.length - v.tops.help - (rows - 2);
-  return pane({ w: bw, title: [s("Keys", "b")], right: more > 0 ? [s(`${more} more ↓`, "dim")] : [], lines: lines.slice(v.tops.help), focus: true, hit: "focus:help" }, rows);
+  const said = h.got ? wrap(h.got, bw - 4).map((t) => line(s(` ${t}`, "b"))) : [line(s(" press any key: its row lights up · Esc or q closes", "dim"))];
+  const head = [...said, blank()];
+  const rows = Math.min(height, lines.length + head.length + 2);
+  const room = Math.max(1, rows - 2 - head.length);
+  v.tops.help = Math.max(0, Math.min(v.tops.help, lines.length - room));
+  const more = lines.length - v.tops.help - room;
+  return pane({ w: bw, title: [s("Keys", "b")], right: more > 0 ? [s(`${more} more ↓`, "dim")] : [], lines: [...head, ...lines.slice(v.tops.help)], focus: true, hit: "focus:help" }, rows);
 }
 
 // --- the screen
@@ -636,27 +641,44 @@ const PLACE_NAMES: Record<string, string> = {
   cfiles: "The files of the changes",
 };
 
-/** `?`: the keys of the place in focus, how to move around, and the keys that work everywhere. */
-export function helpFor(place: Column, reader: Reader): Line[] {
+/** `?`: the keys of the place in focus and everywhere, a key pressed lighting up its row. */
+export interface Help {
+  lines: Line[];
+  /** `scope id` of the row each line lists, null for the rest. */
+  rows: (string | null)[];
+  /** The line of the row the last key reached. */
+  lit: number | null;
+  /** What the last key did, or the line about a key the terminal turns into another. */
+  got: string | null;
+}
+
+/** `?`: the keys of the place in focus, how to move around, and the keys that work everywhere, as this terminal delivers them. */
+export function helpFor(place: Column, reader: Reader, term: Terminal): Help {
   const group = (sc: Scope) => {
-    const byId = new Map<string, { keys: string[]; desc: string }>();
+    const byId = new Map<string, { id: string; keys: string[]; desc: string }>();
     for (const r of KEYS.filter((x) => x.scope === sc && reads(x, reader))) {
+      const keys = workingKeys(r, term);
       const had = byId.get(r.id);
-      if (had) had.keys.push(...r.keys.filter((k) => !had.keys.includes(k)));
-      else byId.set(r.id, { keys: [...r.keys], desc: OFF[r.id] === "browser" ? `${r.desc} · opens in the browser` : OFF[r.id] === "later" ? `${r.desc} · not in the terminal yet` : r.desc });
+      if (had) had.keys.push(...keys.filter((k) => !had.keys.includes(k)));
+      else byId.set(r.id, { id: r.id, keys, desc: OFF[r.id] === "browser" ? `${r.desc} · opens in the browser` : OFF[r.id] === "later" ? `${r.desc} · not in the terminal yet` : r.desc });
     }
     return [...byId.values()];
   };
-  const out: Line[] = [];
-  const section = (title: string, rows: { keys: string; desc: string }[]) => {
-    if (out.length) out.push(blank());
-    out.push(line(s(` ${title}`, "b")));
-    for (const r of rows) out.push(line(s(`  ${r.keys.padEnd(20)}`, "wk"), s(` ${r.desc}`)));
+  const help: Help = { lines: [], rows: [], lit: null, got: null };
+  const push = (l: Line, row: string | null = null) => {
+    help.lines.push(l);
+    help.rows.push(row);
   };
-  const keys = (sc: Scope) => group(sc).map((r) => ({ keys: r.keys.map(keyLabel).join("  "), desc: r.desc }));
+  const section = (title: string, rows: { keys: string; desc: string; row?: string }[]) => {
+    if (help.lines.length) push(blank());
+    push(line(s(` ${title}`, "b")));
+    for (const r of rows) push(line(s(`  ${r.keys.padEnd(20)}`, "wk"), s(` ${r.desc}`)), r.row ?? null);
+  };
+  const keys = (sc: Scope) => group(sc).map((r) => ({ keys: r.keys.map(keyLabel).join("  "), desc: r.desc, row: `${sc} ${r.id}` }));
   section(PLACE_NAMES[place] ?? place, keys(SCOPE[place]));
   section("Moving around", MOVING);
   section("Everywhere", keys("global"));
-  out.push(blank(), line(s("  Ctrl+C quits from anywhere", "dim")));
-  return out;
+  push(blank());
+  push(line(s("  Ctrl+C quits from anywhere", "dim")));
+  return help;
 }

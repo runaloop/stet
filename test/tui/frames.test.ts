@@ -12,6 +12,8 @@ import { fetchWide, scopesOf, wideKey } from "../../src/tui/code.ts";
 import { rowText } from "../../src/tui/grid.ts";
 import { App } from "../../src/tui/app.ts";
 import { menuEntries, tuiReader } from "../../src/tui/keys/menu.ts";
+import { KeyTester, type Tried } from "../../src/tui/keys/tester.ts";
+import type { Terminal } from "../../src/ui/keys/terminal.ts";
 import { KeyMatcher } from "../../src/ui/keys/match.ts";
 import { KEYS } from "../../src/ui/keys/table.ts";
 import { helpFor, initialView, render, type ViewState } from "../../src/tui/render.ts";
@@ -20,6 +22,7 @@ import { seedTui, type Seeded } from "../fixtures/tui-seed.ts";
 import { Fixture, GIT_ENV } from "../helpers/fixture.ts";
 
 const reader = tuiReader(App.ids());
+const legacy: Terminal = { kitty: false, name: null, tmux: false };
 const CLI = join(import.meta.dir, "..", "..", "src", "cli.ts");
 const f = new Fixture();
 let server: ReturnType<typeof Bun.spawn> | null = null;
@@ -174,12 +177,42 @@ test("120×40: J lands in another file and its header row is marked", async () =
 
 test("120×40: ? lists the column's keys, how to move around and the mouse", async () => {
   const v = await view(ids.magic);
-  v.help = helpFor("list", reader);
+  v.help = helpFor("list", reader, legacy);
   const text = frame(v, 120, 40);
   expect(text).toContain("Moving around");
   expect(text).toContain("Space e  Space s t");
   expect(text).toContain("Shift+drag");
+  expect(text).toContain("press any key: its row lights up");
   expect(text).toMatchSnapshot();
+});
+
+test("120×40: ? is the key tester: a key lights up its row; Enter says Ctrl+Enter is plain Enter here and which key to use", async () => {
+  const v = await view(ids.magic);
+  v.help = helpFor("list", reader, legacy);
+  const tried: Tried[] = [];
+  const tester = new KeyTester(reader, legacy, ["round.list", "global"], (t) => tried.push(t), 10_000);
+  const press = (token: string) => {
+    const t = tester.press(token);
+    v.help!.got = t.text;
+    const at = t.row ? v.help!.rows.indexOf(`${t.row.scope} ${t.row.id}`) : -1;
+    v.help!.lit = at === -1 ? null : at;
+    return t;
+  };
+  expect(press("J").row?.id).toBe("thread.nextFile");
+  expect(press("g").text).toContain("got g …");
+  expect(press("g").row?.id).toBe("list.first");
+  expect(press("<F5>").text).toBe("got F5: nothing here");
+  const enter = press("<CR>");
+  expect(enter.row?.id).toBe("list.open");
+  expect(enter.text).toBe("got Enter: into the thread · Ctrl+Enter, Ctrl+Shift+Enter are plain Enter in this terminal, use Ctrl+S (save as a draft), Ctrl+G (send now)");
+  expect(new KeyTester(reader, { ...legacy, kitty: true }, ["round.list", "global"], () => {}).press("<CR>").text).toBe("got Enter: into the thread");
+  tester.reset();
+  const text = frame(v, 120, 40);
+  expect(text).toContain("got Enter: into the thread");
+  const lit = render(v, 120, 40).rows.find((r) => r.some((x) => x.c?.includes("sel")) && rowText(r).includes("into the thread"));
+  expect(lit).toBeDefined();
+  expect(text).toMatchSnapshot();
+  expect(tried).toEqual([]);
 });
 
 test("180×46: z widens the thread's code to every change of its file, then to the whole file", async () => {
@@ -277,8 +310,8 @@ test("80×24: one column, the diff; the files slide in over it when they have th
 
 test("? on the Changes tab lists its keys: lines, files, threads, folds, viewed, the range", async () => {
   const v = await changes("base", "2");
-  v.help = helpFor("changes", reader);
-  const text = v.help.map((l) => l.spans.map((x) => x.text).join("")).join("\n");
+  v.help = helpFor("changes", reader, legacy);
+  const text = v.help.lines.map((l) => l.spans.map((x) => x.text).join("")).join("\n");
   for (const k of ["] t ", "[ t ", "] b  L", "] c", "z a", "m ", "] v", "{", "p ", "Enter  o"]) expect(text).toContain(k);
 });
 
@@ -292,4 +325,19 @@ test("256 colours under TERM=screen-256color: the frame paints with palette inde
   expect(spans.length).toBeGreaterThan(50);
   expect(spans.every((x) => x.fg.intent === "indexed" && x.bg.intent === "indexed")).toBe(true);
   renderer.destroy();
+});
+
+test("? waits for the next key of a sequence, and says what the first key did when none comes", async () => {
+  const tried: Tried[] = [];
+  // as the terminal UI will read the rows once it comments on lines: gc comments on a selection, gcc on a line
+  const tester = new KeyTester(tuiReader(new Set([...App.ids(), "comment.start"])), legacy, ["changes", "global"], (t) => tried.push(t), 5);
+  expect(tester.press("z").row).toBeNull();
+  expect(tester.press("a").row?.id).toBe("diff.toggle");
+  expect(tester.press("g").row).toBeNull();
+  expect(tester.press("c").text).toBe("got g c …: longer keys start so, press the next one");
+  await Bun.sleep(30);
+  expect(tried.map((t) => [t.keys, t.row?.id, t.text])).toEqual([["gc", "comment.start", "got g c: comment on the selection"]]);
+  expect(tester.press("<C-w>").row).toBeNull();
+  expect(tester.press("W").row?.id).toBe("focus.prev");
+  expect(tester.press("<S-F3>").text).toBe("got Shift+F3: nothing here");
 });

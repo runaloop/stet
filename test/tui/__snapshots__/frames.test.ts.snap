@@ -337,7 +337,9 @@ stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v
 exports[`120×40: ? lists the column's keys, how to move around and the mouse 1`] = `
 "
 stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v2      Round 5   Changes   Drafts 1    ?  
-╭─╭─ Keys ─────────────────────────────────────────────────────────────────────────────────────────────── 18 more ↓ ─╮─╮
+╭─╭─ Keys ─────────────────────────────────────────────────────────────────────────────────────────────── 20 more ↓ ─╮─╮
+│ │ press any key: its row lights up · Esc or q closes                                                               │ │
+│ │                                                                                                                  │ │
 │ │ The thread list                                                                                                  │ │
 │ │  j  ↓  ] t            next thread                                                                                │ │
 │ │  k  ↑  [ t            previous thread                                                                            │ │
@@ -372,10 +374,53 @@ stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v
 │ │  S  Space r s         drafts, then S again submits (approves when there are no drafts)                           │ │
 │ │  w  Space u w         wrap long lines                                                                            │ │
 │ │  R  Space r r         re-read “now” from the working tree                                                        │ │
-│ │  Space g s            git state: pushed or not, staged, not staged, new files · not in the terminal yet          │ │
-│ │  Space f v            find a version: what changed in it, or make it from / to · not in the terminal yet         │ │
 ╰─╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯─╯
- KEYS   j k  scroll   Esc  close                                                                                        
+ KEYS   any key  what it does here   Esc   q  close                                                                     
+"
+`;
+
+exports[`120×40: ? is the key tester: a key lights up its row; Enter says Ctrl+Enter is plain Enter here and which key to use 1`] = `
+"
+stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v2      Round 5   Changes   Drafts 1    ?  
+╭─╭─ Keys ─────────────────────────────────────────────────────────────────────────────────────────────── 21 more ↓ ─╮─╮
+│ │ got Enter: into the thread · Ctrl+Enter, Ctrl+Shift+Enter are plain Enter in this terminal, use Ctrl+S (save as  │ │
+│ │ a draft), Ctrl+G (send now)                                                                                      │ │
+│ │                                                                                                                  │ │
+│ │ The thread list                                                                                                  │ │
+│ │  j  ↓  ] t            next thread                                                                                │ │
+│ │  k  ↑  [ t            previous thread                                                                            │ │
+│ │  Enter  l  o          into the thread                                                                            │ │
+│ │  g g                  first thread                                                                               │ │
+│ │  G                    last thread                                                                                │ │
+│ │  Ctrl+D  PgDn         half a page down                                                                           │ │
+│ │  Ctrl+U  PgUp         half a page up                                                                             │ │
+│ │  J                    first thread of the next file                                                              │ │
+│ │  K                    first thread of the previous file                                                          │ │
+│ │  n                    next unread thread                                                                         │ │
+│ │  N                    previous unread thread                                                                     │ │
+│ │  r                    reply to the thread                                                                        │ │
+│ │  Esc  h               hide the list (narrow screens)                                                             │ │
+│ │  q                    quit                                                                                       │ │
+│ │                                                                                                                  │ │
+│ │ Moving around                                                                                                    │ │
+│ │  h  l  Tab            columns: h left, l right, Tab cycles them; or click a column                               │ │
+│ │  Space e  Space s t   the left column's tabs: Files, Threads; or click a tab in its border                       │ │
+│ │  s  Space r v         the Drafts and Changes tabs at the top; Esc back to the round; or click them               │ │
+│ │  j  k                 in the list: the next / previous thread; in the code and the conversation: scroll          │ │
+│ │  J  K                 the first thread of the next / previous file, wherever you are                             │ │
+│ │  ]t  [t               the next / previous thread from the code or the conversation                               │ │
+│ │  n  N                 the next / previous unread thread                                                          │ │
+│ │  mouse                click a row, a tab, a column or a key chip; the wheel scrolls the column under the pointer │ │
+│ │  Shift+drag           selects text in most terminals while the mouse is on (Option+drag in iTerm2)               │ │
+│ │                                                                                                                  │ │
+│ │ Everywhere                                                                                                       │ │
+│ │  ?  Space ?           all keys                                                                                   │ │
+│ │  v  Space r v         changes since you last looked                                                              │ │
+│ │  s  Space r d         your drafts                                                                                │ │
+│ │  S  Space r s         drafts, then S again submits (approves when there are no drafts)                           │ │
+│ │  w  Space u w         wrap long lines                                                                            │ │
+╰─╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯─╯
+ KEYS   any key  what it does here   Esc   q  close                                                                     
 "
 `;
 

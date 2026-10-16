@@ -315,7 +315,7 @@ const global: KeyRow[] = [
 
 /** The text fields and boxes: Enter with Shift or Ctrl is lost in many terminals, so each has a key that is not. */
 const boxes: KeyRow[] = [
-  { id: "composer.draft", keys: ["<C-s>", "<C-CR>"], scope: "composer", desc: "save as a draft: the agent sees it after you submit the review" },
+  { id: "composer.draft", keys: ["<C-s>", "<C-CR>"], scope: "composer", desc: "save as a draft: the agent sees it after you submit the review", short: "save as a draft" },
   { id: "composer.now", keys: ["<C-S-CR>"], scope: "composer", fallback: ["<C-g>"], desc: "send now" },
   { id: "composer.leave", keys: ["<Esc>"], scope: "composer", desc: "leave; the text is kept for next time (jj too)" },
 
@@ -335,8 +335,6 @@ const boxes: KeyRow[] = [
   { id: "search.prev", keys: ["<S-CR>"], scope: "search", fallback: ["<Up>", "<C-p>"], desc: "previous match" },
   { id: "search.leave", keys: ["<Esc>"], scope: "search", before: [{ if: "peek", run: "peek.hide" }], desc: "close the preview, then leave the box" },
 
-  { id: "help.down", keys: ["j", "<Down>"], scope: "help", desc: "scroll down" },
-  { id: "help.up", keys: ["k", "<Up>"], scope: "help", desc: "scroll up" },
   { id: "help.close", keys: ["<Esc>", "?", "q"], scope: "help", desc: "close" },
 
   { id: "blame.down", keys: ["j", "<Down>"], scope: "blame", desc: "next version or thread" },

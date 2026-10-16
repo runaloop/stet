@@ -22,6 +22,8 @@ import { KeyMatcher, rowFor, runRow, type Actions } from "../ui/keys/match.ts";
 import { tokens } from "../ui/keys/names.ts";
 import { COUNT_SCOPES, KEYS, type KeyRow, type Scope } from "../ui/keys/table.ts";
 import { menuEntries, OFF, rowOf, SCOPE, tuiReader } from "./keys/menu.ts";
+import { KeyTester, type Tried } from "./keys/tester.ts";
+import { terminalOf, type Terminal } from "../ui/keys/terminal.ts";
 import { ordered, threadGroups } from "./model.ts";
 import { columnOf, helpFor, initialView, render, scopeOf, type Writing } from "./render.ts";
 import { hitAt, hitsOf, type Hit } from "./grid.ts";
@@ -67,6 +69,7 @@ export class App {
   private readonly conditions = { drafts: () => this.v.data.drafts.length > 0 };
   private readonly reader = tuiReader(new Set(Object.keys(this.actions)));
   private readonly matcher = new KeyMatcher(() => KEYS, this.reader, (row) => this.runRow(row));
+  private tester: KeyTester | null = null;
   readonly screen: Screen;
   private readonly composer: ComposerView;
   private readonly texts: Texts;
@@ -1066,9 +1069,7 @@ export class App {
   private boxActions(): Actions {
     const v = () => this.v;
     return {
-      "help.down": () => ((v().tops.help = Math.max(0, v().tops.help + 1)), this.redraw()),
-      "help.up": () => ((v().tops.help = Math.max(0, v().tops.help - 1)), this.redraw()),
-      "help.close": () => ((v().help = null), this.redraw()),
+      "help.close": () => this.closeHelp(),
       "choice.down": () => this.moveChoice(1),
       "choice.up": () => this.moveChoice(-1),
       "choice.pick": () => this.pick(v().choice?.at ?? 0),
@@ -1284,8 +1285,8 @@ export class App {
     const hit = hitAt(this.hits, e.x, e.y);
     const v = this.v;
     if (v.help) {
-      if (!hit?.startsWith("focus:help") && !hit?.startsWith("key:")) v.help = null;
-      else if (hit.startsWith("key:")) return this.runKeys(hit.slice(4));
+      if (!hit?.startsWith("focus:help") && !hit?.startsWith("key:")) return this.closeHelp();
+      if (hit.startsWith("key:")) return this.runKeys(hit.slice(4));
       return this.redraw();
     }
     if (!hit) return;
@@ -1411,6 +1412,7 @@ export class App {
     if (this.composer.open) return this.composerKey(k, token);
     k.preventDefault();
     const v = this.v;
+    if (v.help) return this.helpKey(token);
     if (v.choice && /^[1-9]$/.test(token)) {
       const at = Number(token) - 1;
       if (at < v.choice.options.length) this.pick(at);
@@ -1459,10 +1461,41 @@ export class App {
     this.runRow(row);
   }
 
+  /** `?`: the keys here, and a tester of what each key does in this terminal. */
   private openHelp(): void {
-    this.v.help = helpFor(columnOf(this.v), this.reader);
+    const column = columnOf(this.v);
+    const term = this.terminal();
+    this.v.help = helpFor(column, this.reader, term);
     this.v.tops.help = 0;
+    this.tester = new KeyTester(this.reader, term, [SCOPE[column], "global"], (t) => this.tried(t));
     this.redraw();
+  }
+
+  private closeHelp(): void {
+    this.tester?.reset();
+    this.tester = null;
+    this.v.help = null;
+    this.redraw();
+  }
+
+  private helpKey(token: string): void {
+    if (rowFor(KEYS, token, ["help"], this.reader)) return this.closeHelp();
+    if (this.tester) this.tried(this.tester.press(token));
+  }
+
+  private tried(t: Tried): void {
+    const h = this.v.help;
+    if (!h) return;
+    h.got = t.text;
+    const at = t.row ? h.rows.indexOf(`${t.row.scope} ${t.row.id}`) : -1;
+    h.lit = at === -1 ? null : at;
+    if (h.lit !== null) this.v.tops.help = Math.max(0, h.lit - 3);
+    this.redraw();
+  }
+
+  private terminal(): Terminal {
+    const caps = this.renderer.capabilities;
+    return terminalOf(process.env, caps?.kitty_keyboard ?? false, caps?.terminal?.name ?? null);
   }
 }
 

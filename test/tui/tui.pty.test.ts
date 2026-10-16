@@ -69,6 +69,16 @@ test("stet tui: the list previews the selected thread, l goes into it and marks 
     run.write("h");
     await run.waitFor((s) => footer(s).includes("THREADS") && s.includes("preview"));
     expect(header(run.screen())).toContain("stet");
+
+    // ? tests keys through the real decoder: this terminal has no kitty protocol, so Ctrl+Enter comes as Enter
+    run.write("?");
+    await run.waitFor((s) => s.includes("press any key: its row lights up"));
+    run.write("\r");
+    await run.waitFor((s) => s.includes("got Enter: into the thread") && s.includes("Ctrl+Enter, Ctrl+Shift+Enter are plain Enter in this terminal"));
+    run.write("\x07");
+    await run.waitFor((s) => s.includes("got Ctrl+G: nothing here"));
+    run.write("q");
+    await run.waitFor((s) => !s.includes("got Ctrl+G") && footer(s).includes("THREADS"));
     run.write("q");
     const code = await Promise.race([run.exited, Bun.sleep(10_000).then(() => "timeout" as const)]);
     expect(code).toBe(0);
