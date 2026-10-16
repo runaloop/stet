@@ -11,14 +11,14 @@ import type { ActionTarget } from "../core/module.ts";
 import { foldedFiles, type FileRow } from "../ui/compare.ts";
 import { NOTHING, withSpan } from "../ui/reveal.ts";
 import { defaultCompare, shiftRef } from "../ui/state.ts";
-import { barSpans, isCollapsed, presetsOf, rangeTitle, refsOf, syncChanges, viewedChange, wholeBranch } from "./changes.ts";
+import { barSpans, isCollapsed, presetsOf, rangeTitle, refsOf, searchChanges, syncChanges, viewedChange, wholeBranch } from "./changes.ts";
 import { codeEnds, codeViews, fetchWide, scopesOf, threadCode, wideKey } from "./code.ts";
 import { DiffView } from "./diff/view.ts";
 import { FILE, GAP, GROUP } from "./diff/model.ts";
 import { flushTrace, trace, tracing } from "./trace.ts";
 import { Highlighter } from "./diff/highlight.ts";
 import { ComposerView } from "./composer.ts";
-import { KeyReader } from "./keys/input.ts";
+import { editLine, KeyReader } from "./keys/input.ts";
 import { KeyMatcher, rowFor, runRow, type Actions } from "../ui/keys/match.ts";
 import { tokens } from "../ui/keys/names.ts";
 import { COUNT_SCOPES, KEYS, type KeyRow, type Scope } from "../ui/keys/table.ts";
@@ -154,7 +154,7 @@ export class App {
   async close(): Promise<void> {
     this.hl.close();
     flushTrace();
-    for (const t of [...this.timers, this.toastTimer, this.readTimer, this.reloadTimer, this.previewTimer, this.landedTimer]) clearTimeout(t);
+    for (const t of [...this.timers, this.toastTimer, this.readTimer, this.reloadTimer, this.previewTimer, this.landedTimer, this.searchTimer]) clearTimeout(t);
     this.matcher.reset();
     this.texts.flush();
     await this.sub?.close();
@@ -730,6 +730,103 @@ export class App {
     const id = c.diff.threadAt();
     if (id !== null) return this.openThread(id);
     this.say("no thread on this line: ] t goes to the next one");
+  }
+
+  // --- the diff's search
+
+  private searchTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** `/`: the box at the bottom; matches are marked as you type. */
+  private openSearch(): void {
+    const v = this.v;
+    if (v.tab !== "changes") return this.say("the diff's search is on the Changes tab: Space r v, then /");
+    v.changes.search.typing = true;
+    v.changes.focus = "diff";
+    this.redraw();
+  }
+
+  private searchNow(): void {
+    clearTimeout(this.searchTimer);
+    searchChanges(this.v.changes);
+    this.redraw();
+  }
+
+  /** A key while the box is open: text goes in, Enter goes to the first match after the cursor, Esc drops the search. */
+  private searchKey(k: KeyEvent, token: string): void {
+    const q = this.v.changes.search;
+    k.preventDefault();
+    if (token === "<CR>") {
+      q.typing = false;
+      this.searchNow();
+      if (!q.query) return;
+      if (q.error) return this.say(q.error, "error");
+      if (!q.hits.length) return this.say(`no match for “${q.query}” in this diff`);
+      return this.goToHit(this.hitAfterCursor());
+    }
+    if (token === "<Esc>") {
+      q.typing = false;
+      return this.clearSearch();
+    }
+    const next = editLine(q.query, k, token);
+    if (next === null) return;
+    q.query = next;
+    clearTimeout(this.searchTimer);
+    this.searchTimer = setTimeout(() => this.searchNow(), next.length > 2 ? 60 : 150);
+    this.redraw();
+  }
+
+  private clearSearch(): void {
+    const q = this.v.changes.search;
+    q.query = "";
+    this.searchNow();
+  }
+
+  /** The first match at or after the cursor, in reading order; the first one past the end. */
+  private hitAfterCursor(): number {
+    const c = this.v.changes;
+    const q = c.search;
+    const info = c.diff.info();
+    const order = new Map(c.rows.map((r, i) => [r.fd.name, i]));
+    const here = info?.item.kind === "file" ? (order.get(info.item.key) ?? 0) : 0;
+    const row = c.diff.cursor;
+    const at = q.hits.findIndex((h) => {
+      const f = order.get(h.path) ?? 0;
+      if (f !== here) return f > here;
+      const r = c.diff.lineRow(h.path, h.side === "deletions" ? 0 : 1, h.line);
+      return r === -1 || r >= row;
+    });
+    return at === -1 ? 0 : at;
+  }
+
+  /** A match on screen: its file opened (and its fold group) when folded, the cursor on its line and side. */
+  private goToHit(i: number): void {
+    const c = this.v.changes;
+    const q = c.search;
+    const h = q.hits[i];
+    if (!h) return;
+    const row = c.rows.find((r) => r.fd.name === h.path);
+    if (row?.hidden && row.group) c.groups = { ...c.groups, [row.group]: true };
+    if (row && isCollapsed(c, row.fd)) c.open.set(row.fd.name, true);
+    q.at = i;
+    this.syncChanges();
+    const side = h.side === "deletions" ? 0 : 1;
+    const r = c.diff.lineRow(h.path, side, h.line);
+    if (r !== -1) {
+      c.diff.goTo(r, "center");
+      if (c.diff.split) c.diff.setSide(side);
+    }
+    this.followDiff();
+  }
+
+  /** n, N, F3: the next match, round the end; n and N go through unread threads while nothing is searched. */
+  private stepHit(dir: 1 | -1, unread: boolean): void {
+    const q = this.v.changes.search;
+    if (!q.hits.length) {
+      if (unread) return this.run(dir === 1 ? "unread.next" : "unread.prev");
+      return this.say(q.query ? `no match for “${q.query}”` : "nothing searched: / searches the diff");
+    }
+    const n = q.hits.length;
+    this.goToHit(q.at === -1 ? (dir === 1 ? 0 : n - 1) : (q.at + dir + n) % n);
   }
 
   /** i, a, c, gc, gcc: a new thread on the selection or the cursor's line, on its side of the range. */
@@ -1552,6 +1649,7 @@ export class App {
     k.preventDefault();
     const v = this.v;
     if (v.help) return this.helpKey(token);
+    if (v.changes.search.typing && v.tab === "changes" && !v.choice) return this.searchKey(k, token);
     if (v.choice && /^[1-9]$/.test(token)) {
       const at = Number(token) - 1;
       if (at < v.choice.options.length) this.pick(at);

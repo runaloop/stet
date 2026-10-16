@@ -108,8 +108,22 @@ export function stripLine(d: Data, c: ChangesState): Line {
   return { spans };
 }
 
-/** "5 threads on this diff · 1 elsewhere" and the keys that move through them and the range. */
+/** How many matches a search has, in words. */
+export function matchesText(c: ChangesState): string {
+  const q = c.search;
+  if (q.error) return "not a pattern";
+  if (!q.query) return "type to search";
+  const n = q.hits.length;
+  if (!n) return "no match";
+  const total = `${n}${q.truncated ? "+" : ""}`;
+  return q.at >= 0 ? `match ${q.at + 1} of ${total}` : `${total} ${n === 1 ? "match" : "matches"}`;
+}
+
+/** "5 threads on this diff · 1 elsewhere" and the keys that move through them and the range; the search when there is one. */
 export function infoLine(c: ChangesState, shown: number): Line {
+  if (c.search.query && !c.search.typing) {
+    return line(s(` /${c.search.query}`, "b"), s(` · ${matchesText(c)} · `, "dim"), key("n"), key("N"), s(" next / previous · ", "dim"), key("Esc"), s(" clears", "dim"));
+  }
   const outside = c.data?.outside.length ?? 0;
   return line(
     s(` ${plural(shown, "thread")} on this diff${outside ? ` · ${outside} elsewhere` : ""} · `, "dim"),
@@ -211,7 +225,7 @@ export function filesPane(d: Data, c: ChangesState, w: number, height: number, t
   const focus = c.focus === "list";
   const inner = height - 2;
   if (c.side !== "files") {
-    return { w, title: sideTitle(c.side), lines: [blank(), line(s(c.side === "search" ? " Search comes later; the browser has it." : " The threads are on the Round tab.", "dim"))], focus, hit: "focus:clist" };
+    return { w, title: sideTitle(c.side), lines: c.side === "search" ? [blank(), line(s(" "), key("/"), s(" searches this diff · ", "dim"), key("Space /"), s(" all files, in the browser", "dim"))] : [blank(), line(s(" The threads are on the Round tab.", "dim"))], focus, hit: "focus:clist" };
   }
   const all = filesLines(d, c, focus, w - 2, 0, 0);
   if (all.at !== -1) {

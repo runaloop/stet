@@ -5,7 +5,7 @@ import type { ThreadDetail } from "../../src/core/types.ts";
 import { parsePatchFiles } from "@pierre/diffs";
 import { createTestRenderer } from "@opentui/core/testing";
 import { viewedKey } from "../../src/ui/viewed.ts";
-import { syncChanges } from "../../src/tui/changes.ts";
+import { searchChanges, syncChanges } from "../../src/tui/changes.ts";
 import { colorMode } from "../../src/tui/diff/colors.ts";
 import { Screen } from "../../src/tui/screen.ts";
 import { fetchWide, scopesOf, wideKey } from "../../src/tui/code.ts";
@@ -438,5 +438,46 @@ test("120×40 and 80×24: the cursor in a thread's code on an added line; the co
   frame(v, 80, 24);
   const narrow = frame(v, 80, 24);
   expect(narrow).toContain("timingSafeEqual(given, KEY)");
+  expect(narrow).toMatchSnapshot();
+});
+
+/** A search as `/` and Enter leave it: the query, its matches, the cursor on match `at`. */
+function search(v: ViewState, query: string, at: number): void {
+  const c = v.changes;
+  c.search.query = query;
+  searchChanges(c);
+  c.search.at = at;
+  searchChanges(c);
+  const h = c.search.hits[at]!;
+  c.diff.goTo(c.diff.lineRow(h.path, h.side === "deletions" ? 0 : 1, h.line), "center");
+}
+
+const spansWith = (v: ViewState, w: number, h: number, cls: "hit" | "hitc") => render(v, w, h).rows.flatMap((r) => r.filter((x) => x.c?.includes(cls)).map((x) => x.text));
+
+test("180×46: / opens the search box at the bottom; the matches are marked as it is typed", async () => {
+  const v = await changes("1", "2");
+  frame(v, 180, 46);
+  v.changes.search.typing = true;
+  v.changes.search.query = "given";
+  searchChanges(v.changes);
+  const text = frame(v, 180, 46);
+  expect(text).toContain(" SEARCH  /given▏");
+  expect(text).toContain("4 matches");
+  expect(spansWith(v, 180, 46, "hit").every((t) => t === "given")).toBe(true);
+  expect(spansWith(v, 180, 46, "hit").length).toBeGreaterThan(1);
+  expect(text).toMatchSnapshot();
+});
+
+test("120×40 and 80×24: after Enter the info line counts the matches; the current one is marked stronger", async () => {
+  const v = await changes("1", "2");
+  frame(v, 120, 40);
+  search(v, "KEY", 1);
+  const text = frame(v, 120, 40);
+  expect(text).toMatch(/\/KEY · match 2 of \d+ ·/);
+  expect(new Set(spansWith(v, 120, 40, "hitc"))).toEqual(new Set(["KEY"]));
+  expect(text).toMatchSnapshot();
+  const narrow = frame(v, 80, 24);
+  expect(narrow).toContain("/KEY · match 2 of");
+  expect(new Set(spansWith(v, 80, 24, "hitc"))).toEqual(new Set(["KEY"]));
   expect(narrow).toMatchSnapshot();
 });

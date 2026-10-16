@@ -1025,3 +1025,128 @@ stet rate-limit   v2                               Round 6   Changes   Drafts 1
  LINES   j k  line   V  select   i  comment   ] c   [ c  change   Esc  leave th…
 "
 `;
+
+exports[`120×40 and 80×24: after Enter the info line counts the matches; the current one is marked stronger 1`] = `
+"
+stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2      Round 6   Changes   Drafts 1    ?  
+╭─  Threads   Files   Search  ─────────╮╭─ What changed in v2 v1 → v2 · 9 files ────────────────────── unified · wrap ─╮
+│ 9 files · 0 of 7 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2     whole branch  p                 │
+│                                      ││ /KEY · match 2 of 5 ·  n  N  next / previous ·  Esc  clears                  │
+│ CODE (5)                             ││                                                                              │
+│ [ ] src/admin/routes.ts         +6   ││ ▾ src/admin/routes.ts                                          +6  [ ] viewed│
+│ [ ] src/auth.ts              −3 +5 ●3││       1 + import { authorized } from "../auth.ts";                           │
+│ [ ] src/db.ts                   −1  1││       2 +                                                                    │
+│ [ ] src/limiter.ts              +5  1││       3 + export async function adminRoutes(req: Request): Promise<Response> │
+│ [ ] src/report.ts          −13 +16  1││           {                                                                  │
+│ DOCS (2)                             ││       4 +   if (!authorized(req)) return new Response("unauthorized", { statu│
+│ [ ] README.md                −1 +3  1││           s: 401 });                                                         │
+│ [ ] docs/limits.png                  ││       5 +   return Response.json({ limiter: "on" });                         │
+│ TESTS WITH ONLY NEW CODE (1)         ││       6 + }                                                                  │
+│ [ ] src/limiter.test.ts         +8   ││ ▾ src/auth.ts                                               −3 +5  [ ] viewed│
+│ GENERATED AND LOCK FILES (1)         ││   1     - const KEY = process.env.API_KEY ?? "";                             │
+│ [ ] bun.lock                    +5   ││▌      1 + import { timingSafeEqual } from "node:crypto";                     │
+│                                      ││           ▲ #8   your turn   Nit: the import is fine, but \`KEY\` is a Buffer …│
+│                                      ││       2 +                                                                    │
+│                                      ││▌      3 + const KEY = Buffer.from(process.env.API_KEY ?? "");                │
+│                                      ││           ▲ #7   agent's turn   Read API_KEY once at startup and refuse to s…│
+│                                      ││   2   4                                                                      │
+│                                      ││   3   5   export function authorized(req: Request): boolean {                │
+│                                      ││   4     -   const given = req.headers.get("x-api-key") ?? "";                │
+│                                      ││   5     -   return given === KEY;                                            │
+│                                      ││▌      6 +   const given = Buffer.from(req.headers.get("x-api-key") ?? "");   │
+│                                      ││▌      7 +   return given.length === KEY.length && timingSafeEqual(given, KEY)│
+│                                      ││           ;                                                                  │
+│                                      ││           ▲ #1   changed   your turn   \`===\` on secrets leaks timing. Use \`c…│
+│                                      ││   6   8   }                                                                  │
+│                                      ││ ▾ src/db.ts                                                    −1  [ ] viewed│
+│                                      ││       ⋯ 5 unchanged lines                                                    │
+│                                      ││   6   6   const users = new Map<string, User>([["1", { id: "1", name: "Ada" }│
+│                                      ││           ]]);                                                               │
+│                                      ││   7   7                                                                      │
+│                                      ││   8   8   export async function findUser(id: string): Promise<User | null> { │
+│                                      ││▌  9     -   console.log("findUser", id);                                     │
+│                                      ││           ▲ #3   outdated   your turn   Leftover debug log: please drop it.  │
+╰──────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────╯
+ CHANGES   j k  line   V  select   i  comment   ] t   [ t  thread   ] b   [ b  file   Enter  open   m  viewed   z a  fo…
+"
+`;
+
+exports[`120×40 and 80×24: after Enter the info line counts the matches; the current one is marked stronger 2`] = `
+"
+stet rate-limit   v2                               Round 6   Changes   Drafts 1 
+╭─ What changed in v2 v1 → v2 · 9 files ────────────────────── unified · wrap ─╮
+│  base main  ──▶  v1  ──▶  v2    now = v2     whole branch  p                 │
+│ /KEY · match 2 of 5 ·  n  N  next / previous ·  Esc  clears                  │
+│                                                                              │
+│ ▾ src/admin/routes.ts                                          +6  [ ] viewed│
+│       1 + import { authorized } from "../auth.ts";                           │
+│       2 +                                                                    │
+│       3 + export async function adminRoutes(req: Request): Promise<Response> │
+│           {                                                                  │
+│       4 +   if (!authorized(req)) return new Response("unauthorized", { statu│
+│           s: 401 });                                                         │
+│       5 +   return Response.json({ limiter: "on" });                         │
+│       6 + }                                                                  │
+│ ▾ src/auth.ts                                               −3 +5  [ ] viewed│
+│   1     - const KEY = process.env.API_KEY ?? "";                             │
+│▌      1 + import { timingSafeEqual } from "node:crypto";                     │
+│           ▲ #8   your turn   Nit: the import is fine, but \`KEY\` is a Buffer …│
+│       2 +                                                                    │
+│▌      3 + const KEY = Buffer.from(process.env.API_KEY ?? "");                │
+│           ▲ #7   agent's turn   Read API_KEY once at startup and refuse to s…│
+│   2   4                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+ CHANGES   j k  line   V  select   i  comment   ] t   [ t  thread   ] b   [ b  …
+"
+`;
+
+exports[`180×46: / opens the search box at the bottom; the matches are marked as it is typed 1`] = `
+"
+stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2                                                                  Round 6   Changes   Drafts 1    ?  
+╭─  Threads   Files   Search  ─────────╮╭─ What changed in v2 v1 → v2 · 9 files ────────────────────────────────────────────────────────────────────────────────── unified · wrap ─╮
+│ 9 files · 0 of 7 viewed · 2 hidden   ││  base main  ──▶  v1  ──▶  v2    now = v2     whole branch  p                                                                             │
+│                                      ││ 5 threads on this diff · 5 elsewhere ·  V  select lines ·  i  comment ·  ] t  [ t  step ·  Enter  opens                                  │
+│ CODE (5)                             ││                                                                                                                                          │
+│ [ ] src/admin/routes.ts         +6   ││ ▾ src/admin/routes.ts                                                                                                      +6  [ ] viewed│
+│ [ ] src/auth.ts              −3 +5 ●3││       1 + import { authorized } from "../auth.ts";                                                                                       │
+│ [ ] src/db.ts                   −1  1││       2 +                                                                                                                                │
+│ [ ] src/limiter.ts              +5  1││       3 + export async function adminRoutes(req: Request): Promise<Response> {                                                           │
+│ [ ] src/report.ts          −13 +16  1││       4 +   if (!authorized(req)) return new Response("unauthorized", { status: 401 });                                                  │
+│ DOCS (2)                             ││       5 +   return Response.json({ limiter: "on" });                                                                                     │
+│ [ ] README.md                −1 +3  1││       6 + }                                                                                                                              │
+│ [ ] docs/limits.png                  ││ ▾ src/auth.ts                                                                                                           −3 +5  [ ] viewed│
+│ TESTS WITH ONLY NEW CODE (1)         ││   1     - const KEY = process.env.API_KEY ?? "";                                                                                         │
+│ [ ] src/limiter.test.ts         +8   ││▌      1 + import { timingSafeEqual } from "node:crypto";                                                                                 │
+│ GENERATED AND LOCK FILES (1)         ││           ▲ #8   your turn   Nit: the import is fine, but \`KEY\` is a Buffer now; \`KEY_BYTES\`?                                            │
+│ [ ] bun.lock                    +5   ││       2 +                                                                                                                                │
+│                                      ││▌      3 + const KEY = Buffer.from(process.env.API_KEY ?? "");                                                                            │
+│                                      ││           ▲ #7   agent's turn   Read API_KEY once at startup and refuse to start when it is empty? Today an empty key accepts an empty h…│
+│                                      ││   2   4                                                                                                                                  │
+│                                      ││   3   5   export function authorized(req: Request): boolean {                                                                            │
+│                                      ││   4     -   const given = req.headers.get("x-api-key") ?? "";                                                                            │
+│                                      ││   5     -   return given === KEY;                                                                                                        │
+│                                      ││▌      6 +   const given = Buffer.from(req.headers.get("x-api-key") ?? "");                                                               │
+│                                      ││▌      7 +   return given.length === KEY.length && timingSafeEqual(given, KEY);                                                           │
+│                                      ││           ▲ #1   changed   your turn   \`===\` on secrets leaks timing. Use \`crypto.timingSafeEqual\` on equal-length buffers.              │
+│                                      ││   6   8   }                                                                                                                              │
+│                                      ││ ▾ src/db.ts                                                                                                                −1  [ ] viewed│
+│                                      ││       ⋯ 5 unchanged lines                                                                                                                │
+│                                      ││   6   6   const users = new Map<string, User>([["1", { id: "1", name: "Ada" }]]);                                                        │
+│                                      ││   7   7                                                                                                                                  │
+│                                      ││   8   8   export async function findUser(id: string): Promise<User | null> {                                                             │
+│                                      ││▌  9     -   console.log("findUser", id);                                                                                                 │
+│                                      ││           ▲ #3   outdated   your turn   Leftover debug log: please drop it.                                                              │
+│                                      ││  10   9     return users.get(id) ?? null;                                                                                                │
+│                                      ││  11  10   }                                                                                                                              │
+│                                      ││ ▾ src/limiter.ts                                                                                                           +5  [ ] viewed│
+│                                      ││       ⋯ 7 unchanged lines                                                                                                                │
+│                                      ││   8   8       if (list.length >= this.limit) return false;                                                                               │
+│                                      ││   9   9       list.push(now);                                                                                                            │
+│                                      ││  10  10       this.hits.set(key, list);                                                                                                  │
+│                                      ││      11 +     if (this.hits.size > 10_000) this.sweep(now);                                                                              │
+│                                      ││  11  12       return true;                                                                                                               │
+│                                      ││  12  13     }                                                                                                                            │
+╰──────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ SEARCH  /given▏  4 matches   Enter  go to the first after the cursor   Esc  drop the search                                                                                        
+"
+`;

@@ -7,7 +7,7 @@ import type { CodeView, Scope as CodeScope, Wide } from "./code.ts";
 import type { TokenSource } from "./diff/paint.ts";
 import { DiffView, type Want } from "./diff/view.ts";
 import { initialChanges, type ChangesState } from "./changes.ts";
-import { changesHooks, diffPane, filesPane, filesWidth } from "./views/changes.ts";
+import { changesHooks, diffPane, filesPane, filesWidth, matchesText } from "./views/changes.ts";
 import { bar, hcat, overlay, pane, type Pane, type Row } from "./grid.ts";
 import { reads, type Reader } from "../ui/keys/match.ts";
 import { keyLabel } from "../ui/keys/names.ts";
@@ -241,6 +241,10 @@ function composerHints(v: ViewState): Hint[] {
 
 function footer(v: ViewState, w: number): Line {
   const scope = scopeOf(v);
+  if (v.tab === "changes" && v.changes.search.typing) {
+    const q = v.changes.search;
+    return footerLine(w, { chip: "SEARCH", hints: [[`/${q.query}▏`], [matchesText(v.changes)], ["Enter", "go to the first after the cursor"], ["Esc", "drop the search"]], toast: null });
+  }
   if (v.count) return footerLine(w, { chip: CHIPS[scope], hints: [[`${v.count} …`], ["j k", "] c", "] b", "move that many"], ["Esc", "forget it"]], toast: null });
   if (v.prefix.length && scope !== "menu") {
     const hints: Hint[] = [[`${keyLabel(v.prefix.join(""))} …`], ...v.next.map((n) => [keyLabel(n.key), n.desc] as Hint)];
@@ -348,7 +352,7 @@ function position(v: ViewState): Span[] {
 function listPane(v: ViewState, w: number, height: number, focus: boolean): Pane {
   const base = { w, title: sideTitle(v.side), focus, hit: "focus:list" };
   if (v.side === "search") {
-    return { ...base, lines: [blank(), line(s(" Search comes with the Changes run.", "dim")), blank(), line(s(" "), key("Space s t"), s(" threads · ", "dim"), key("Space e"), s(" files", "dim"))] };
+    return { ...base, lines: [blank(), line(s(" On the Changes tab ", "dim"), key("/"), s(" searches the diff;", "dim")), line(s(" "), key("Space /"), s(" searches all files in the browser.", "dim")), blank(), line(s(" "), key("Space s t"), s(" threads · ", "dim"), key("Space e"), s(" files", "dim"))] };
   }
   let lines: Line[];
   let at: number;

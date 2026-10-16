@@ -31,3 +31,24 @@ export class KeyReader {
     return t;
   }
 }
+
+/** The character a key types into a line of text, when it types one: not for a modified key or a named one. */
+export function typed(k: KeyEvent): string | null {
+  if (k.ctrl || k.meta || k.option || k.super) return null;
+  const ch = [...k.sequence].length === 1 ? k.sequence : [...k.name].length === 1 ? (k.shift ? k.name.toUpperCase() : k.name) : null;
+  return ch !== null && ch >= " " && ch !== "\x7f" ? ch : null;
+}
+
+/** A line of text after a key: a character typed at its end, Backspace, Ctrl+W (a word), Ctrl+U (all); null for other keys. */
+export function editLine(text: string, k: KeyEvent, token: string): string | null {
+  switch (token) {
+    case "<BS>":
+      return [...text].slice(0, -1).join("");
+    case "<C-u>":
+      return "";
+    case "<C-w>":
+      return text.replace(/\S+\s*$|\s+$/u, "");
+  }
+  const ch = typed(k);
+  return ch === null ? null : text + ch;
+}

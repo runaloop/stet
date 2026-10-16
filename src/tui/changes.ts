@@ -9,10 +9,12 @@ import { fileRows, type FileRow } from "../ui/compare.ts";
 import { DEFAULT_COLLAPSE_GLOBS, DEFAULT_SKIP_MARKERS, DEFAULT_TEST_GLOBS, foldOf, parseList, type FoldDecision } from "../ui/fold.ts";
 import { CORE_PRESETS, orderOf } from "../ui/order.ts";
 import { CHUNK, type Reveal } from "../ui/reveal.ts";
+import { flatHits, searchDiff, type Hit } from "../ui/search.ts";
 import { nowDirty, presets, reviewedRef, tipRef, type Preset, type Refs } from "../ui/state.ts";
 import { isViewedIn, unviewKeys, viewedIndex, viewedKey, type ViewedIndex } from "../ui/viewed.ts";
 import type { FileItem, Item, Placed } from "./diff/model.ts";
-import type { LineMarks } from "./diff/paint.ts";
+import type { Found, LineMarks } from "./diff/paint.ts";
+import type { Ranges } from "./diff/words.ts";
 import type { DiffView, LayoutPref } from "./diff/view.ts";
 import type { Data } from "./model.ts";
 import type { Side } from "./views/list.ts";
@@ -50,6 +52,21 @@ export interface ChangesState {
   layout: LayoutPref;
   wrap: boolean;
   diff: DiffView;
+  search: DiffSearch;
+}
+
+/** The diff's search (`/`): what is typed, the matches in reading order, the one gone to last. */
+export interface DiffSearch {
+  query: string;
+  /** The box at the bottom takes the keys. */
+  typing: boolean;
+  hits: Hit[];
+  /** The match `n` went to; -1 before the first. */
+  at: number;
+  error: string | null;
+  truncated: boolean;
+  /** The files and query the matches are of, so a fold or a viewed mark does not search again. */
+  of: { files: FileDiffMetadata[] | null; query: string };
 }
 
 export function initialChanges(diff: DiffView): ChangesState {
@@ -76,6 +93,7 @@ export function initialChanges(diff: DiffView): ChangesState {
     layout: "auto",
     wrap: true,
     diff,
+    search: { query: "", typing: false, hits: [], at: -1, error: null, truncated: false, of: { files: null, query: "" } },
   };
 }
 
@@ -221,4 +239,37 @@ export function syncChanges(d: Data, c: ChangesState, showResolved: boolean): vo
   c.diff.marks = b.marks;
   c.diff.setItems(b.items);
   if (!c.sel || !c.rows.some((r) => r.fd.name === c.sel)) c.sel = c.rows.find((r) => !r.hidden)?.fd.name ?? null;
+  searchChanges(c);
+}
+
+/**
+ * The search's matches in the range's files, as the web finds them (src/ui/search.ts): in every file of the diff,
+ * folded ones too, in reading order. Searched again only when the files or the query changed; the widget marks them.
+ */
+export function searchChanges(c: ChangesState): void {
+  const q = c.search;
+  if (q.of.files !== c.base || q.of.query !== q.query) {
+    const r = searchDiff(c.rows.map((x) => x.fd), q.query);
+    q.hits = flatHits(r);
+    q.error = r.error;
+    q.truncated = r.truncated;
+    q.at = -1;
+    q.of = { files: c.base, query: q.query };
+  }
+  c.diff.setFound(foundOf(q.hits), currentHit(q));
+}
+
+function foundOf(hits: readonly Hit[]): Map<string, Found> {
+  const out = new Map<string, { old: Map<number, Ranges>; new: Map<number, Ranges> }>();
+  for (const h of hits) {
+    let f = out.get(h.path);
+    if (!f) out.set(h.path, (f = { old: new Map(), new: new Map() }));
+    (h.side === "deletions" ? f.old : f.new).set(h.line, h.ranges);
+  }
+  return out;
+}
+
+export function currentHit(q: DiffSearch): { key: string; side: 0 | 1; line: number } | null {
+  const h = q.hits[q.at];
+  return h ? { key: h.path, side: h.side === "deletions" ? 0 : 1, line: h.line } : null;
 }
