@@ -18,6 +18,7 @@ import { ordered, type Data, type ListFilter } from "./model.ts";
 import { blank, key, line, plural, rangeText, s, spansWidth, wrap, type Cls, type Line, type Span } from "./text.ts";
 import { bannerLine, footerLine, headerLine, type Hint, type Tab, type Toast } from "./views/bars.ts";
 import { fileCounts, fileOf, filesLines, listLines, listWidth, sideTitle, type Side } from "./views/list.ts";
+import { pickerBox, type PickerState } from "./views/picker.ts";
 import {
   CodePane,
   conversation,
@@ -31,6 +32,15 @@ import {
 } from "./views/thread.ts";
 
 export type Focus = "list" | "code" | "conv";
+
+/** The files of the whole branch's diff, from the base to the tip (`ref`: a version, or "now"). */
+export interface Branch {
+  key: string;
+  ref: string;
+  sha: string;
+  label: string;
+  paths: string[];
+}
 
 /** Lines a new thread is on: of `path` at the commit `at` (its version `label`), on the old or the new side of the diff shown. */
 export interface NewLines {
@@ -112,6 +122,10 @@ export interface ViewState {
   prefix: string[];
   next: MenuEntry[];
   choice: Choice | null;
+  /** A finder over the screen: files or versions. */
+  picker: PickerState | null;
+  /** The whole branch's files, base to the tip, once a finder or a file named in a message needed them. */
+  branch: Branch | null;
   help: Help | null;
   toast: Toast | null;
   connecting: string | null;
@@ -159,6 +173,8 @@ export function initialView(): ViewState {
     next: [],
     count: "",
     choice: null,
+    picker: null,
+    branch: null,
     help: null,
     toast: null,
     connecting: null,
@@ -175,13 +191,14 @@ export function initialView(): ViewState {
 export const columnsFor = (w: number): 1 | 2 | 3 => (w >= 150 ? 3 : w >= 100 ? 2 : 1);
 
 /** The scope keys go to: the focused column, the composer, a box over the screen. */
-export type Place = "list" | "files" | "search" | "code" | "conv" | "thread" | "tcode" | "drafts" | "changes" | "cfiles" | "composer" | "choice" | "help" | "menu";
+export type Place = "list" | "files" | "search" | "code" | "conv" | "thread" | "tcode" | "drafts" | "changes" | "cfiles" | "composer" | "choice" | "picker" | "help" | "menu";
 
 const listScope = (v: ViewState): "list" | "files" | "search" => (v.side === "threads" ? "list" : v.side);
 
 export function scopeOf(v: ViewState): Place {
   if (v.help) return "help";
   if (v.choice) return "choice";
+  if (v.picker) return "picker";
   if (v.writing) return "composer";
   if (v.prefix[0] === "<Space>") return "menu";
   return columnOf(v);
@@ -212,6 +229,7 @@ const CHIPS: Record<Place, string> = {
   cfiles: "FILES",
   composer: "REPLY",
   choice: "QUESTION",
+  picker: "FIND",
   help: "KEYS",
   menu: "MENU",
 };
@@ -229,6 +247,7 @@ const HINTS: Record<Place, Hint[]> = {
   cfiles: [["j k", "file"], ["Enter", "l", "into the diff"], ["m", "viewed"], ["z a", "fold"], ["Tab", "column"], ["Space", "menu"], ["?", "keys"], ["q", "round"]],
   composer: [["type the message"], ["Ctrl+S", "save as draft"], ["Ctrl+G", "send now"], ["Esc", "or"], ["j j", "leave, the text stays"], ["Ctrl+C", "quit"]],
   choice: [["j k", "choose"], ["Enter", "confirm"], ["Esc", "cancel"]],
+  picker: [["type to narrow"], ["↑ ↓", "Ctrl+N", "Ctrl+P", "move"], ["Enter", "pick"], ["Esc", "close"]],
   help: [["any key", "what it does here"], ["Esc", "q", "close"]],
   menu: [["press a key from the box"], ["Esc", "close"], ["Backspace", "up a level"]],
 };
@@ -656,6 +675,10 @@ export function render(v: ViewState, w: number, h: number): Frame {
     const m = menuBox(v, w);
     rows = overlay(rows, m, Math.max(head.length, head.length + height - m.length - 1), Math.max(0, w - (m[0] ? spansWidth(m[0]) : 0) - 1));
   }
+  if (v.picker) {
+    const b = pickerBox(v.picker, v.data, w, height, v.changes.reviewed?.version ?? null, v.now);
+    rows = overlay(rows, b, head.length + Math.max(0, Math.floor((height - b.length) / 4)), Math.max(0, Math.floor((w - spansWidth(b[0]!)) / 2)));
+  }
   if (v.choice) {
     const c = choiceBox(v.choice, w);
     rows = overlay(rows, c, head.length + Math.max(0, Math.floor((height - c.length) * 0.45)), Math.max(0, Math.floor((w - spansWidth(c[0]!)) / 2)));
@@ -664,7 +687,7 @@ export function render(v: ViewState, w: number, h: number): Frame {
     const b = helpBox(v, w, height);
     rows = overlay(rows, b, head.length + Math.max(0, Math.floor((height - b.length) / 3)), Math.max(0, Math.floor((w - spansWidth(b[0]!)) / 2)));
   }
-  return { rows: rows.slice(0, h), box: v.choice || v.help ? null : body.box };
+  return { rows: rows.slice(0, h), box: v.choice || v.help || v.picker ? null : body.box };
 }
 
 const MOVING: { keys: string; desc: string }[] = [

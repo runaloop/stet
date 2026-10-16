@@ -26,11 +26,13 @@ export const SCOPE = {
   code: "round.code",
   conv: "round.conv",
   thread: "round.thread",
+  tcode: "code",
   drafts: "drafts",
   changes: "changes",
   cfiles: "changes.files",
   composer: "composer",
   choice: "choice",
+  picker: "picker",
   help: "help",
 } as const satisfies Record<string, Scope>;
 

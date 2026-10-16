@@ -53,6 +53,8 @@ export interface ChangesState {
   wrap: boolean;
   diff: DiffView;
   search: DiffSearch;
+  /** A file to go to once the range loaded: picked in the file finder on another tab. */
+  goto: string | null;
 }
 
 /** The diff's search (`/`): what is typed, the matches in reading order, the one gone to last. */
@@ -94,6 +96,7 @@ export function initialChanges(diff: DiffView): ChangesState {
     wrap: true,
     diff,
     search: { query: "", typing: false, hits: [], at: -1, error: null, truncated: false, of: { files: null, query: "" } },
+    goto: null,
   };
 }
 

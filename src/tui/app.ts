@@ -10,7 +10,8 @@ import { hydratePartialDiff, parsePatchFiles } from "@pierre/diffs";
 import type { ActionTarget } from "../core/module.ts";
 import { foldedFiles, type FileRow } from "../ui/compare.ts";
 import { NOTHING, withSpan } from "../ui/reveal.ts";
-import { defaultCompare, shiftRef } from "../ui/state.ts";
+import { defaultCompare, shiftRef, tipRef } from "../ui/state.ts";
+import { onlyVersion, withEnd } from "../ui/versions.ts";
 import { barSpans, isCollapsed, presetsOf, rangeTitle, refsOf, searchChanges, syncChanges, viewedChange, wholeBranch } from "./changes.ts";
 import { codeEnds, codeViews, fetchWide, scopesOf, threadCode, wideKey } from "./code.ts";
 import { DiffView } from "./diff/view.ts";
@@ -26,7 +27,8 @@ import { menuEntries, OFF, rowOf, SCOPE, tuiReader } from "./keys/menu.ts";
 import { KeyTester, type Tried } from "./keys/tester.ts";
 import { terminalOf, type Terminal } from "../ui/keys/terminal.ts";
 import { ordered, threadGroups } from "./model.ts";
-import { columnOf, helpFor, initialView, render, scopeOf, type Writing } from "./render.ts";
+import { columnOf, helpFor, initialView, render, scopeOf, type Branch, type Writing } from "./render.ts";
+import { pickerRows, type VersionItem } from "./views/picker.ts";
 import { hitAt, hitsOf, type Hit } from "./grid.ts";
 import { fileOf, type Side } from "./views/list.ts";
 import { Screen } from "./screen.ts";
@@ -570,6 +572,11 @@ export class App {
       const t3 = performance.now();
       this.syncChanges();
       if (moved) c.diff.first();
+      if (c.goto) {
+        const path = c.goto;
+        c.goto = null;
+        this.jumpToFile(path);
+      }
       const t4 = performance.now();
       trace({ ev: "changes", ms: t4 - t0, compare: t1 - t0, patch: t2 - t1, parse: t3 - t2, rows: t4 - t3, files: data.files.length });
     } catch (e) {
@@ -730,6 +737,124 @@ export class App {
     const id = c.diff.threadAt();
     if (id !== null) return this.openThread(id);
     this.say("no thread on this line: ] t goes to the next one");
+  }
+
+  // --- the finders
+
+  /** The whole branch's files, base to the tip, fetched again once a version or "now" moves the tip. */
+  private async loadBranch(): Promise<Branch | null> {
+    const v = this.v;
+    const api = this.api;
+    if (!api || !v.data.status) return v.branch;
+    const tip = tipRef(refsOf(v.data));
+    const key = `${tip}:${v.data.status.versions}:${v.data.status.pinnedNow ?? ""}`;
+    if (v.branch?.key === key) return v.branch;
+    const d = await this.guard(api.compare(this.review, "base", tip));
+    if (!d || this.ended) return v.branch;
+    v.branch = { key, ref: tip, sha: d.to.sha, label: d.to.label, paths: d.files.filter((f) => f.status !== "D").map((f) => f.path) };
+    return v.branch;
+  }
+
+  /** Space f f: the diff's files on the Changes tab; elsewhere the branch's, and the last diff's, opened there. */
+  private async findFile(): Promise<void> {
+    const v = this.v;
+    const c = v.changes;
+    const range = { from: c.from ?? "base", to: c.to ?? "now" };
+    if (v.tab === "changes") {
+      if (!c.rows.length) return this.say("no files in this diff");
+      const threads = new Map<string, number>();
+      for (const p of c.data?.placements ?? []) threads.set(p.path, (threads.get(p.path) ?? 0) + 1);
+      v.picker = { kind: "files", query: "", at: 0, paths: c.rows.map((r) => r.fd.name), threads, verb: "jump", range };
+      return this.redraw();
+    }
+    const b = await this.loadBranch();
+    if (!b) return;
+    const seen = new Set(b.paths);
+    const paths = [...b.paths, ...(c.data?.files ?? []).map((f) => f.path).filter((p) => !seen.has(p))];
+    v.picker = { kind: "files", query: "", at: 0, paths, verb: "open it on the Changes tab", range };
+    this.redraw();
+  }
+
+  /** Space f v: every version; the ends it marks are the range shown, or the one the Changes tab would open with. */
+  private findVersion(): void {
+    const v = this.v;
+    if (!v.data.status?.versionsList.length) return this.say("no versions yet");
+    const c = v.changes;
+    const range = c.from !== null && c.to !== null ? { from: c.from, to: c.to } : defaultCompare(refsOf(v.data), c.reviewed);
+    v.picker = { kind: "versions", query: "", at: 0, paths: [], verb: "what changed in it", range };
+    this.redraw();
+  }
+
+  /** A key while a finder is open: its own keys, else text for the query. */
+  private pickerKey(k: KeyEvent, token: string): void {
+    const p = this.v.picker!;
+    const row = rowsIn(KEYS, ["picker"]).find((x) => x.keys === token)?.row;
+    if (row) return this.run(row.id);
+    const next = editLine(p.query, k, token);
+    if (next === null) return;
+    p.query = next;
+    p.at = 0;
+    this.redraw();
+  }
+
+  /** The finder's row under its cursor: a file opens, a version becomes the range or one end of it. */
+  private pickRow(how: "pick" | "from" | "to"): void {
+    const v = this.v;
+    const p = v.picker;
+    if (!p) return;
+    const rows = pickerRows(p, v.data, v.now);
+    const hit = rows[p.at];
+    v.picker = null;
+    this.redraw();
+    if (hit === undefined) return;
+    if (p.kind === "versions") {
+      const n = (hit as VersionItem).v.number;
+      const latest = v.data.status?.versions ?? 0;
+      const [from, to] = how === "pick" ? onlyVersion(n) : withEnd(how, String(n), p.range.from, p.range.to, latest);
+      return this.openRange(from, to);
+    }
+    if (how !== "pick") return this.say("Shift+Enter and Ctrl+Enter pick the ends of a range in the version finder");
+    const path = hit as string;
+    if (this.choosing) {
+      const open = this.choosing;
+      this.choosing = null;
+      return open(path);
+    }
+    if (p.verb === "jump") return this.jumpToFile(path);
+    this.openInChanges(path);
+  }
+
+  /** What a pick in the file finder does while it lists the files a name in a message may be. */
+  private choosing: ((path: string) => void) | null = null;
+
+  /** The diff at a file: its fold group opened when it is folded into one, the cursor on its header. */
+  private jumpToFile(path: string): void {
+    const c = this.v.changes;
+    const row = c.rows.find((r) => r.fd.name === path);
+    if (!row) return this.say(`${path} is not in this diff`);
+    if (row.hidden && row.group) {
+      c.groups = { ...c.groups, [row.group]: true };
+      this.syncChanges();
+    }
+    c.sel = path;
+    c.focus = "diff";
+    this.goToFile(path);
+    this.followDiff();
+  }
+
+  /** A file picked on a thread's page: in the last diff when it has the file, else in the whole branch. */
+  private openInChanges(path: string): void {
+    const v = this.v;
+    const c = v.changes;
+    const inLast = c.from !== null && c.to !== null && !!c.data?.files.some((f) => f.path === path);
+    const range = inLast ? { from: c.from!, to: c.to! } : { from: "base", to: v.branch?.ref ?? tipRef(refsOf(v.data)) };
+    const same = c.from === range.from && c.to === range.to && !!c.data && !c.stale;
+    c.goto = path;
+    this.openRange(range.from, range.to);
+    if (same) {
+      c.goto = null;
+      this.jumpToFile(path);
+    }
   }
 
   // --- the diff's search
@@ -1525,6 +1650,14 @@ export class App {
       if (hit.startsWith("key:")) return this.runKeys(hit.slice(4));
       return this.redraw();
     }
+    if (v.picker) {
+      if (hit?.startsWith("pick:")) {
+        v.picker.at = Number(hit.slice(5));
+        return this.pickRow("pick");
+      }
+      if (!hit?.startsWith("focus:picker")) v.picker = null;
+      return this.redraw();
+    }
     if (!hit) return;
     const [kind, arg = ""] = [hit.slice(0, hit.indexOf(":")), hit.slice(hit.indexOf(":") + 1)];
     if (kind === "key") return this.runKeys(arg);
@@ -1635,7 +1768,7 @@ export class App {
   private scopes(): Scope[] {
     const sc = scopeOf(this.v);
     if (sc === "menu") return [SCOPE[columnOf(this.v)], "global"];
-    if (sc === "help" || sc === "choice" || sc === "composer") return [SCOPE[sc]];
+    if (sc === "help" || sc === "choice" || sc === "composer" || sc === "picker") return [SCOPE[sc]];
     return [SCOPE[sc], "global"];
   }
 
@@ -1649,6 +1782,7 @@ export class App {
     k.preventDefault();
     const v = this.v;
     if (v.help) return this.helpKey(token);
+    if (v.picker && !v.choice) return this.pickerKey(k, token);
     if (v.changes.search.typing && v.tab === "changes" && !v.choice) return this.searchKey(k, token);
     if (v.choice && /^[1-9]$/.test(token)) {
       const at = Number(token) - 1;

@@ -481,3 +481,40 @@ test("120×40 and 80×24: after Enter the info line counts the matches; the curr
   expect(new Set(spansWith(v, 80, 24, "hitc"))).toEqual(new Set(["KEY"]));
   expect(narrow).toMatchSnapshot();
 });
+
+test("120×40: Space f f finds a file of the diff by its letters, the best first, with its threads", async () => {
+  const v = await changes("base", "2");
+  v.picker = { kind: "files", query: "rts", at: 0, paths: v.changes.rows.map((r) => r.fd.name), threads: new Map([["src/routes.ts", 4]]), verb: "jump", range: { from: "base", to: "2" } };
+  const text = frame(v, 120, 40);
+  expect(text).toContain("Find a file");
+  expect(text).toContain(" > rts▏");
+  expect(text).toMatch(/routes\.ts src\/\s+4 threads/);
+  expect(text).toContain(" FIND ");
+  expect(text).toMatchSnapshot();
+});
+
+test("180×46: Space f v lists the versions newest first under their rounds; the range's ends are marked", async () => {
+  const v = await changes("1", "2");
+  v.picker = { kind: "versions", query: "", at: 0, paths: [], verb: "what changed in it", range: { from: "1", to: "2" } };
+  const text = frame(v, 180, 46);
+  expect(text).toContain("Find a version");
+  expect(text).toContain("after your review 1 · changes requested");
+  expect(text).toContain("before your first review");
+  expect(text).toMatch(/v2 .*constant-time key check, sweep, docs\s+to /);
+  expect(text).toMatch(/v1 .*rate limit and API key\s+from /);
+  expect(text).toContain("Shift+Enter  from");
+  expect(text).toMatchSnapshot();
+  v.picker.query = "sweep";
+  expect(frame(v, 180, 46)).not.toContain("rate limit and API key");
+});
+
+test("80×24: a name two files share opens the file finder with the name typed in", async () => {
+  const v = await view(ids.port);
+  v.focus = "code";
+  v.picker = { kind: "files", query: "routes.ts", at: 0, paths: ["src/routes.ts", "src/admin/routes.ts"], name: { lines: "12" }, verb: "open it", range: { from: "base", to: "2" } };
+  const text = frame(v, 80, 24);
+  expect(text).toContain(" > routes.ts▏");
+  expect(text).toContain("open it at line 12");
+  expect(text).toContain("routes.ts src/admin/");
+  expect(text).toMatchSnapshot();
+});
