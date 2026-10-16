@@ -368,12 +368,12 @@ stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v
 │ │  Shift+drag           selects text in most terminals while the mouse is on (Option+drag in iTerm2)               │ │
 │ │                                                                                                                  │ │
 │ │ Everywhere                                                                                                       │ │
-│ │  ?  Space ?           all keys                                                                                   │ │
-│ │  v  Space r v         changes since you last looked                                                              │ │
 │ │  s  Space r d         your drafts                                                                                │ │
 │ │  S  Space r s         drafts, then S again submits (approves when there are no drafts)                           │ │
-│ │  w  Space u w         wrap long lines                                                                            │ │
 │ │  R  Space r r         re-read “now” from the working tree                                                        │ │
+│ │  Space n              only threads with news                                                                     │ │
+│ │  w  Space u w         wrap long lines                                                                            │ │
+│ │  Space u d            split / unified diff                                                                       │ │
 ╰─╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯─╯
  KEYS   any key  what it does here   Esc   q  close                                                                     
 "
@@ -414,10 +414,10 @@ stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v
 │ │  Shift+drag           selects text in most terminals while the mouse is on (Option+drag in iTerm2)               │ │
 │ │                                                                                                                  │ │
 │ │ Everywhere                                                                                                       │ │
-│ │  ?  Space ?           all keys                                                                                   │ │
-│ │  v  Space r v         changes since you last looked                                                              │ │
 │ │  s  Space r d         your drafts                                                                                │ │
 │ │  S  Space r s         drafts, then S again submits (approves when there are no drafts)                           │ │
+│ │  R  Space r r         re-read “now” from the working tree                                                        │ │
+│ │  Space n              only threads with news                                                                     │ │
 │ │  w  Space u w         wrap long lines                                                                            │ │
 ╰─╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯─╯
  KEYS   any key  what it does here   Esc   q  close                                                                     

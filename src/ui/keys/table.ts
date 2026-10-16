@@ -130,7 +130,7 @@ const changes: KeyRow[] = [
   { id: "range.fromNext", keys: ["}"], scope: "changes", desc: "“from” one version later" },
   { id: "range.fromPrev", keys: ["{"], scope: "changes", desc: "“from” one version earlier" },
   { id: "range.preset", keys: ["p"], scope: "changes", desc: "next preset: the whole branch, what changed in the last version, since you last looked" },
-  { id: "search.diff", keys: ["/", "<Space>sd"], scope: "changes", desc: "search the diff" },
+  { id: "search.diff", keys: ["/"], scope: "changes", desc: "search the diff" },
   { id: "search.diff", keys: ["<C-f>"], scope: "changes", modes: ["normal", "visual", "insert"], ui: "web", desc: "search the diff" },
   { id: "search.word", keys: ["*"], scope: "changes", desc: "find where the selected word is used (all files)" },
   { id: "match.next", keys: ["<F3>"], scope: "changes", desc: "next search match" },
@@ -159,6 +159,7 @@ const changes: KeyRow[] = [
   { id: "search.files", keys: ["<Space>/"], scope: "changes", ui: "web", desc: "search all files" },
   { id: "search.files", keys: ["<Space>sg"], scope: "changes", ui: "web", desc: "search all files (grep)" },
   { id: "search.word", keys: ["<Space>sw"], scope: "changes", ui: "web", desc: "find the selected word in all files" },
+  { id: "search.diff", keys: ["<Space>sd"], scope: "changes", desc: "search the diff" },
   { id: "side.threads", keys: ["<Space>st"], scope: "changes", ui: "web", desc: "threads" },
   { id: "side.files", keys: ["<Space>e"], scope: "changes", ui: "web", desc: "files of the diff" },
   { id: "diff.tests", keys: ["<Space>ut"], scope: "changes", desc: "show / hide test files that only add code", short: "tests with only new code" },
@@ -263,7 +264,6 @@ const code: KeyRow[] = [
 
 const drafts: KeyRow[] = [
   { id: "review.approve", keys: ["S"], scope: "drafts", before: [{ if: "drafts", run: "review.changes" }], desc: "request changes: send the drafts (no drafts: approve)" },
-  { id: "review.approve", keys: ["<Space>rs"], scope: "drafts", before: [{ if: "drafts", run: "review.changes" }], desc: "submit the review from the drafts page (approve when there are no drafts)", short: "submit the review" },
   { id: "drafts.down", keys: ["j", "<Down>"], scope: "drafts", desc: "next draft" },
   { id: "drafts.up", keys: ["k", "<Up>"], scope: "drafts", desc: "previous draft" },
   { id: "drafts.open", keys: ["<CR>", "o"], scope: "drafts", desc: "its thread" },
@@ -276,18 +276,12 @@ const drafts: KeyRow[] = [
 ];
 
 const global: KeyRow[] = [
-  { id: "help", keys: ["?", "<Space>?"], scope: "global", desc: "all keys" },
   { id: "jump.back", keys: ["<C-o>"], scope: "global", desc: "jump back (page, search hit, file jump)" },
   // Vim reads Tab as Ctrl+I; the terminal UI has Tab for its columns, so ]j stands in there.
   { id: "jump.forward", keys: ["<C-i>"], scope: "global", fallback: ["]j"], desc: "jump forward" },
-  { id: "tab.changes", keys: ["v", "<Space>rv"], scope: "global", desc: "changes since you last looked", short: "changes since last look" },
   { id: "tab.drafts", keys: ["s"], scope: "global", desc: "your drafts" },
-  { id: "tab.drafts", keys: ["<Space>rd"], scope: "global", desc: "drafts" },
   { id: "submit", keys: ["S"], scope: "global", desc: "drafts, then S again submits (approves when there are no drafts)" },
-  { id: "submit", keys: ["<Space>rs"], scope: "global", desc: "submit the review from the drafts page (approve when there are no drafts)", short: "submit the review" },
-  { id: "diff.wrap", keys: ["w", "<Space>uw"], scope: "global", desc: "wrap long lines" },
   { id: "refresh", keys: ["R"], scope: "global", desc: "re-read “now” from the working tree" },
-  { id: "refresh", keys: ["<Space>rr"], scope: "global", desc: "re-read “now”" },
   { id: "filter.files", keys: ["/"], scope: "global", desc: "filter threads by file" },
   { id: "help.close", keys: ["<Esc>"], scope: "global", ui: "web", desc: "close" },
   { id: "save.nothing", keys: ["<C-s>"], scope: "global", ui: "web", desc: "nothing to save here: text you type is kept as you type" },
@@ -295,9 +289,15 @@ const global: KeyRow[] = [
   { id: "find.version", keys: ["<Space>fv"], scope: "global", desc: "find a version: what changed in it, or make it from / to", short: "find a version" },
   { id: "search.keys", keys: ["<Space>sk"], scope: "global", desc: "search keys and run one", short: "search keys" },
   { id: "filter.news", keys: ["<Space>n"], scope: "global", desc: "only threads with news", short: "threads with news" },
+  { id: "diff.wrap", keys: ["w", "<Space>uw"], scope: "global", desc: "wrap long lines" },
   { id: "diff.layout", keys: ["<Space>ud"], scope: "global", desc: "split / unified diff", short: "split / unified" },
   { id: "filter.resolved", keys: ["<Space>ur"], scope: "global", desc: "show / hide resolved threads", short: "resolved threads" },
   { id: "layout.reset", keys: ["<Space>uL"], scope: "global", desc: "reset the layout of this page: column order and widths" },
+  { id: "tab.drafts", keys: ["<Space>rd"], scope: "global", desc: "drafts" },
+  { id: "submit", keys: ["<Space>rs"], scope: "global", desc: "submit the review from the drafts page (approve when there are no drafts)", short: "submit the review" },
+  { id: "tab.changes", keys: ["v", "<Space>rv"], scope: "global", desc: "changes since you last looked", short: "changes since last look" },
+  { id: "refresh", keys: ["<Space>rr"], scope: "global", desc: "re-read “now”" },
+  { id: "help", keys: ["?", "<Space>?"], scope: "global", desc: "all keys" },
   // The terminal has no page per place: these work wherever its columns are.
   { id: "side.files", keys: ["<Space>e"], scope: "global", ui: "tui", desc: "the changed files, in the left column", short: "files of the review" },
   { id: "side.threads", keys: ["<Space>st"], scope: "global", ui: "tui", desc: "the threads, in the left column", short: "threads" },

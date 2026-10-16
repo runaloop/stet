@@ -662,7 +662,8 @@ export function helpFor(place: Column, reader: Reader, term: Terminal): Help {
       if (had) had.keys.push(...keys.filter((k) => !had.keys.includes(k)));
       else byId.set(r.id, { id: r.id, keys, desc: OFF[r.id] === "browser" ? `${r.desc} · opens in the browser` : OFF[r.id] === "later" ? `${r.desc} · not in the terminal yet` : r.desc });
     }
-    return [...byId.values()];
+    const rank = (id: string) => (OFF[id] === "later" ? 2 : OFF[id] ? 1 : 0);
+    return [...byId.values()].sort((a, b) => rank(a.id) - rank(b.id));
   };
   const help: Help = { lines: [], rows: [], lit: null, got: null };
   const push = (l: Line, row: string | null = null) => {
