@@ -3,7 +3,7 @@ import { markReviewed, nowDirty, presets, reviewedCursor, reviewedRef, status, t
 import { ago, revealRange } from "./Bits.tsx";
 import { commitAt, commitOf, commits, commitSubject, isSha, rowOf } from "../commits.ts";
 import { picker } from "../keys.ts";
-import { filesVs, foldRuns, keptSteps } from "../../src/ui/versions.ts";
+import { filesVs, foldRuns, keptSteps, onlyVersion } from "../../src/ui/versions.ts";
 
 export interface StripStep {
   ref: string;
@@ -13,6 +13,8 @@ export interface StripStep {
   kind: "base" | "version" | "pass" | "now";
   /** When a version was made, shown beside its label so the line under it has room for what it changed. */
   ago?: string;
+  /** A version's files changed against the step before it, when known. */
+  files?: number | null;
 }
 
 export function stripSteps(from: string, to: string): StripStep[] {
@@ -29,6 +31,7 @@ export function stripSteps(from: string, to: string): StripStep[] {
       ago: changed ? ago(v.createdAt) : undefined,
       title: `v${v.number}${v.label ? `: ${v.label}` : ""} · by ${v.author} (${v.role}) · ${v.createdAt.replace("T", " ").slice(0, 16)}${changed ? `\nv${v.number} ${changed.long}` : ""}`,
       kind: "version",
+      files: v.files ?? null,
     });
   }
   const passes = [...new Set([from, to, reviewedRef() ?? ""].filter(isSha))];
@@ -89,7 +92,7 @@ export function rangeTitle(from: string, to: string): string {
 /**
  * The code as it was at each step, oldest first. The diff runs from the "from" step to the "to" step: the
  * buttons under a step set one end exactly, a click on the step shows what changed in it, a drag sets both. A step
- * counts the files it changed against the step before.
+ * counts the files it changed against the step before; the "from" step, whose changes the diff does not show, offers them.
  * Versions far from the range fold into one step ("v1…v38"); a click on it shows them.
  */
 export function VersionStrip({ from, to, onPick }: { from: string; to: string; onPick: (from: string, to: string) => void }) {
@@ -174,6 +177,15 @@ export function VersionStrip({ from, to, onPick }: { from: string; to: string; o
                 to
               </button>
             </span>
+            {i === fi && s.kind === "version" && s.files !== 0 ? (
+              <button
+                class="vown"
+                title={`${refLabel(onlyVersion(Number(s.ref))[0])} → ${s.label}: the files ${s.label} itself changed. The diff shown starts at ${s.label}, so they are not in it`}
+                onClick={() => alone(i)}
+              >
+                what changed in {s.label}
+              </button>
+            ) : null}
           </li>
         );
       })}

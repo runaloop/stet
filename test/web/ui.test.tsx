@@ -1144,4 +1144,21 @@ describe("version strip", () => {
     expect(now.querySelector(".vsub")!.textContent).toBe("1 file vs v15");
     expect(now.querySelector(".vbody")!.getAttribute("title")).toContain("the working tree changed 1 file compared with v15");
   });
+
+  test("the “from” version offers what changed in it, which the diff shown leaves out: a click opens the version before → it", () => {
+    const { host, picked, step } = strip("15", "now");
+    const own = [...host.querySelectorAll(".vown")];
+    expect(own.map((b) => b.closest(".vstep")!.querySelector(".vlabel")!.textContent)).toEqual(["v15"]);
+    expect(own[0]!.textContent).toBe("what changed in v15");
+    expect(own[0]!.getAttribute("title")).toStartWith("v14 → v15");
+    (own[0] as HTMLButtonElement).click();
+    expect(picked).toEqual([["14", "15"]]);
+    expect(step("v15").querySelector(".vend.on")!.textContent).toBe("from");
+  });
+
+  test("no such control when the diff starts at base, or at a version that changed nothing", () => {
+    expect(strip("base", "now").host.querySelector(".vown")).toBeNull();
+    expect(strip("13", "15").host.querySelector(".vown")).toBeNull();
+    expect(strip("1", "2").host.querySelector(".vown")!.getAttribute("title")).toStartWith("base → v1");
+  });
 });

@@ -457,7 +457,7 @@ a.snip:not(.match):hover { opacity: 0.8; }
 .reviewed-mark { color: var(--ok); font-size: 12px; }
 .range-bar { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding-bottom: 6px; }
 .vstrip { display: flex; list-style: none; margin: 0; padding: 2px; overflow-x: auto; }
-.vstep { position: relative; flex: none; display: grid; gap: 2px; }
+.vstep { position: relative; flex: none; display: grid; align-content: start; gap: 2px; }
 .vstep + .vstep { margin-left: 8px; }
 .vstep + .vstep::before { content: ""; position: absolute; left: -8px; top: 17px; width: 8px; border-top: 2px solid var(--border); }
 .vstep.in + .vstep.in::before { border-top-color: var(--accent); }
@@ -470,6 +470,8 @@ a.snip:not(.match):hover { opacity: 0.8; }
 .vend:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .vend.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .vend:disabled { visibility: hidden; }
+.vown { font: 10.5px/15px var(--sans); padding: 0 5px; border: 1px dashed color-mix(in srgb, var(--accent) 60%, transparent); border-radius: 4px; background: var(--bg); color: var(--accent); white-space: nowrap; }
+.vown:hover { border-style: solid; background: var(--bg-active); }
 .vstep .vhead { display: flex; align-items: baseline; gap: 6px; }
 .vstep .vlabel { font: 600 12px var(--mono); }
 .vstep .vago { font-size: 10.5px; color: var(--fg-soft); white-space: nowrap; }
