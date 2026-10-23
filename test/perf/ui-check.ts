@@ -88,6 +88,7 @@ const base = ["package demo", "", "class Cache {", "    private val map = HashMa
 run(repo, ["git", "init", "-q", "-b", "main"]);
 cache(base);
 big({});
+writeFileSync(join(repo, "src/Legacy.kt"), ["package demo", "", "fun legacy() = 0", "", "fun legacyToo() = 1"].join("\n") + "\n");
 run(repo, ["git", "add", "-A"]);
 run(repo, ["git", "commit", "-q", "-m", "base"]);
 cache(base.map((l, i) => (i === 3 ? "    private val map = HashMap<String, String>(16)" : i === 8 ? `        map[key] = value\n        map[key] = value\n${long}` : l)));
@@ -945,7 +946,7 @@ try {
     const cpBoth = await waitFor(`document.querySelector(".range-title")?.textContent.startsWith("2 commits") ? document.querySelector(".range-title").textContent : null`, 8000);
     const cpMarked = await b.eval(`document.querySelectorAll(".commit-row.in").length`);
     await b.eval(`${commitRow("base")}.querySelector("a.commit-msg").click(); true`);
-    const cpRoot = await waitFor(`/^Commit \\w{8}: base · 2 files$/.test(document.querySelector(".range-title")?.textContent) ? location.hash : null`, 8000);
+    const cpRoot = await waitFor(`/^Commit \\w{8}: base · 3 files$/.test(document.querySelector(".range-title")?.textContent) ? location.hash : null`, 8000);
     const cpRootIn = await b.eval(`[...document.querySelectorAll(".commit-row.in")].map(r => r.querySelector(".subject").textContent)`);
     check("the repository's first commit shows alone, from the empty tree", (cpRoot?.startsWith("#/compare/empty..") ?? false) && JSON.stringify(cpRootIn) === JSON.stringify(["base"]), { cpRoot, cpRootIn });
     await keys(KEY.Escape);
@@ -2958,10 +2959,11 @@ try {
       mkdirSync(join(repo, `src/${dir}`), { recursive: true });
       writeFileSync(join(repo, `src/${dir}/Twin.kt`), `val twin = "${dir}"\nval two = 2\n`);
     }
+    rmSync(join(repo, "src/Legacy.kt"));
     run(repo, ["git", "add", "-A"]);
     const twinsV = JSON.parse(run(repo, ["bun", CLI, "version", "create", "--label", "twins", "--json"])).version.number as number;
     const refThread = JSON.parse(run(repo, ["bun", CLI, "comment", "add", "--file", "src/Zbig.kt", "--range", "14-14", "--at", String(twinsV), "--body", "Where is the note?", "--as", "reviewer", "--json"])).id as number;
-    run(repo, ["bun", CLI, "reply", String(refThread), "--intent", "fixed", "--body", "Done in place: a two-line comment above line14 (Zbig.kt:14-15), and the same in Twin.kt:2.", "--json"]);
+    run(repo, ["bun", CLI, "reply", String(refThread), "--intent", "fixed", "--body", "Done in place: a two-line comment above line14 (Zbig.kt:14-15), and the same in Twin.kt:2. The old copy in Legacy.kt:3 is gone.", "--json"]);
     const beforeRefs = (await b.eval("location.hash")) as string;
     await b.eval(`location.hash = "#/thread/${refThread}"; true`);
     const refLink = `[...document.querySelectorAll(".thread-msgs .fref a")].find(a => a.textContent === "Zbig.kt:14-15")`;
@@ -2987,6 +2989,81 @@ try {
     await keys(KEY.Escape);
     const backHere = await waitFor(`!document.querySelector(".thread-code .peek") && document.querySelector(".thread-code .code-area diffs-container") ? location.hash : null`, 3000);
     check("Esc closes it: back to the thread's code, on the same thread", backHere === `#/thread/${refThread}`, backHere);
+
+    const linked = `(() => { const lines = [...(${peekShadow}?.querySelectorAll('[data-content] > [data-stet-mark~="linked"]') ?? [])].map(e => +e.getAttribute("data-line")); return lines.length ? lines : null; })()`;
+    const peekGone = `!document.querySelector(".thread-code .peek") && document.querySelector(".thread-code .code-area diffs-container") ? location.hash : null`;
+    await b.eval(`${refLink}.click(); true`);
+    await waitFor(linked, 8000);
+    const entries = await b.eval("history.length");
+    await b.traverse(-1);
+    const backClosed = await waitFor(peekGone, 3000);
+    await waitFor(`!document.querySelector(".view-fade")`, 3000);
+    await b.screenshot(join(OUT, "shots", "ui-check-file-ref-back.png"));
+    await b.traverse(1);
+    const forwardOpened = await waitFor(linked, 5000);
+    await b.eval(`document.activeElement?.blur(); true`);
+    await keys(KEY.Escape);
+    const escClosed = await waitFor(peekGone, 3000);
+    const afterEsc = await b.eval(`({ entries: history.length, onPreview: history.state?.stetPeek ?? 0 })`);
+    await b.traverse(-1);
+    const pageBack = await waitFor(`location.hash === ${JSON.stringify(beforeRefs)} ? location.hash : null`, 5000);
+    await b.traverse(1);
+    await waitFor(`location.hash === "#/thread/${refThread}" && ${refLink} && !document.querySelector(".view-fade")`, 10000);
+    check(
+      "the browser's Back closes the file a link opened, back to the thread's code, and Forward opens it again; Esc leaves no entry of it behind, so Back then leaves the thread's page",
+      backClosed === `#/thread/${refThread}` && JSON.stringify(forwardOpened) === "[14,15]" && escClosed === backClosed && afterEsc?.entries === entries && afterEsc.onPreview === 0 && pageBack === beforeRefs,
+      { entries, backClosed, forwardOpened, escClosed, afterEsc, pageBack, beforeRefs },
+    );
+
+    // the link a little above the bottom of what the conversation shows: its card has no room below
+    const lowered = await b.eval(`(() => {
+      const a = ${refLink};
+      const msgs = document.querySelector(".thread-msgs");
+      const conv = msgs.querySelector(".conversation");
+      const room = () => Math.min(innerHeight, msgs.getBoundingClientRect().bottom);
+      for (let i = 0; i < 4; i++) {
+        const gap = room() - 30 - a.getBoundingClientRect().bottom;
+        if (Math.abs(gap) < 2) break;
+        if (gap > 0) conv.style.paddingTop = (parseFloat(conv.style.paddingTop || "0") + gap) + "px";
+        else msgs.scrollTop -= gap;
+      }
+      return Math.round(room() - a.getBoundingClientRect().bottom);
+    })()`);
+    await pointer([{ type: "pointerMove", x: 5, y: 5 }]);
+    const lowAt = await b.eval(`(() => { const r = ${refLink}.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
+    await pointer([{ type: "pointerMove", x: lowAt.x, y: lowAt.y }]);
+    const placed = await waitFor(`(() => {
+      const a = ${refLink};
+      const c = a?.parentElement.querySelector(".tref-card");
+      if (!c || getComputedStyle(c).display === "none") return null;
+      const m = document.querySelector(".thread-msgs").getBoundingClientRect();
+      const r = c.getBoundingClientRect();
+      const l = a.getBoundingClientRect();
+      return { above: r.bottom <= l.top + 1, inside: r.top >= Math.max(0, m.top) - 1 && r.bottom <= Math.min(innerHeight, m.bottom) + 1 && r.left >= -1 && r.right <= innerWidth + 1 };
+    })()`, 3000);
+    await b.screenshot(join(OUT, "shots", "ui-check-file-ref-card-up.png"));
+    check("a link near the bottom of the conversation opens its card above it, inside the window", lowered !== null && lowered < 60 && placed?.above === true && placed.inside === true, { lowered, placed });
+    await b.eval(`document.querySelector(".thread-msgs .conversation").style.paddingTop = ""; true`);
+    await pointer([{ type: "pointerMove", x: 5, y: 5 }]);
+
+    const goneLink = `[...document.querySelectorAll(".thread-msgs .fref a")].find(a => a.textContent === "Legacy.kt:3")`;
+    const goneCard = await b.eval(`${goneLink}?.parentElement.querySelector(".tref-card")?.textContent ?? null`);
+    await b.eval(`${goneLink}.click(); true`);
+    const goneMarked = await waitFor(linked, 8000);
+    const goneHead = await b.eval(`document.querySelector(".thread-code .peek .peek-head")?.textContent ?? null`);
+    const goneText = await b.eval(`[...(${peekShadow}?.querySelectorAll('[data-content] > [data-line="3"]') ?? [])].pop()?.textContent ?? null`);
+    const goneLatest = await b.eval(`!!document.querySelector(".thread-code .peek .peek-latest")`);
+    await waitFor(`!document.querySelector(".view-fade")`, 3000);
+    await b.screenshot(join(OUT, "shots", "ui-check-file-ref-deleted.png"));
+    check(
+      "a file the branch deletes is a link: it opens as it last was, in the last version that has it, line 3 marked, and says the branch deletes it",
+      (goneCard?.includes("the branch deletes this file") ?? false) && JSON.stringify(goneMarked) === "[3]" && (goneText?.includes("legacy") ?? false) &&
+        /the last version that has it/.test(goneHead ?? "") && /the branch deletes this file/.test(goneHead ?? "") && goneLatest === false,
+      { goneCard, goneMarked, goneText, goneHead, goneLatest },
+    );
+    await b.eval(`document.activeElement?.blur(); true`);
+    await keys(KEY.Escape);
+    await waitFor(peekGone, 3000);
     await b.eval(`[...document.querySelectorAll(".thread-msgs .fref a")].find(a => a.textContent === "Twin.kt:2").click(); true`);
     const twinPick = await waitFor(`(() => { const p = document.querySelector(".picker"); return p && document.activeElement === p.querySelector("input") ? { q: p.querySelector("input").value, rows: [...p.querySelectorAll("li")].map(l => l.textContent) } : null; })()`, 3000);
     check("a name two files have opens the file finder with the name typed in, listing both", twinPick?.q === "Twin.kt" && twinPick.rows.length === 2, twinPick);

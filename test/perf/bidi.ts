@@ -60,6 +60,10 @@ export class Bidi {
   async viewport(width: number, height: number, devicePixelRatio?: number) {
     await this.send("browsingContext.setViewport", { context: this.context, viewport: { width, height }, ...(devicePixelRatio ? { devicePixelRatio } : {}) });
   }
+  /** The browser's Back (-1) or Forward (1). */
+  traverse(delta: number) {
+    return this.send("browsingContext.traverseHistory", { context: this.context, delta });
+  }
   async close() { await this.send("session.end", {}).catch(() => null); this.ws.close(); }
 }
 function deser(v: any): any {
