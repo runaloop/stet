@@ -1,5 +1,6 @@
 import { expect } from "bun:test";
 import { forModule } from "../../test/helpers/modules.ts";
+import { Zoom } from "./ImageZoom.tsx";
 import { imageAt, wheelZoom, zoomScroll, zoomStep, zoomText } from "./zoom.ts";
 
 const { test } = forModule("images");
@@ -39,6 +40,29 @@ test("zooming keeps the point under the mouse in place", () => {
   expect(after).toEqual(before);
   expect(zoomScroll({ x: 300, y: 150 }, at, 4, 1)).toEqual({ x: 0, y: 0 });
   expect(zoomScroll({ x: 0, y: 0 }, at, 4, 1)).toEqual({ x: 0, y: 0 });
+});
+
+test("zooming keeps the point in place from where the view stands, when it could not scroll as far as asked", () => {
+  // a view scrolls no further than its picture allows: here 455 × 22 px
+  const view = (maxX: number, maxY: number) => {
+    let x = 0;
+    let y = 0;
+    return {
+      get scrollLeft() { return x; },
+      set scrollLeft(v: number) { x = Math.min(v, maxX); },
+      get scrollTop() { return y; },
+      set scrollTop(v: number) { y = Math.min(v, maxY); },
+    } as unknown as HTMLElement;
+  };
+  const zoom = new Zoom();
+  zoom.scale.value = 2;
+  zoom.set(4, { x: 900, y: 600 }, view(1e6, 1e6));
+  const el = view(455, 22);
+  zoom.apply(el);
+  zoom.set(8, { x: 100, y: 80 }, el);
+  const next = view(1e6, 1e6);
+  zoom.apply(next);
+  expect({ x: next.scrollLeft, y: next.scrollTop }).toEqual(zoomScroll({ x: 455, y: 22 }, { x: 100, y: 80 }, 4, 8));
 });
 
 test("a point on the screen is a point of the picture, whatever the zoom and the scroll", () => {

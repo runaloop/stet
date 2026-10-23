@@ -45,7 +45,8 @@ export class Zoom {
     if (from === null || !el) return;
     const content = el.firstElementChild?.getBoundingClientRect();
     const middle = { x: Math.min(el.clientWidth, content?.width ?? 0) / 2, y: Math.min(el.clientHeight, content?.height ?? 0) / 2 };
-    this.scroll = zoomScroll(this.scale.value === null ? { x: 0, y: 0 } : this.scroll, at ?? middle, from, to);
+    // the view's own scroll, not the one asked for: a view wider than the last zoom left room for stops short of it
+    this.scroll = zoomScroll(this.scale.value === null ? { x: 0, y: 0 } : { x: el.scrollLeft, y: el.scrollTop }, at ?? middle, from, to);
     if (this.scale.value === to) for (const v of this.views()) this.apply(v.el);
     else this.scale.value = to;
   }
