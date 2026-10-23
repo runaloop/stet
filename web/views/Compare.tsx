@@ -93,7 +93,7 @@ function FileMeta({ path }: { path: string }) {
   return (
     <span class="file-meta">
       {row?.section ? (
-        <span class="section-tag" title="files are ordered by kind: code, then resources, build and config, changed tests, docs (compare.order)">
+        <span class="section-tag" title="files are ordered by kind: code, then resources, build and config, changed tests, mocks, docs (compare.order)">
           {row.section}: {count} file{count === 1 ? "" : "s"} from here
         </span>
       ) : null}

@@ -250,9 +250,9 @@ the messages the way `j` / `k` move one over the diff.
 
 ## Files are ordered by kind
 
-Code first, then resources, build and config, changed tests, docs, and the folded groups last. Within a
-group the path order stays. This is the `kinds` preset, the default of `compare.order`. Another order, for
-example docs first, is groups of your own:
+Code first, then resources, build and config, changed tests, mocks, docs, and the folded groups last.
+Within a group the path order stays. This is the `kinds` preset, the default of `compare.order`. Another
+order, for example docs first, is groups of your own:
 
 ```bash
 stet config set compare.order "docs: **/*.md; code; config: **/*.json, **/*.xml, **/*.gradle.kts; tests"
