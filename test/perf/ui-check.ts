@@ -2852,6 +2852,31 @@ try {
       { renumSplit, renumOnce },
     );
 
+    // The same list numbered from 3: where a list starts is its first item's number, the one number that shows a change.
+    writeFileSync(join(repo, "docs/steps.md"), stepsMd(2).replace(/^(\d+)\./gm, (_, n: string) => `${Number(n) + 2}.`));
+    run(repo, ["git", "add", "-A"]);
+    const renumC = JSON.parse(run(repo, ["bun", CLI, "version", "create", "--label", "from 3", "--json"])).version.number as number;
+    // the list's start and each item: its first word, whether its number is marked, the number's colour and the title
+    const numbersIn = (cell: string) =>
+      `[...${smd}.querySelectorAll('${cell} :is(ol, li:not(.md-gap))')].map(e => e.tagName === "OL" ? "from " + (e.getAttribute("start") ?? 1) : e.textContent.trim().split(/\\s+/)[0] + (e.classList.contains("md-number") ? " number " + getComputedStyle(e, "::marker").color + (e.title ? " / " + e.title : "") : ""))`;
+    await b.eval(`location.hash = "#/compare/${renumB}..${renumC}?file=docs/steps.md"; true`);
+    const startSplit = (await waitFor(`${smd}?.classList.contains("md-split") && ${smd}.querySelector(".md-number") ? { old: ${numbersIn('.md-cell[data-side="old"]')}, new: ${numbersIn('.md-cell[data-side="new"]')}, plain: getComputedStyle(${smd}.querySelector('.md-cell[data-side="new"] li:not(.md-number)'), "::marker").color } : null`, 8000)) as { old: string[]; new: string[]; plain: string } | null;
+    await b.screenshot(join(OUT, "shots", "ui-check-markdown-list-start.png"));
+    await b.eval(`[...document.querySelectorAll(".compare-head .btn")].find(x => x.textContent === "unified").click(); true`);
+    const startOnce = await waitFor(`${smd}?.classList.contains("md-one") && ${smd}.querySelector(".md-number") ? ${numbersIn(".md-cell")} : null`, 8000);
+    await b.eval(`[...document.querySelectorAll(".compare-head .btn")].find(x => x.textContent === "split").click(); true`);
+    const red = startSplit?.old[1]?.replace(/^Install number /, "");
+    const green = startSplit?.new[1]?.replace(/^Install number (.*) \/ .*$/, "$1");
+    check(
+      "a numbered list that starts at another number marks its first number, red on the old side and green on the new one with the old start on hover; the numbers after it are not marked",
+      !!startSplit &&
+        JSON.stringify(startSplit.old) === JSON.stringify(["from 1", `Install number ${red}`, "Run", "Read", "Fix"]) &&
+        JSON.stringify(startSplit.new) === JSON.stringify(["from 3", `Install number ${green} / the list started at 1`, "Run", "Read", "Fix"]) &&
+        new Set([red, green, startSplit.plain]).size === 3 &&
+        JSON.stringify(startOnce) === JSON.stringify(["from 3", `Install number ${green} / the list started at 1`, "Run", "Read", "Fix"]),
+      { startSplit, startOnce },
+    );
+
     await b.eval(`location.hash = "#/compare/${imgV - 1}..${imgV}"; true`);
     await waitFor(`[...document.querySelectorAll(".img-diff img")].length >= 5`, 10000);
     await sleep(800);
