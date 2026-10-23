@@ -303,8 +303,11 @@ with a preview on hover. A file a message names (`src/app/Foo.kt:14-15`, `Foo.kt
 `Foo.kt line 14`, or a path alone, in text or in code) links too once it names a file of the review: the branch's diff
 first, then the repository's files. Its card gives the path and the lines; a click opens the file in the preview over
 the thread's code, as the code was when the message was written, its lines marked, with a button to the same lines in
-the latest version. A name that several files have opens the file finder with the name typed in. The agent's and your
-messages have their own colours.
+the latest version. `Esc`, `Ctrl+O` or the browser's Back close it, and Forward opens it again. A file the branch
+deletes links as well: it opens as it last was (the message's code when that has it, else the newest version that
+does, else the base), marked "the branch deletes this file". A name that several files have opens the file finder with
+the name typed in. A card that has no room under its link opens above it. The agent's and your messages have their
+own colours.
 
 **Resolve with message** next to **Resolve** (or `Space r x`) closes a thread with your last word to the agent, for
 when it only has to go ahead ("yes, do it as you wrote in docs/x.md"). The box under the conversation saves the message
