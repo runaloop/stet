@@ -86,7 +86,8 @@ the old side and green on the new one; a picture or a link whose address changed
 old address on hover. A block of which more than 60% of the words changed is marked as a whole instead. Blocks that
 one change rewrote together are paired by how alike they are; when nothing is alike they stay one group. In both
 views an item of an ordered list whose number alone changed, as the items after a removed one, is not marked: the list
-numbers its items by their place anyway.
+numbers its items by their place anyway. The first item's number is where the list starts: when that changed, the
+number is marked like a changed word, red on the old side and green on the new one, with the old one on hover.
 
 In unified view it is one column. A block with a few words changed shows once, with the changes in its text (removed
 text keeps its bold, code and links), and so does a list or a table, nested items too: an item or a row that was

@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { createTwoFilesPatch } from "diff";
 import { CursorSpace } from "../../src/ui/cursor.ts";
 import { changedBlocks, changesOf, hitBlocks, isMarkdown, layoutOf, likeness, resolveRef, slotsOf, stopsOn, unnumbered, type Block, type SideChanges } from "../../src/ui/markdown.ts";
-import { renderMarkdown } from "../../web/lib/markdown.ts";
+import { listStarts, renderMarkdown } from "../../web/lib/markdown.ts";
 
 const imageUrl = (path: string) => `/raw/${path}`;
 const render = (text: string, more: Partial<Parameters<typeof renderMarkdown>[1]> = {}) => renderMarkdown(text, { path: "docs/guide.md", imageUrl, changes: null, ...more });
@@ -17,11 +17,12 @@ function diffOf(before: string, after: string): FileDiffMetadata {
 
 /** Both sides rendered and laid out next to each other, as the rendered view does it. */
 function laidOut(before: string | null, after: string | null, fd = diffOf(before ?? "", after ?? ""), split = true, merged = new Set<number>()) {
-  const ch = changesOf(fd);
+  const starts = { old: listStarts(before ?? ""), new: listStarts(after ?? "") };
+  const ch = changesOf(fd, starts);
   const old = before === null ? null : render(before, { changes: ch.old });
   const nw = after === null ? null : render(after, { changes: ch.new });
   const count = (t: string | null) => (t === null ? 0 : t.split("\n").length);
-  return { old, nw, fd, ...layoutOf(old, nw, slotsOf(fd, count(before), count(after)), split, merged) };
+  return { old, nw, fd, ...layoutOf(old, nw, slotsOf(fd, count(before), count(after), starts), split, merged) };
 }
 
 describe("references in a Markdown file", () => {
@@ -160,6 +161,27 @@ describe("changed blocks", () => {
   test("a list only renumbered is an unchanged row", () => {
     const { rows } = laidOut(lines("1. a", "1. b", "1. c", "", "End."), lines("1. a", "2. b", "3. c", "", "End."));
     expect(rows.map((r) => r.kind)).toEqual(["same", "same"]);
+  });
+
+  test("a list that starts at another number marks its first item, not the items renumbered after it", () => {
+    expect([...listStarts(lines("Steps:", "", "3. a", "4. b", "   1. inner", "", "- x", "", "> 7) quoted", "", "Text 1. no"))]).toEqual([3, 5, 9]);
+    const before = lines("Steps:", "", "3. One", "4. Two", "5. Three", "", "End.");
+    const after = lines("Steps:", "", "5. One", "6. Two", "7. Three", "", "End.");
+    const starts = { old: listStarts(before), new: listStarts(after) };
+    const ch = changesOf(diffOf(before, after), starts);
+    expect([[...ch.old.lines], [...ch.new.lines]]).toEqual([[3], [3]]);
+    expect([[...changesOf(diffOf(before, after)).old.lines], [...changesOf(diffOf(before, after)).new.lines]]).toEqual([[], []]);
+    const { rows, stops } = laidOut(before, after);
+    expect(rows.map((r) => r.kind)).toEqual(["same", "changed", "same"]);
+    expect(stops.filter((s) => s.row === 1).map((s) => [s.nav.old?.start ?? null, s.nav.new?.start ?? null, s.nav.changed])).toEqual([
+      [3, null, true],
+      [null, 3, true],
+      [4, 4, false],
+      [5, 5, false],
+    ]);
+    // an item put in front of the first one starts the list now: the old first item is renumbered by its place
+    const added = changesOf(diffOf(lines("3. A", "4. B"), lines("3. Z", "4. A", "5. B")), { old: listStarts(lines("3. A", "4. B")), new: listStarts(lines("3. Z", "4. A", "5. B")) });
+    expect([[...added.old.lines], [...added.new.lines]]).toEqual([[], [1]]);
   });
 });
 

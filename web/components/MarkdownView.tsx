@@ -28,7 +28,7 @@ import {
 } from "../compare.ts";
 import { paintTextHits } from "../lib/marks.ts";
 import { changesOf, pairsOf, rowsOf, slotsOf, stopsOf, stopsOn, subtree, type MdDiff, type MdSide, type Row, type RowKind, type SideBlocks, type SideChanges, type Stop } from "../../src/ui/markdown.ts";
-import { renderMarkdown } from "../lib/markdown.ts";
+import { listStarts, renderMarkdown } from "../lib/markdown.ts";
 import { isSimple, markInline, markPairs, markRemoved, markWords, splitRewritten, textOf as blockText, unitsOf } from "../lib/richdiff.ts";
 import { breakAfter, unitKey, unitOf } from "../lib/breaks.ts";
 import { closeGaps, foldInside, meets, opening, withBlanks } from "../lib/mdfold.ts";
@@ -369,7 +369,8 @@ export function RenderedMarkdown({ file, id = file, fd, old, now, split: splitWa
   const oldText = textOf(oldBlob);
   const newText = textOf(newBlob);
   const [highlight, setHighlight] = useState<Highlight | null>(() => lit);
-  const changes = useMemo(() => (fd ? changesOf(fd) : null), [fd]);
+  const starts = useMemo(() => ({ old: listStarts(oldText ?? ""), new: listStarts(newText ?? "") }), [oldText, newText]);
+  const changes = useMemo(() => (fd ? changesOf(fd, starts) : null), [fd, starts]);
   const sides = useMemo(() => {
     const side = (text: string | null, sha: string | null, path: string, ch: SideChanges | null) =>
       text !== null && sha ? renderMarkdown(text, { path, imageUrl: (p) => rawUrl(sha, p), changes: ch, highlight }) : null;
@@ -384,7 +385,7 @@ export function RenderedMarkdown({ file, id = file, fd, old, now, split: splitWa
   const pendingKey = mine ? `${mine.range.side}:${lo(mine.range)}-${hi(mine.range)}` : "";
   const layout = useMemo(() => {
     if (!fd || !(sides.old || sides.new)) return null;
-    const slots = slotsOf(fd, lineCount(oldText), lineCount(newText));
+    const slots = slotsOf(fd, lineCount(oldText), lineCount(newText), starts);
     const rows = rowsOf(sides.old, sides.new, slots);
     const pairs = rows.map((r) => (r.kind === "changed" ? pairsOf(r, sides.old, sides.new, slots) : []));
     const tops = { old: new Map(sides.old?.tops.map((t) => [t.block, t.html])), new: new Map(sides.new?.tops.map((t) => [t.block, t.html])) };

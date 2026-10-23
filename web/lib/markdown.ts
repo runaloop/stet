@@ -70,6 +70,11 @@ md.renderer.rules.code_block = (tokens, idx, _options, _env, self) => {
   return `<div${self.renderAttrs(t)}><pre><code>${escapeHtml(t.content)}</code></pre></div>\n`;
 };
 
+/** The lines, 1-based, of the first items of the ordered lists in `text`. */
+export function listStarts(text: string): Set<number> {
+  return new Set(md.parse(text, {}).flatMap((t) => (t.type === "ordered_list_open" && t.map ? [t.map[0] + 1] : [])));
+}
+
 /**
  * The file as HTML, one piece per top-level block: every block carries its index (`data-b`) and its source lines
  * (`data-start`, `data-end`), and the innermost blocks the diff changed are marked `md-changed`.

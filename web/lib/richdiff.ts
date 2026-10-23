@@ -136,11 +136,20 @@ export interface Unit {
   targets: Target[];
   /** Pictures or links were added or removed. */
   linksMoved: boolean;
+  /** The old number of an ordered list's first item when the list starts at another one now, else null. */
+  number: number | null;
 }
 
 const ATTR = { img: "data-src", a: "data-href" } as const;
 const targetEls = (roots: readonly Element[], own: boolean, tag: "img" | "a") =>
   roots.flatMap((r) => [...r.querySelectorAll(`${tag}[${ATTR[tag]}]`)].filter((el) => !own || el.closest(BLOCK) === r));
+
+/** The number of an ordered list's first item, or null for another block. */
+function firstNumber(el: Element | undefined): number | null {
+  const list = el?.parentElement;
+  if (el?.tagName !== "LI" || list?.tagName !== "OL" || list.querySelector(":scope > li") !== el) return null;
+  return Number(list.getAttribute("start") ?? 1);
+}
 
 export function compareUnit(old: Element[], nw: Element[], own: boolean): Unit {
   const parts = diffWordsWithSpace(textOf(old, own).text, textOf(nw, own).text);
@@ -150,6 +159,13 @@ export function compareUnit(old: Element[], nw: Element[], own: boolean): Unit {
     const n = words(p.value);
     total += p.added || p.removed ? n : 2 * n;
     if (p.added || p.removed) changed += n;
+  }
+  const was = old.length === 1 && nw.length === 1 ? firstNumber(old[0]) : null;
+  const now = was === null ? null : firstNumber(nw[0]);
+  const number = now !== null && now !== was ? was : null;
+  if (number !== null) {
+    total += 2;
+    changed += 2;
   }
   const targets: Target[] = [];
   let linksMoved = false;
@@ -162,7 +178,7 @@ export function compareUnit(old: Element[], nw: Element[], own: boolean): Unit {
       if (b[index] && b[index].getAttribute(ATTR[tag]) !== was) targets.push({ tag, index, was });
     });
   }
-  return { old, new: nw, own, parts, changed, total, targets, linksMoved };
+  return { old, new: nw, own, parts, changed, total, targets, linksMoved, number };
 }
 
 export const rewritten = (u: Unit) => u.total > 0 && u.changed / u.total > REWRITTEN;
@@ -219,6 +235,14 @@ function markTargets(u: Unit, newEls: readonly Element[], oldEls: readonly Eleme
   }
 }
 
+/** The number of a list's first item, when the list starts at another one: marked on both sides, the old one on hover. */
+function markNumber(u: Unit, newEls: readonly Element[], oldEls: readonly Element[] | null): void {
+  if (u.number === null) return;
+  newEls[0]?.classList.add("md-number");
+  newEls[0]?.setAttribute("title", `the list started at ${u.number}`);
+  oldEls?.[0]?.classList.add("md-number");
+}
+
 /** Marks what changed word by word on both sides: `<del>` on the old one, `<ins>` on the new one. */
 export function markWords(units: readonly Unit[]): void {
   for (const u of units) {
@@ -227,6 +251,7 @@ export function markWords(units: readonly Unit[]): void {
     applyOps(textOf(u.old, u.own), ops.old);
     applyOps(textOf(u.new, u.own), ops.new);
     markTargets(u, u.new, u.old);
+    markNumber(u, u.new, u.old);
     for (const el of [...u.old, ...u.new]) el.classList.add("md-words");
   }
 }
@@ -275,6 +300,7 @@ export function markInline(newRoot: ParentNode, pairs: readonly Pair[], units: r
     if (worded(u)) {
       applyOps(textOf(here, u.own), opsOf(u).inline, textOf(u.old, u.own));
       markTargets(u, here, null);
+      markNumber(u, here, null);
       for (const el of here) el.classList.add("md-words");
     }
     for (const c of p.children ?? []) walk(c);

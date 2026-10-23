@@ -63,6 +63,26 @@ describe("words that changed", () => {
     expect(isSimple([leaf(0, 0)], units, tags(a, b))).toBe(true);
   });
 
+  test("a list that starts at another number marks its first item's number on both sides, the old one on hover; the items after it are not marked", () => {
+    const a = box(`<ol data-b="0" start="3"><li data-b="1">one</li><li data-b="2">two</li></ol><ul data-b="3"><li data-b="4">x</li></ul>`);
+    const b = box(`<ol data-b="0" start="5"><li data-b="1">one</li><li data-b="2">two</li></ol><ul data-b="3"><li data-b="4">x</li></ul>`);
+    const list: Pair[] = [{ old: [0], new: [0], children: [leaf(1, 1), leaf(2, 2)] }, { old: [3], new: [3], children: [leaf(4, 4)] }];
+    const units = unitsOf(a, b, list);
+    expect(units.map((u) => u.number)).toEqual([null, 3, null, null, null]);
+    expect(isSimple(list, units, tags(a, b))).toBe(true);
+    const fresh = box(b.innerHTML);
+    markWords(units);
+    expect([a, b].map((d) => [...d.querySelectorAll("li")].map((li) => li.className))).toEqual([
+      ["md-number md-words", "", ""],
+      ["md-number md-words", "", ""],
+    ]);
+    expect([a.querySelector("li")!.getAttribute("title"), b.querySelector("li")!.getAttribute("title")]).toEqual([null, "the list started at 3"]);
+    markInline(fresh, list, units);
+    expect(fresh.querySelector("ol")!.innerHTML).toBe(`<li data-b="1" class="md-number md-words" title="the list started at 3">one</li><li data-b="2">two</li>`);
+    const same = box(`<ol data-b="0" start="5"><li data-b="1">one</li></ol>`);
+    expect(unitsOf(box(`<ol data-b="0" start="5"><li data-b="1">one</li></ol>`), same, [{ old: [0], new: [0], children: [leaf(1, 1)] }])[1]!.number).toBeNull();
+  });
+
   test(`a pair with more than ${REWRITTEN * 100}% of its words changed keeps the whole-block mark`, () => {
     const a = box(`<p data-b="0">Everything here was written for the first release.</p>`);
     const b = box(`<p data-b="0">Rewritten from scratch: install, run, deploy.</p>`);

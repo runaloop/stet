@@ -48,16 +48,26 @@ export function unnumbered(line: string | undefined): string | null {
   return m ? `${m[1]}#${m[2]}` : null;
 }
 
+/** The lines of each side that hold the first item of an ordered list: its number is the list's first one. */
+export interface ListStarts {
+  old: ReadonlySet<number>;
+  new: ReadonlySet<number>;
+}
+
+const NO_STARTS: ListStarts = { old: new Set(), new: new Set() };
+
 /**
  * A change with the lines it only renumbered taken out of it as unchanged: an ordered list item whose number alone
- * changed renders as before, since the list numbers its items by their place.
+ * changed renders as before, since the list numbers its items by their place. The first items of two lists are the
+ * exception: their numbers are where the lists start. `o` and `n` are the change's first lines.
  */
-function renumbered(fd: MdDiff, g: ChangeContent): Content[] {
+function renumbered(fd: MdDiff, g: ChangeContent, o: number, n: number, starts: ListStarts): Content[] {
   const keys = (lines: string[] | undefined, at: number, count: number) => Array.from({ length: count }, (_, i) => unnumbered(lines?.[at + i]));
   const a = keys(fd.deletionLines, g.deletionLineIndex, g.deletions);
   const b = keys(fd.additionLines, g.additionLineIndex, g.additions);
   if (!a.some((k) => k !== null) || !b.some((k) => k !== null) || a.length * b.length > 1e6) return [g];
-  const same = (i: number, j: number) => a[i] !== null && a[i] === b[j];
+  const first = (i: number, j: number) => starts.old.has(o + i) && starts.new.has(n + j);
+  const same = (i: number, j: number) => a[i] !== null && a[i] === b[j] && (!first(i, j) || fd.deletionLines?.[g.deletionLineIndex + i] === fd.additionLines?.[g.additionLineIndex + j]);
   const best = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
   for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--) best[i]![j] = same(i, j) ? best[i + 1]![j + 1]! + 1 : Math.max(best[i + 1]![j]!, best[i]![j + 1]!);
   const out: Content[] = [];
@@ -83,9 +93,18 @@ function renumbered(fd: MdDiff, g: ChangeContent): Content[] {
   return out;
 }
 
-const contentOf = (fd: MdDiff, h: Hunk): Content[] => h.hunkContent.flatMap((g) => (g.type === "change" ? renumbered(fd, g) : [g]));
+function contentOf(fd: MdDiff, h: Hunk, starts: ListStarts): Content[] {
+  let o = firstLine(h.deletionStart, h.deletionCount);
+  let n = firstLine(h.additionStart, h.additionCount);
+  return h.hunkContent.flatMap((g) => {
+    const at = { o, n };
+    o += g.type === "change" ? g.deletions : g.lines;
+    n += g.type === "change" ? g.additions : g.lines;
+    return g.type === "change" ? renumbered(fd, g, at.o, at.n, starts) : [g];
+  });
+}
 
-export function changesOf(fd: MdDiff): { old: SideChanges; new: SideChanges } {
+export function changesOf(fd: MdDiff, starts: ListStarts = NO_STARTS): { old: SideChanges; new: SideChanges } {
   const removed = new Set<number>();
   const added = new Set<number>();
   const oldGaps: number[] = [];
@@ -93,7 +112,7 @@ export function changesOf(fd: MdDiff): { old: SideChanges; new: SideChanges } {
   for (const h of fd.hunks) {
     let o = firstLine(h.deletionStart, h.deletionCount);
     let n = firstLine(h.additionStart, h.additionCount);
-    for (const g of contentOf(fd, h)) {
+    for (const g of contentOf(fd, h, starts)) {
       if (g.type === "context") {
         o += g.lines;
         n += g.lines;
@@ -174,7 +193,7 @@ export interface Slots {
   new: number[];
 }
 
-export function slotsOf(fd: MdDiff, oldLines: number, newLines: number): Slots {
+export function slotsOf(fd: MdDiff, oldLines: number, newLines: number, starts: ListStarts = NO_STARTS): Slots {
   const old: number[] = [];
   const nw: number[] = [];
   let slot = 0;
@@ -187,7 +206,7 @@ export function slotsOf(fd: MdDiff, oldLines: number, newLines: number): Slots {
   for (const h of fd.hunks) {
     const first = firstLine(h.deletionStart, h.deletionCount);
     while (o < first) same();
-    for (const g of contentOf(fd, h)) {
+    for (const g of contentOf(fd, h, starts)) {
       if (g.type === "context") {
         for (let i = 0; i < g.lines; i++) same();
         continue;
