@@ -1340,6 +1340,22 @@ try {
       !!tagShown && tagShown.frameTop < 20 && tagShown.room.every((d: number) => d >= 0),
       tagShown,
     );
+    const cornerId = JSON.parse(run(repo, ["bun", CLI, "comment", "add", "--file", "res/card.png", "--region", "236,156,4,4", "--at", String(imgV), "--body", "the last pixels", "--draft", "--as", "reviewer", "--json"])).id as number;
+    await waitFor(`document.querySelector('${newView} a.img-frame[data-thread="${cornerId}"]')`, 8000);
+    await b.eval(`(() => { const v = document.querySelector('${newView}'); v.scrollTop = v.scrollHeight; v.scrollLeft = v.scrollWidth; return true; })()`);
+    await sleep(200);
+    const cornerTag = await b.eval(`(() => {
+      const v = document.querySelector('${newView}');
+      const t = v.querySelector('a.img-frame[data-thread="${cornerId}"] .img-frame-tag')?.getBoundingClientRect();
+      const i = v.querySelector("img").getBoundingClientRect();
+      const o = v.getBoundingClientRect();
+      return t ? { past: [v.scrollWidth - Math.round(i.width), v.scrollHeight - Math.round(i.height)], onImage: [t.left - i.left, t.top - i.top, i.right - t.right, i.bottom - t.bottom].map(Math.round), inView: [t.left - o.left, t.top - o.top, o.right - t.right, o.bottom - t.bottom].map(Math.round) } : null;
+    })()`);
+    check(
+      "the tag of a small frame in the bottom right corner of a zoomed image stays on the image, inside its view: the view does not scroll past the image for it",
+      !!cornerTag && cornerTag.past.every((d: number) => d <= 0) && [...cornerTag.onImage, ...cornerTag.inView].every((d: number) => d >= 0),
+      cornerTag,
+    );
     await b.eval(`[...document.querySelectorAll('.img-diff[data-file="res/card.png"] .img-zoom-bar button')].find(x => x.textContent === "fit").click(); true`);
     await sleep(200);
     const pairFitAgain = await zoomOf(pair);
