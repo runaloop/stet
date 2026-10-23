@@ -4,6 +4,7 @@ import { afterAll, expect } from "bun:test";
 import type { ThreadDetail, TimelineStepDto } from "../../src/core/types.ts";
 import { forModule } from "../../test/helpers/modules.ts";
 import { thread } from "../../test/helpers/threads.ts";
+import { zoomScroll } from "./zoom.ts";
 
 const { describe, test } = forModule("images");
 
@@ -16,6 +17,7 @@ const { webRows } = await import("../../web/keys.ts");
 const registry = await import("../../web/modules.tsx");
 const { threadLanding } = await import("../../web/views/Compare.tsx");
 const { ImagePane } = await import("./ImageView.tsx");
+const { Zoom } = await import("./ImageZoom.tsx");
 const before = state.status.value;
 const hosts: HTMLElement[] = [];
 
@@ -133,5 +135,30 @@ describe("the images module on the page", () => {
     imagePending.value = { file: png.name, path: png.name, side: "new", sha: "s1", label: "v1", region };
     registry.cancelModules();
     expect(imagePending.value).toBeNull();
+  });
+});
+
+describe("the zoom", () => {
+  test("zooming keeps the point in place from where the view stands, when it could not scroll as far as asked", () => {
+    // a view scrolls no further than its picture allows: here 455 × 22 px
+    const view = (maxX: number, maxY: number) => {
+      let x = 0;
+      let y = 0;
+      return {
+        get scrollLeft() { return x; },
+        set scrollLeft(v: number) { x = Math.min(v, maxX); },
+        get scrollTop() { return y; },
+        set scrollTop(v: number) { y = Math.min(v, maxY); },
+      } as unknown as HTMLElement;
+    };
+    const zoom = new Zoom();
+    zoom.scale.value = 2;
+    zoom.set(4, { x: 900, y: 600 }, view(1e6, 1e6));
+    const el = view(455, 22);
+    zoom.apply(el);
+    zoom.set(8, { x: 100, y: 80 }, el);
+    const next = view(1e6, 1e6);
+    zoom.apply(next);
+    expect({ x: next.scrollLeft, y: next.scrollTop }).toEqual(zoomScroll({ x: 455, y: 22 }, { x: 100, y: 80 }, 4, 8));
   });
 });
