@@ -421,7 +421,7 @@ export function SidePanel() {
   const hits = effectiveScope.value === "files" ? grepHits.value.length : searchHits.value.length;
   const root = useRef<HTMLDivElement>(null);
   const d = compareData.value;
-  const diff = tab === "files" && d ? `${d.from.ref}..${d.to.ref}` : null;
+  const diff = tab === "files" && d ? `${d.from.ref}..${d.to.ref}:${fileRows.value.length > 0}` : null;
   // search results are lines of code, as wide as any ceiling: the panel keeps the width it had
   useLayoutEffect(() => {
     if (tab !== "search") remeasureSide(root.current);
