@@ -81,11 +81,11 @@ describe("the images module on the page", () => {
     expect([zoomed(), host.querySelector(".code-label .img-zoom-level")]).toEqual([false, null]);
   });
 
-  test("a frame's tag knows the room above and left of its frame, to keep to the image", () => {
+  test("a frame's tag knows the room on each side of its frame, to keep to the image", () => {
     switched(true);
     const pane = drawn(<ImagePane sha="s1" path={png.name} size={{ w: 120, h: 80, bytes: 1 }} frames={[{ id: 1, region: { ...region, y: 0 }, tone: "thread" }]} />);
     const tag = pane.querySelector<HTMLElement>(".img-frame-tag")!;
-    expect([tag.style.getPropertyValue("--room-up"), tag.style.getPropertyValue("--room-left")]).toEqual(["0", "0.2"]);
+    expect(["up", "left", "right", "down"].map((s) => tag.style.getPropertyValue(`--room-${s}`))).toEqual(["0", "0.2", "1.2", "0.06666666666666667"]);
   });
 
   test("off in the repository: lines instead of pictures, the core's fallbacks, no zoom keys", () => {

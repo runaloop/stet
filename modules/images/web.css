@@ -41,7 +41,14 @@ a.img-frame:hover, a.img-frame.hover, a.img-frame.focused { border-width: 3px; b
 .img-frame.tone-pending { border-style: dashed; background: rgb(229 34 107 / 0.12); }
 .img-frame.tone-focus { border-color: #e5226b; }
 .img-frame.tone-change-box { border: 1px dashed #ff00aa; box-shadow: none; pointer-events: none; }
-.img-frame-tag { position: absolute; left: max(-2px, calc(var(--room-left) * -100%)); top: max(-20px, calc(var(--room-up) * -100%)); padding: 1px 5px; border-radius: 4px 4px 4px 0; background: #e5226b; color: #fff; font: 600 11px var(--sans); white-space: nowrap; }
+/* the tag keeps to the image: the room is in frame sizes, a frame being its query container plus a 2px border (percentages would measure only its inside, nothing for a small frame) */
+a.img-frame { container-type: size; }
+.img-frame-tag {
+  --fw: calc(100cqw + 4px); --fh: calc(100cqh + 4px);
+  position: absolute; left: 0; top: 0; padding: 1px 5px; border-radius: 4px 4px 4px 0; background: #e5226b; color: #fff; font: 600 11px var(--sans); white-space: nowrap;
+  translate: max(calc(var(--room-left) * -1 * var(--fw) - 2px), min(-2px, calc((1 + var(--room-right)) * var(--fw) - 2px - 100%)))
+    max(calc(var(--room-up) * -1 * var(--fh) - 2px), min(-20px, calc((1 + var(--room-down)) * var(--fh) - 2px - 100%)));
+}
 .img-frame.tone-changed .img-frame-tag { background: var(--warn); }
 .img-frame.tone-outdated .img-frame-tag { background: var(--fg-soft); }
 .img-crop { display: block; overflow: hidden; }

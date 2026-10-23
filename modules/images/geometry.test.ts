@@ -16,10 +16,11 @@ test("frames are percentages, so a region keeps its place on a bigger export", (
   expect(scaleRegion({ x: 30, y: 10, w: 60, h: 20, iw: 120, ih: 40 }, 240, 80)).toEqual({ x: 60, y: 20, w: 120, h: 40, iw: 240, ih: 80 });
 });
 
-test("a frame's tag gets the room above and left of the frame in the frame's own size: none at the image's edge", () => {
-  expect(tagRoom({ x: 30, y: 10, w: 60, h: 20, iw: 120, ih: 40 })).toEqual({ "--room-up": "0.5", "--room-left": "0.5" });
-  expect(tagRoom({ x: 0, y: 0, w: 60, h: 20, iw: 120, ih: 40 })).toEqual({ "--room-up": "0", "--room-left": "0" });
-  expect(tagRoom({ x: 100, y: 39, w: 1, h: 1, iw: 120, ih: 40 })).toEqual({ "--room-up": "39", "--room-left": "100" });
+test("a frame's tag gets the room on each side of the frame in the frame's own size: none at the image's edge", () => {
+  expect(tagRoom({ x: 30, y: 10, w: 60, h: 20, iw: 120, ih: 40 })).toEqual({ "--room-up": "0.5", "--room-left": "0.5", "--room-right": "0.5", "--room-down": "0.5" });
+  expect(tagRoom({ x: 0, y: 0, w: 60, h: 20, iw: 120, ih: 40 })).toEqual({ "--room-up": "0", "--room-left": "0", "--room-right": "1", "--room-down": "1" });
+  expect(tagRoom({ x: 100, y: 39, w: 1, h: 1, iw: 120, ih: 40 })).toEqual({ "--room-up": "39", "--room-left": "100", "--room-right": "19", "--room-down": "0" });
+  expect(tagRoom({ x: 116, y: 36, w: 4, h: 4, iw: 120, ih: 40 })).toEqual({ "--room-up": "9", "--room-left": "29", "--room-right": "0", "--room-down": "0" });
 });
 
 test("a crop keeps a margin around the region and stays inside the image", () => {
