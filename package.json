@@ -26,7 +26,7 @@
     "@pierre/theme": "2.0.0",
     "@preact/signals": "2.11.2",
     "diff": "9.0.0",
-    "markdown-it": "15.0.2",
+    "markdown-it": "15.0.3",
     "preact": "10.29.8",
     "shiki": "4.4.3"
   },
