@@ -203,10 +203,20 @@ export function crossfade(root: Element | null, scrollers: string, ready: () => 
 /** The part of `el` on screen: inside the viewport and inside every box that clips it (its own scrolling box too). */
 export function visibleBox(el: Element): DOMRect {
   const r = el.getBoundingClientRect();
-  let top = Math.max(0, r.top);
-  let left = Math.max(0, r.left);
-  let bottom = Math.min(innerHeight, r.bottom);
-  let right = Math.min(innerWidth, r.right);
+  const c = clipBox(el);
+  const top = Math.max(c.top, r.top);
+  const left = Math.max(c.left, r.left);
+  const bottom = Math.min(c.bottom, r.bottom);
+  const right = Math.min(c.right, r.right);
+  return new DOMRect(left, top, Math.max(0, right - left), Math.max(0, bottom - top));
+}
+
+/** The viewport inside every box from `el` up that clips what it holds: where something `el` holds can be seen. */
+export function clipBox(el: Element): DOMRect {
+  let top = 0;
+  let left = 0;
+  let bottom = innerHeight;
+  let right = innerWidth;
   for (let at: Element | null = el; at && at !== document.body; at = at.parentElement) {
     const s = getComputedStyle(at);
     if (!/(auto|scroll|hidden|clip)/.test(`${s.overflowX} ${s.overflowY}`)) continue;

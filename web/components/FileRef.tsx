@@ -2,6 +2,7 @@ import { linesText, type FileRef } from "../../src/ui/filerefs.ts";
 import { branchRoute, chooseFile, openFileRef, targetsOf, type MessageCode } from "../filerefs.ts";
 import { plainClick } from "../lib/route.ts";
 import { link } from "../state.ts";
+import { placeCard } from "./Bits.tsx";
 
 /** A file a message names, as a link once it names files of the review: one opens over the code, several in the finder. */
 export function FileRefLink({ r, from }: { r: FileRef; from: MessageCode }) {
@@ -16,7 +17,7 @@ export function FileRefLink({ r, from }: { r: FileRef; from: MessageCode }) {
       chooseFile(paths, r, from);
     };
     return (
-      <span class="fref">
+      <span class="fref" onMouseEnter={placeCard} onFocusIn={placeCard}>
         <a href="#" onClick={pick}>{r.text}</a>
         <span class="tref-card" role="tooltip">
           <span><b>{r.path}</b>{where}</span>
@@ -31,7 +32,7 @@ export function FileRefLink({ r, from }: { r: FileRef; from: MessageCode }) {
   const open = () => void openFileRef(path, r, from);
   const target = branchRoute(path, r);
   return (
-    <span class="fref">
+    <span class="fref" onMouseEnter={placeCard} onFocusIn={placeCard}>
       <a {...(target ? link(target, open) : { href: "#", onClick: (e: MouseEvent) => plainClick(e) && (e.preventDefault(), open()) })}>{r.text}</a>
       <span class="tref-card" role="tooltip">
         <span><b>{path}</b>{where}</span>

@@ -1007,3 +1007,33 @@ describe("file references in messages", () => {
     expect(location.hash).toBe("#/compare/base..2?file=src%2Fapp%2FFoo.kt");
   });
 });
+
+const { ThreadRef } = await import("../../web/components/Bits.tsx");
+
+describe("hover cards", () => {
+  const box = (el: Element, left: number, top: number, width: number, height: number) => (el.getBoundingClientRect = () => new DOMRect(left, top, width, height));
+  const hover = (left: number, top: number, cardWidth = 300) => {
+    state.threads.value = [thread({ id: 4, path: "src/RetryQueue.kt", title: "pendingJobs grows" })];
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    render(<ThreadRef id={4}>#4</ThreadRef>, host);
+    const ref = host.querySelector(".tref")!;
+    const card = ref.querySelector<HTMLElement>(".tref-card")!;
+    box(ref, left, top, 24, 16);
+    box(card, left + Number.parseFloat(card.style.left || "0"), top + 16, cardWidth, 90);
+    ref.dispatchEvent(new MouseEvent("mouseenter"));
+    const out = { up: card.classList.contains("tref-up"), left: card.style.left };
+    render(null, host);
+    return out;
+  };
+
+  test("a #N card opens under its link where it fits, above it near the bottom of the window", () => {
+    expect(hover(100, 100)).toEqual({ up: false, left: "" });
+    expect(hover(100, innerHeight - 40)).toEqual({ up: true, left: "" });
+  });
+
+  test("a card near the right edge moves left to stay in the window, and not past its left edge", () => {
+    expect(hover(innerWidth - 50, 100)).toEqual({ up: false, left: `${50 - 300 - 6}px` });
+    expect(hover(innerWidth - 50, 100, innerWidth + 100)).toEqual({ up: false, left: `${6 - innerWidth + 50}px` });
+  });
+});

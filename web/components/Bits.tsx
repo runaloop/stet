@@ -5,6 +5,7 @@ import { areaText } from "../../src/core/media.ts";
 import type { Round } from "../../src/ui/versions.ts";
 import { THREAD_REF } from "../../src/ui/strip.ts";
 import { fileRefs, type FileRef } from "../../src/ui/filerefs.ts";
+import { clipBox } from "../lib/fade.ts";
 import { link, threads } from "../state.ts";
 
 export function Badge({ tone = "muted", children, title }: { tone?: string; children: ComponentChildren; title?: string }) {
@@ -58,12 +59,26 @@ export function whereText(t: ThreadSummary): string {
   return t.region ? areaText(t.region) : `L${rangeText(t.anchor.range ?? t.range)}`;
 }
 
+/** A link's hover card where it can be seen: under the link, above it when there is more room there, moved off a side edge. */
+export function placeCard(e: Event): void {
+  const host = e.currentTarget as HTMLElement;
+  const card = host.querySelector<HTMLElement>(":scope > .tref-card");
+  if (!card) return;
+  card.classList.remove("tref-up");
+  card.style.removeProperty("left");
+  const room = clipBox(host);
+  const at = host.getBoundingClientRect();
+  const c = card.getBoundingClientRect();
+  if (c.bottom > room.bottom - 6 && at.top - room.top > room.bottom - at.bottom) card.classList.add("tref-up");
+  const shift = Math.max(room.left + 6 - c.left, Math.min(0, room.right - 6 - c.right));
+  if (shift) card.style.left = `${Math.round(shift)}px`;
+}
 
 export function ThreadRef({ id, children }: { id: number; children: ComponentChildren }) {
   const t = threads.value.find((x) => x.id === id);
   if (!t) return <>{children}</>;
   return (
-    <span class="tref">
+    <span class="tref" onMouseEnter={placeCard} onFocusIn={placeCard}>
       <a {...link({ name: "thread", id })}>{children}</a>
       <span class="tref-card" role="tooltip">
         <b>#{t.id}</b> {t.anchor.path ?? t.path}{t.region ? ` · ${whereText(t)}` : `:${rangeText(t.anchor.range ?? t.range)}`} <ThreadBadges t={t} />
