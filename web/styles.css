@@ -322,6 +322,11 @@ aside { display: flex; flex-direction: column; overflow: hidden; }
 .side-tabs { flex: none; margin: 8px 8px 0; align-self: flex-start; }
 .side-head { padding: 6px 10px; font-size: 12px; }
 .side-head .error { color: var(--bad); }
+aside.side-measure { position: fixed; top: 0; left: 0; width: max-content; height: auto; overflow: visible; visibility: hidden; pointer-events: none; }
+.side-measure :is(.side-tabs, .side-head, .filters, .empty, .search, .row-title, .row-last) { display: none; }
+.side-measure .file-dir { flex: none; width: 0; }
+.side-measure .file-link, .side-measure .file-link .file-name { flex: none; overflow: visible; }
+.side-measure .row-top { flex-wrap: nowrap; }
 .stat { font: 12px var(--mono); white-space: nowrap; }
 .stat .add, .add { color: var(--ok); }
 .stat .del, .del { color: var(--bad); }

@@ -9,7 +9,7 @@ import { Help, Pickers, WhichKey } from "./components/KeyUi.tsx";
 import { Splitter, widthOf } from "./components/Splitter.tsx";
 import { refLabel } from "./components/VersionStrip.tsx";
 import { installHistory, leftPage } from "./jumps.ts";
-import { layoutPage, swapped, toggleSwap } from "./layout.ts";
+import { autoSideWidth, layoutPage, swapped, toggleSwap } from "./layout.ts";
 import { takeToken } from "../src/ui/route.ts";
 import { installKeys, picker } from "./keys.ts";
 import "./transition.ts";
@@ -324,7 +324,7 @@ function App() {
   const r = route.value;
   const page = layoutPage();
   const sideKey = `side.${page}`;
-  const sideW = widthOf(sideKey);
+  const sideW = widthOf(sideKey) ?? autoSideWidth(page);
   const right = page === "compare" && swapped("compare");
   return (
     <>
@@ -341,7 +341,7 @@ function App() {
         </div>
       ) : null}
       <DraftBar />
-      <main class={right ? "side-right" : ""} style={sideW ? `--side-w: ${sideW}px` : ""}>
+      <main class={right ? "side-right" : ""} style={`--side-w: ${sideW}px`}>
         <aside ref={aside}>
           <SidePanel />
         </aside>

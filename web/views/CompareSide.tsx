@@ -1,5 +1,5 @@
 import type { ComponentChild } from "preact";
-import { useEffect, useRef } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef } from "preact/hooks";
 import { Kbd } from "../components/Bits.tsx";
 import { FileGitMarks } from "../components/GitState.tsx";
 import { showFileInGuide } from "../components/Guide.tsx";
@@ -44,7 +44,8 @@ import type { Route } from "../../src/ui/route.ts";
 import { canQuote, quoteLines } from "../quote.ts";
 import { clampStep } from "../../src/ui/timeline.ts";
 import { fileTag } from "../modules.tsx";
-import { detail, link, route, selectedStep } from "../state.ts";
+import { layoutPage, remeasureSide } from "../layout.ts";
+import { detail, link, loadedReview, route, selectedStep } from "../state.ts";
 import { transition } from "../transition.ts";
 import { boxKey } from "../keyinput.ts";
 import { ThreadTree } from "./ThreadTree.tsx";
@@ -418,8 +419,15 @@ export function SidePanel() {
   const tabs = route.value.name === "compare" || route.value.name === "thread";
   const tab = tabs ? sideTab.value : "threads";
   const hits = effectiveScope.value === "files" ? grepHits.value.length : searchHits.value.length;
+  const root = useRef<HTMLDivElement>(null);
+  const d = compareData.value;
+  const diff = tab === "files" && d ? `${d.from.ref}..${d.to.ref}` : null;
+  // search results are lines of code, as wide as any ceiling: the panel keeps the width it had
+  useLayoutEffect(() => {
+    if (tab !== "search") remeasureSide(root.current);
+  }, [loadedReview.value, layoutPage(), tab, diff]);
   return (
-    <div class="side">
+    <div class="side" ref={root}>
       {tabs ? (
         <div class="side-tabs seg">
           {TABS.map(([t, label]) => (
