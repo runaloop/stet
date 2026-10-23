@@ -2988,6 +2988,25 @@ try {
     const settled = await waitFor(`!document.querySelector("header .refresh.moved")`, 8000);
     check("when the agent edits “now” without a version, the header says so (↻ N files changed) and R re-reads it", /1 file changed/.test(moved ?? "") && !!settled && (await b.eval("location.hash")) === hashBefore, { moved, settled });
 
+    await b.viewport(1280, 800);
+    await b.eval(`location.hash = "#/compare/${settleB}..now"; true`);
+    const fromNow = await waitFor(
+      `(() => { const f = document.querySelector(".vstep.from"); const t = document.querySelector(".vstep.to"); if (!f || t?.querySelector(".vlabel")?.textContent !== "now") return null; const strip = document.querySelector(".vstrip").getBoundingClientRect(); const own = f.querySelector(".vown")?.getBoundingClientRect(); return { from: f.querySelector(".vlabel").textContent, fromSub: f.querySelector(".vsub").textContent, toSub: t.querySelector(".vsub").textContent, own: f.querySelector(".vown")?.textContent ?? null, owns: document.querySelectorAll(".vown").length, ownInStrip: !!own && own.left >= strip.left - 1 && own.right <= strip.right + 1 && own.bottom <= strip.bottom + 1, pageW: document.documentElement.scrollWidth, winW: innerWidth }; })()`,
+      8000,
+    );
+    await waitFor(`!document.querySelector(".view-fade")`, 2000);
+    await b.screenshot(join(OUT, "shots", "ui-check-strip-from.png"));
+    await click(".vstep.from .vown");
+    const ownRange = await waitFor(`location.hash === "#/compare/${settleA}..${settleB}" ? document.querySelector(".range-title")?.textContent ?? "" : null`, 5000);
+    check(
+      "on a range from a version to now each card says what its count is against (the version before it; now: the version), and “what changed in” on the “from” card opens that version's own changes",
+      fromNow?.from === `v${settleB}` && new RegExp(`^\\d+ files? vs v${settleA}$`).test(fromNow.fromSub) && fromNow.toSub === `1 file vs v${settleB}` && fromNow.own === `what changed in v${settleB}` &&
+        fromNow.owns === 1 && fromNow.ownInStrip && fromNow.pageW <= fromNow.winW && (ownRange?.startsWith(`What changed in v${settleB}`) ?? false),
+      { fromNow, ownRange },
+    );
+    await b.viewport(1400, 900);
+    await b.eval(`location.hash = ${JSON.stringify(hashBefore)}; true`);
+
     server.kill("SIGTERM");
     await server.exited;
     const offline = await waitFor(`document.querySelector("header .offline")?.textContent`, 10000);
