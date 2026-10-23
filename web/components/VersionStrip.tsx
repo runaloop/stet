@@ -3,7 +3,7 @@ import { markReviewed, nowDirty, presets, reviewedCursor, reviewedRef, status, t
 import { ago, revealRange } from "./Bits.tsx";
 import { commitAt, commitOf, commits, commitSubject, isSha, rowOf } from "../commits.ts";
 import { picker } from "../keys.ts";
-import { foldRuns, keptSteps } from "../../src/ui/versions.ts";
+import { filesVs, foldRuns, keptSteps } from "../../src/ui/versions.ts";
 
 export interface StripStep {
   ref: string;
@@ -11,6 +11,8 @@ export interface StripStep {
   sub: string;
   title: string;
   kind: "base" | "version" | "pass" | "now";
+  /** When a version was made, shown beside its label so the line under it has room for what it changed. */
+  ago?: string;
 }
 
 export function stripSteps(from: string, to: string): StripStep[] {
@@ -19,11 +21,13 @@ export function stripSteps(from: string, to: string): StripStep[] {
   const n = vs.length;
   const out: StripStep[] = [{ ref: "base", label: "base", sub: s?.review.baseRef ?? "start", title: "where the branch started", kind: "base" }];
   for (const v of vs) {
+    const changed = v.files !== null && v.files !== undefined ? filesVs(v.files, v.number > 1 ? `v${v.number - 1}` : "base") : null;
     out.push({
       ref: String(v.number),
       label: `v${v.number}`,
-      sub: `${ago(v.createdAt)}${v.files !== null && v.files !== undefined ? ` · ${v.files} file${v.files === 1 ? "" : "s"}` : ""}`,
-      title: `v${v.number}${v.label ? `: ${v.label}` : ""} · by ${v.author} (${v.role}) · ${v.createdAt.replace("T", " ").slice(0, 16)}`,
+      sub: changed?.short ?? ago(v.createdAt),
+      ago: changed ? ago(v.createdAt) : undefined,
+      title: `v${v.number}${v.label ? `: ${v.label}` : ""} · by ${v.author} (${v.role}) · ${v.createdAt.replace("T", " ").slice(0, 16)}${changed ? `\nv${v.number} ${changed.long}` : ""}`,
       kind: "version",
     });
   }
@@ -37,8 +41,12 @@ export function stripSteps(from: string, to: string): StripStep[] {
   out.push({
     ref: "now",
     label: "now",
-    sub: nowDirty.value ? (n ? `${files ?? "?"} file${files === 1 ? "" : "s"} after v${n}` : "working tree") : `= v${n}`,
-    title: nowDirty.value ? "the working tree: changed after the latest version, not saved as a version yet" : `the working tree is the same as v${n}`,
+    sub: nowDirty.value ? (n ? filesVs(files, `v${n}`).short : "working tree") : `= v${n}`,
+    title: !nowDirty.value
+      ? `the working tree is the same as v${n}`
+      : n
+        ? `the working tree ${filesVs(files, `v${n}`).long}, not saved as a version yet`
+        : "the working tree: changed after the latest version, not saved as a version yet",
     kind: "now",
   });
   return out;
@@ -80,7 +88,8 @@ export function rangeTitle(from: string, to: string): string {
 
 /**
  * The code as it was at each step, oldest first. The diff runs from the "from" step to the "to" step: the
- * buttons under a step set one end exactly, a click on the step shows what changed in it, a drag sets both.
+ * buttons under a step set one end exactly, a click on the step shows what changed in it, a drag sets both. A step
+ * counts the files it changed against the step before.
  * Versions far from the range fold into one step ("v1…v38"); a click on it shows them.
  */
 export function VersionStrip({ from, to, onPick }: { from: string; to: string; onPick: (from: string, to: string) => void }) {
@@ -151,7 +160,10 @@ export function VersionStrip({ from, to, onPick }: { from: string; to: string; o
               }}
               onClick={() => alone(i)}
             >
-              <span class="vlabel">{s.label}{mine(s) ? <span class="seen" title="your last pass"> ✓</span> : null}</span>
+              <span class="vhead">
+                <span class="vlabel">{s.label}{mine(s) ? <span class="seen" title="your last pass"> ✓</span> : null}</span>
+                {s.ago ? <span class="vago">{s.ago}</span> : null}
+              </span>
               <span class="vsub">{s.sub}</span>
             </button>
             <span class="vends">

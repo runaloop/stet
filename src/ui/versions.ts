@@ -99,3 +99,12 @@ export function withEnd(end: "from" | "to", ref: string, from: string, to: strin
 export function onlyVersion(n: number): [string, string] {
   return [n > 1 ? String(n - 1) : "base", String(n)];
 }
+
+/**
+ * What a step changed, named against the step before so it does not read as a count of the diff shown: short for its
+ * card on the strip ("25 files vs v14"), long for its tooltip ("changed 25 files compared with v14").
+ */
+export function filesVs(files: number | null | undefined, before: string): { short: string; long: string } {
+  const count = `${files ?? "?"} file${files === 1 ? "" : "s"}`;
+  return { short: `${count} vs ${before}`, long: `changed ${count} compared with ${before}` };
+}

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { foldRuns, keptSteps, keptTimeline, onlyVersion, rounds, withEnd } from "../../src/ui/versions.ts";
+import { filesVs, foldRuns, keptSteps, keptTimeline, onlyVersion, rounds, withEnd } from "../../src/ui/versions.ts";
 
 const v = (number: number, createdAt: string) => ({ number, createdAt });
 
@@ -55,5 +55,12 @@ describe("versions", () => {
     expect(withEnd("to", "4", "abc123", "8", 10)).toEqual(["abc123", "4"]);
     expect(onlyVersion(1)).toEqual(["base", "1"]);
     expect(onlyVersion(7)).toEqual(["6", "7"]);
+  });
+
+  test("a card counts the files its step changed against the step before, named, so the count is not read as the diff shown", () => {
+    expect(filesVs(25, "v14")).toEqual({ short: "25 files vs v14", long: "changed 25 files compared with v14" });
+    expect(filesVs(1, "base").short).toBe("1 file vs base");
+    expect(filesVs(0, "v3").short).toBe("0 files vs v3");
+    expect(filesVs(null, "v3").short).toBe("? files vs v3");
   });
 });

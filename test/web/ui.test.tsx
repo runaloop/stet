@@ -1104,3 +1104,44 @@ describe("hover cards", () => {
     expect(hover(innerWidth - 50, 100, innerWidth + 100)).toEqual({ up: false, left: `${6 - innerWidth + 50}px` });
   });
 });
+
+const { VersionStrip } = await import("../../web/components/VersionStrip.tsx");
+
+describe("version strip", () => {
+  const at = new Date(Date.now() - 14 * 60_000).toISOString();
+  const version = (number: number, files: number) => ({ number, snapshot: `s${number}`, createdAt: at, author: "claude", role: "agent", files });
+  const hosts: HTMLElement[] = [];
+  let before: { status: typeof state.status.value; reviewed: typeof state.reviewedCursor.value };
+  beforeAll(() => {
+    before = { status: state.status.value, reviewed: state.reviewedCursor.value };
+    state.reviewedCursor.value = null;
+    const versionsList = Array.from({ length: 15 }, (_, i) => version(i + 1, i === 14 ? 25 : i === 12 ? 0 : 2));
+    state.status.value = { versions: 15, versionsList, review: { baseRef: "main" }, now: { sha: "nowsha", changedSinceLatest: true, files: 1 } } as never;
+  });
+  afterAll(() => {
+    for (const host of hosts) render(null, host);
+    state.status.value = before.status;
+    state.reviewedCursor.value = before.reviewed;
+  });
+  const strip = (from: string, to: string) => {
+    const picked: [string, string][] = [];
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    hosts.push(host);
+    render(<VersionStrip from={from} to={to} onPick={(f, t) => picked.push([f, t])} />, host);
+    const step = (label: string) => [...host.querySelectorAll(".vstep")].find((s) => s.querySelector(".vlabel")?.textContent === label)!;
+    return { host, picked, step };
+  };
+
+  test("a card names what its count is against: the version before it, or the latest version for now; the full sentence is in its tooltip", () => {
+    const { step } = strip("15", "now");
+    const v15 = step("v15");
+    expect(v15.querySelector(".vsub")!.textContent).toBe("25 files vs v14");
+    expect(v15.querySelector(".vago")!.textContent).toBe("14m ago");
+    expect(v15.querySelector(".vbody")!.getAttribute("title")).toContain("v15 changed 25 files compared with v14");
+    expect(strip("1", "now").step("v1").querySelector(".vsub")!.textContent).toBe("2 files vs base");
+    const now = step("now");
+    expect(now.querySelector(".vsub")!.textContent).toBe("1 file vs v15");
+    expect(now.querySelector(".vbody")!.getAttribute("title")).toContain("the working tree changed 1 file compared with v15");
+  });
+});

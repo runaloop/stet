@@ -470,7 +470,9 @@ a.snip:not(.match):hover { opacity: 0.8; }
 .vend:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .vend.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .vend:disabled { visibility: hidden; }
+.vstep .vhead { display: flex; align-items: baseline; gap: 6px; }
 .vstep .vlabel { font: 600 12px var(--mono); }
+.vstep .vago { font-size: 10.5px; color: var(--fg-soft); white-space: nowrap; }
 .vstep .vlabel .seen { color: var(--ok); }
 .vstep .vsub { font-size: 10.5px; color: var(--fg-soft); white-space: nowrap; }
 .vstep.now .vlabel { font-style: italic; }
