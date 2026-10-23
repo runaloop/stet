@@ -6,6 +6,7 @@ import { Bidi, KEY } from "./bidi.ts";
 import { takeTurn } from "./queue.ts";
 import { card as pngCard } from "../helpers/png.ts";
 import { Store } from "../../src/core/store/db.ts";
+import { SIDE_FLOOR, sideCeiling } from "../../src/ui/side.ts";
 
 const ROOT = join(import.meta.dir, "..", "..");
 const CLI = join(ROOT, "src", "cli.ts");
@@ -749,7 +750,7 @@ try {
     const [, oldW, , newW] = String(columns).split(" ").map(parseFloat);
     check("split + wrap in a narrow pane: the old and the new column keep the same width", !!oldW && !!newW && Math.abs(oldW - newW) < 2, { columns });
 
-    const piece = await b.eval(`(async () => { const area = document.querySelector(".thread-code .code-area"); const c = area.querySelector("diffs-container"); for (let w = 320; w >= 100; w -= 10) { area.style.width = w + "px"; await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); const walker = document.createTreeWalker(c.shadowRoot, 4); for (let n = walker.nextNode(); n; n = walker.nextNode()) { const i = n.nodeValue.indexOf("HUNDRED_V2"); if (i < 0 || !n.parentElement.closest("[data-additions]")) continue; const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + 10); const rects = [...r.getClientRects()].filter(x => x.width > 0); if (rects.length > 1) { const last = rects[rects.length - 1]; return { w, x: Math.round(last.left + last.width / 2), y: Math.round(last.top + last.height / 2) }; } } } return null; })()`);
+    const piece = await b.eval(`(async () => { const area = document.querySelector(".thread-code .code-area"); const c = area.querySelector("diffs-container"); for (let w = 320; w >= 100; w -= 10) { area.style.width = w + "px"; await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); const walker = document.createTreeWalker(c.shadowRoot, 4); for (let n = walker.nextNode(); n; n = walker.nextNode()) { const i = n.nodeValue.indexOf("HUNDRED_V2"); if (i < 0 || !n.parentElement.closest("[data-additions]")) continue; const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + 10); const rects = [...r.getClientRects()].filter(x => x.width > 0); if (rects.length > 1) { n.parentElement.scrollIntoView({ block: "center", behavior: "instant" }); const shown = [...r.getClientRects()].filter(x => x.width > 0); const last = shown[shown.length - 1]; return { w, x: Math.round(last.left + last.width / 2), y: Math.round(last.top + last.height / 2) }; } } } return null; })()`);
     await b.eval(`(() => { const i = document.getElementById("diff-search"); i.value = ""; i.dispatchEvent(new Event("input", { bubbles: true })); window.getSelection().removeAllRanges(); return true; })()`);
     if (piece) await pointer([{ type: "pointerMove", x: piece.x, y: piece.y }, { type: "pointerDown", button: 0 }, { type: "pointerUp", button: 0 }, { type: "pointerDown", button: 0 }, { type: "pointerUp", button: 0 }]);
     const wholeName = await waitFor(`document.getElementById("diff-search")?.value || null`, 5000);
@@ -877,6 +878,7 @@ try {
     await waitFor(`[...document.querySelectorAll(".codeview-host diffs-container")].some(c => c.shadowRoot.textContent.includes("HUNDRED_V2"))`, 8000);
     await sleep(500);
     const compareCols = () => b.eval(`({ side: ${edges("aside")}, pane: ${edges(".pane")}, swapped: !!document.querySelector("main.side-right") })`) as Promise<{ side: [number, number]; pane: [number, number]; swapped: boolean }>;
+    const sideDefault = await compareCols();
     const sideGrip = await rect(".side-splitter");
     if (sideGrip) await pointer([{ type: "pointerMove", x: sideGrip.x, y: sideGrip.y }, { type: "pointerDown", button: 0 }, { type: "pointerMove", x: sideGrip.x + 60, y: sideGrip.y, duration: 150 }, { type: "pointerUp", button: 0 }]);
     await sleep(300);
@@ -925,8 +927,8 @@ try {
     check(
       "a reload keeps the side panel on the right; a narrow window stacks it above the diff as before; Space u L puts it back on the left at its default width",
       sideKept.swapped && sideKept.pane[1] <= sideKept.side[0] && sideKept.side[1] - sideKept.side[0] === sideWide.side[1] - sideWide.side[0] &&
-        sidePhone.side[0] === sidePhone.pane[0] && !sideReset.swapped && sideReset.side[0] === 0 && sideReset.side[1] === aside0,
-      { sideKept, sidePhone, sideReset, aside0 },
+        sidePhone.side[0] === sidePhone.pane[0] && !sideReset.swapped && sideReset.side[0] === 0 && sideReset.side[1] === sideDefault.side[1] - sideDefault.side[0],
+      { sideKept, sidePhone, sideReset, sideDefault },
     );
 
     run(repo, ["git", "add", "-A"]);
@@ -2682,7 +2684,8 @@ try {
     await waitFor(`document.querySelector('${cursorMd} p[data-start="7"]')`, 8000);
     await b.eval(`document.querySelector('${cursorMd} .md-cell[data-side="new"] p[data-start="5"]').scrollIntoView({ block: "center" }); true`);
     await sleep(500);
-    const para = (start: number, dx: number) => b.eval(`(() => { const r = document.querySelector('${cursorMd} .md-cell[data-side="new"] p[data-start="${start}"]').getBoundingClientRect(); return { x: Math.round(r.left + ${dx}), y: Math.round(r.top + r.height / 2) }; })()`) as Promise<{ x: number; y: number }>;
+    // on its first line: the middle of a paragraph of two lines is the gap between them
+    const para = (start: number, dx: number) => b.eval(`(() => { const r = document.querySelector('${cursorMd} .md-cell[data-side="new"] p[data-start="${start}"]').getBoundingClientRect(); return { x: Math.round(r.left + ${dx}), y: Math.round(r.top + Math.min(r.height / 2, 10)) }; })()`) as Promise<{ x: number; y: number }>;
     const mdSelected = await dragText(await para(5, 30), await para(7, 120));
     await pointer([{ type: "pointerMove", x: (await para(7, 10)).x, y: (await para(7, 10)).y }]);
     await waitFor(`document.querySelector(".md-gutter .md-plus")`, 3000);
@@ -3195,6 +3198,73 @@ try {
         mainOpen > 0 && /^Threads/.test(onMain ?? "") && /^Files/.test(onSide ?? "") && /^Threads/.test(backOnMain ?? "") &&
           /^Files/.test(sideLoaded.tab ?? "") && sideLoaded.review === String(sideReview) && sideLoaded.kept === "threads",
         { mainReview, sideReview, mainOpen, onMain, onSide, backOnMain, sideLoaded },
+      );
+
+      const asideW = () => b.eval(`Math.round(document.querySelector("aside").getBoundingClientRect().width)`) as Promise<number>;
+      const split = (await b.eval(`localStorage.getItem("stet.diffStyle") ?? "split"`)) === "split";
+      const widths = [1280, 1920, 2560];
+      const atWidths = async (page: "compare" | "thread") => {
+        const out: { window: number; side: number; ceiling: number; clipped: boolean | null }[] = [];
+        for (const w of widths) {
+          await b.viewport(w, 900);
+          await sleep(300);
+          const clipped = await b.eval(`(() => { const n = [...document.querySelectorAll(".file-row .file-name")].find(e => e.textContent.startsWith("Way")); return n ? n.scrollWidth > n.clientWidth : null; })()`);
+          out.push({ window: w, side: await asideW(), ceiling: sideCeiling({ window: w, page, split }), clipped });
+        }
+        return out;
+      };
+      const short = await atWidths("compare");
+      await b.screenshot(join(OUT, "shots", "ui-check-side-short.png"));
+      check(
+        "a side panel of short file names takes the narrow floor, under its ceiling, at 1280, 1920 and 2560 px",
+        short.every((s) => s.side === SIDE_FLOOR && s.side < s.ceiling),
+        short,
+      );
+      mkdirSync(join(sideDir, "docs"), { recursive: true });
+      writeFileSync(join(sideDir, "docs", `Way${"ALongerNameThanAnyPanelShows".repeat(4)}.md`), "a long name\n");
+      run(sideDir, ["git", "add", "-A"]);
+      run(sideDir, ["bun", CLI, "version", "create", "--json"]);
+      await b.eval(`location.hash = "#/compare/base..2"; true`);
+      await waitFor(`[...document.querySelectorAll(".file-row .file-name")].some(e => e.textContent.startsWith("Way")) && !document.querySelector(".view-fade")`, 10000);
+      const long = await atWidths("compare");
+      await b.screenshot(join(OUT, "shots", "ui-check-side-long.png"));
+      await b.eval(`location.hash = "#/thread/${sideThread}"; true`);
+      await waitFor(`document.querySelector(".detail-head .tid")?.textContent === "#${sideThread}"`, 8000);
+      await b.eval(`[...document.querySelectorAll(".side-tabs button")].find(x => x.textContent.startsWith("Files")).click(); true`);
+      await waitFor(`[...document.querySelectorAll(".file-row .file-name")].some(e => e.textContent.startsWith("Way"))`, 5000);
+      const longThread = await atWidths("thread");
+      check(
+        "a long file name widens the panel up to its ceiling and no further: 30% of the window or less to leave the diff two code columns, a quarter on a thread's page",
+        long.every((s) => s.side === s.ceiling && s.clipped === true) && longThread.every((s) => s.side === s.ceiling && s.clipped === true) &&
+          long[1]!.side > short[1]!.side && longThread[1]!.side < long[1]!.side && long[2]!.side === Math.round(2560 * 0.3),
+        { long, longThread },
+      );
+      await b.eval(`location.hash = "#/compare/base..2"; true`);
+      await waitFor(`!!document.querySelector(".codeview-host diffs-container") && !document.querySelector(".view-fade")`, 10000);
+      await b.viewport(1920, 900);
+      await sleep(300);
+      const auto1920 = await asideW();
+      const dragGrip = await rect(".side-splitter");
+      if (dragGrip) await pointer([{ type: "pointerMove", x: dragGrip.x, y: dragGrip.y }, { type: "pointerDown", button: 0 }, { type: "pointerMove", x: dragGrip.x - 100, y: dragGrip.y, duration: 150 }, { type: "pointerUp", button: 0 }]);
+      await sleep(300);
+      const dragged = await asideW();
+      await b.eval(`[...document.querySelectorAll(".side-tabs button")].find(x => x.textContent.startsWith("Threads")).click(); true`);
+      await sleep(300);
+      const draggedThreads = await asideW();
+      await b.eval(`[...document.querySelectorAll(".side-tabs button")].find(x => x.textContent.startsWith("Files")).click(); true`);
+      await b.navigate("about:blank");
+      await b.navigate(`${url.split("#")[0]}#/compare/base..2?review=${sideReview}`);
+      await waitFor(`!!document.querySelector(".codeview-host diffs-container") && !document.querySelector(".view-fade")`, 15000);
+      await b.viewport(2560, 900);
+      await sleep(300);
+      const draggedWide = await asideW();
+      await b.eval(`document.querySelector(".side-splitter").dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); true`);
+      await sleep(300);
+      const reset = { side: await asideW(), ceiling: sideCeiling({ window: 2560, page: "compare", split }), stored: await b.eval(`localStorage.getItem("stet.w.side.compare") !== null`) };
+      check(
+        "a width dragged with the splitter stays over a change of tab, a reload and a wider window; a double click gives the width from the rows back",
+        auto1920 === long[1]!.side && Math.abs(dragged - (auto1920 - 100)) <= 4 && draggedThreads === dragged && draggedWide === dragged && reset.side === reset.ceiling && reset.stored === false,
+        { auto1920, dragged, draggedThreads, draggedWide, reset },
       );
     } finally {
       rmSync(sideDir, { recursive: true, force: true });
