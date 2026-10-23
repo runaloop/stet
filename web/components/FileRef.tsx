@@ -1,5 +1,5 @@
 import { linesText, type FileRef } from "../../src/ui/filerefs.ts";
-import { branchRoute, chooseFile, openFileRef, targetsOf, type MessageCode } from "../filerefs.ts";
+import { branchRoute, chooseFile, deletedFile, openFileRef, targetsOf, type MessageCode } from "../filerefs.ts";
 import { plainClick } from "../lib/route.ts";
 import { link } from "../state.ts";
 import { placeCard } from "./Bits.tsx";
@@ -36,7 +36,7 @@ export function FileRefLink({ r, from }: { r: FileRef; from: MessageCode }) {
       <a {...(target ? link(target, open) : { href: "#", onClick: (e: MouseEvent) => plainClick(e) && (e.preventDefault(), open()) })}>{r.text}</a>
       <span class="tref-card" role="tooltip">
         <span><b>{path}</b>{where}</span>
-        <span class="tref-title">opens over the thread's code, as it was when this was written</span>
+        <span class="tref-title">{deletedFile(path) ? "the branch deletes this file: opens over the thread's code as it last was" : "opens over the thread's code, as it was when this was written"}</span>
       </span>
     </span>
   );

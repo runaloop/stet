@@ -928,6 +928,7 @@ const { FileRefLink } = await import("../../web/components/FileRef.tsx");
 const { peek, fileChoice } = await import("../../web/compare.ts");
 const { picker } = await import("../../web/keys.ts");
 const { installHistory } = await import("../../web/jumps.ts");
+const { PeekView } = await import("../../web/views/Peek.tsx");
 
 describe("file references in messages", () => {
   beforeAll(() => installHistory());
@@ -935,7 +936,7 @@ describe("file references in messages", () => {
   const serve = (blobs: Record<string, string[]>) => {
     respond = (url) => {
       const q = new URL(url, "http://x").searchParams;
-      if (url.startsWith("/api/compare")) return Response.json({ from: { ref: "base", sha: "b0", label: "base" }, to: { ref: "2", sha: "v2", label: "v2" }, files: [{ path: "src/app/Foo.kt", status: "M" }, { path: "src/a/Util.kt", status: "A" }], placements: [], outside: [] });
+      if (url.startsWith("/api/compare")) return Response.json({ from: { ref: "base", sha: "b0", label: "base" }, to: { ref: "2", sha: "v2", label: "v2" }, files: [{ path: "src/app/Foo.kt", status: "M" }, { path: "src/a/Util.kt", status: "A" }, { path: "src/old/Legacy.kt", status: "D" }, { path: "src/old/Gone.kt", status: "D" }], placements: [], outside: [] });
       if (url.startsWith("/api/files")) return Response.json({ sha: q.get("sha"), paths: ["src/app/Foo.kt", "src/a/Util.kt", "src/b/Util.kt", "build.gradle", "src/x/Strings.kt", "test/Strings.kt"] });
       if (url.startsWith("/api/blob")) {
         const sha = q.get("sha")!;
@@ -1016,6 +1017,33 @@ describe("file references in messages", () => {
     (host.querySelector(".fref a") as HTMLAnchorElement).click();
     await tick(60);
     expect(peek.value).toEqual({ path: "src/a/Util.kt", jumped: true, sha: "v2", label: "v2", line: 3, end: 3 });
+    peek.value = null;
+    render(null, host);
+  });
+
+  test("a file the branch deletes is a link that opens it as it last was: the newest version that has it, else the base", async () => {
+    serve({ v1: ["src/old/Legacy.kt"], b0: ["src/old/Gone.kt"] });
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const later = { ...from, version: null };
+    const draw = () => render(<Body text="moved out of Legacy.kt:2 and Gone.kt:5" fileLink={(r) => <FileRefLink r={r} from={later} />} />, host);
+    draw();
+    await tick(60);
+    draw();
+    expect(host.querySelector(".fref .tref-card")!.textContent).toContain("the branch deletes this file");
+    (host.querySelector(".fref a") as HTMLAnchorElement).click();
+    await tick(60);
+    expect(peek.value).toEqual({ path: "src/old/Legacy.kt", jumped: true, sha: "v1", label: "v1", line: 2, end: 2, note: "as in v1, the last version that has it", deleted: true });
+    const head = document.createElement("div");
+    document.body.appendChild(head);
+    render(<PeekView />, head);
+    expect(head.querySelector(".peek-head")!.textContent).toContain("the branch deletes this file");
+    expect(head.querySelector(".peek-latest")).toBeNull();
+    render(null, head);
+    peek.value = null;
+    (host.querySelectorAll(".fref a")[1] as HTMLAnchorElement).click();
+    await tick(60);
+    expect(peek.value).toMatchObject({ path: "src/old/Gone.kt", sha: "b0", label: "base", note: "as in base, before the branch", deleted: true });
     peek.value = null;
     render(null, host);
   });

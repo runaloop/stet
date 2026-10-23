@@ -23,7 +23,10 @@ export interface BranchFiles {
   ref: string;
   sha: string;
   label: string;
+  base: { sha: string; label: string };
   paths: string[];
+  /** The files the branch deletes: names in messages find them too, as they last were. */
+  deleted: ReadonlySet<string>;
   index: FileIndex;
 }
 
@@ -47,7 +50,8 @@ export function branch(): BranchFiles | null {
       .then((d) => {
         if (wanted !== key) return;
         const paths = d.files.filter((f) => f.status !== "D").map((f) => f.path);
-        branchFiles.value = { review: rid, key, ref: tip, sha: d.to.sha, label: d.to.label, paths, index: fileIndex(paths) };
+        const deleted = d.files.filter((f) => f.status === "D").map((f) => f.path);
+        branchFiles.value = { review: rid, key, ref: tip, sha: d.to.sha, label: d.to.label, base: { sha: d.from.sha, label: d.from.label }, paths, deleted: new Set(deleted), index: fileIndex([...paths, ...deleted]) };
       })
       .catch(() => null);
   }
@@ -73,6 +77,11 @@ export function targetsOf(ref: FileRef): string[] | null {
   if (!b) return null;
   const inDiff = resolveFile(ref, [b.index]);
   return inDiff?.length ? inDiff : resolveFile(ref, [treeAt(b.sha)]);
+}
+
+/** Whether the branch deletes the file. */
+export function deletedFile(path: string): boolean {
+  return !!branch()?.deleted.has(path);
 }
 
 /** The Changes page at a file's lines in the whole branch: where the link goes in a new tab. */
@@ -108,9 +117,23 @@ function statesOf(from: MessageCode): CodeState[] {
   return out;
 }
 
+/** A file the branch deletes, after the message's code: the newest version that has it, else the base. */
+function lastStates(tried: CodeState[]): CodeState[] {
+  const b = untracked(branch);
+  const seen = new Set(tried.map((s) => s.sha));
+  const out: CodeState[] = [...versions.peek()]
+    .reverse()
+    .filter((v) => !seen.has(v.snapshot))
+    .map((v) => ({ sha: v.snapshot, label: `v${v.number}`, note: `as in v${v.number}, the last version that has it` }));
+  if (b) out.push({ sha: b.base.sha, label: b.base.label, note: `as in ${b.base.label}, before the branch` });
+  return out;
+}
+
 /** Opens a file a message names over the thread's code, as the code was for the message, its lines marked in the middle. */
 export async function openFileRef(path: string, ref: FileRef, from: MessageCode): Promise<void> {
+  const gone = !!untracked(branch)?.deleted.has(path);
   const states = statesOf(from);
+  if (gone) states.push(...lastStates(states));
   let at = states[0];
   for (const s of states) {
     const blob = await api.blob(s.sha, path).catch(() => null);
@@ -129,7 +152,7 @@ export async function openFileRef(path: string, ref: FileRef, from: MessageCode)
     line: ref.start ?? 1,
     ...(ref.start !== null ? { end: ref.end ?? ref.start } : {}),
     ...(at.note ? { note: at.note } : {}),
-    ...(b && b.sha !== at.sha ? { latest: { sha: b.sha, label: b.label } } : {}),
+    ...(gone ? { deleted: true as const } : b && b.sha !== at.sha ? { latest: { sha: b.sha, label: b.label } } : {}),
   });
 }
 

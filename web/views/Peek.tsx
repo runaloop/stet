@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "preact/hooks";
-import { Kbd } from "../components/Bits.tsx";
+import { Badge, Kbd } from "../components/Bits.tsx";
 import { FileView } from "../components/Code.tsx";
 import { hi, lo, NewHereBox, useNewThread } from "../components/NewThread.tsx";
 import { ThreadMini } from "../components/ThreadMini.tsx";
@@ -84,6 +84,7 @@ export function PeekView() {
           {p.end !== undefined ? ` · ${p.end > p.line ? `lines ${p.line}–${p.end}` : `line ${p.line}`}` : p.note ? "" : ` · line ${p.line}`}
           {onThreadPage.value || p.end !== undefined ? "" : " is outside this diff"}
         </span>
+        {p.deleted ? <Badge tone="warn" title="the file is shown as it last was">the branch deletes this file</Badge> : null}
         {p.latest ? (
           <button class="btn ghost small peek-latest" title="the same lines in the latest version, where they are now" onClick={() => void peekLatest(p)}>
             in {p.latest.label}
