@@ -56,7 +56,7 @@ export function fileRows(files: readonly FileDiffMetadata[], o: FileRowsInput): 
     const d = o.folds.get(fd.name) ?? { group: null, keptBecause: null };
     const threadsHere = count.get(fd.name) ?? 0;
     const group = threadsHere ? null : d.group;
-    const kind = o.order.rank(fd.name, isTestPath(fd.name, o.tests, fd.prevName));
+    const kind = o.order.rank(fd.name, isTestPath(fd.name, o.tests, fd.prevName), fd.prevName);
     const rank = group === null ? kind : group === "tests" ? n : n + 1;
     const file = { path: fd.name, prevPath: fd.prevName };
     return { row: { fd, group, keptBecause: d.keptBecause, hidden: group !== null && !o.open[group], threads: threadsHere, kind: o.order.name(kind), section: null } as FileRow, rank, file };

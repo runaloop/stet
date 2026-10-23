@@ -3,7 +3,7 @@ import { parsePatchFiles } from "@pierre/diffs";
 import type { ThreadSummary } from "../../src/core/types.ts";
 import { fileRows, grepSorted } from "../../src/ui/compare.ts";
 import { DEFAULT_TEST_GLOBS, isTestPath } from "../../src/ui/fold.ts";
-import { CORE_PRESETS, FileOrder, fileComparator, groupTitle, orderOf, orderProblem, parseOrder, type OrderPreset } from "../../src/ui/order.ts";
+import { CORE_PRESETS, FileOrder, fileComparator, groupTitle, isMockPath, orderOf, orderProblem, parseOrder, type OrderPreset } from "../../src/ui/order.ts";
 import { groups } from "../../src/ui/state.ts";
 import { groupByFile } from "../../src/ui/tree.ts";
 
@@ -11,8 +11,8 @@ describe("file order by kind", () => {
   const order = new FileOrder(parseOrder(null));
   const kind = (path: string) => order.name(order.rank(path, isTestPath(path, DEFAULT_TEST_GLOBS)));
 
-  test("the default puts code first, then resources, build and config, changed tests, docs", () => {
-    expect(order.groups.map((g) => g.name)).toEqual(["code", "config", "tests", "docs"]);
+  test("the default puts code first, then resources, build and config, changed tests, mocks, docs", () => {
+    expect(order.groups.map((g) => g.name)).toEqual(["code", "config", "tests", "mocks", "docs"]);
     expect(kind("app/src/main/java/com/x/Foo.kt")).toBe("code");
     expect(kind("web/views/Compare.tsx")).toBe("code");
     expect(kind("package.json")).toBe("config");
@@ -34,8 +34,67 @@ describe("file order by kind", () => {
   });
 
   test("groups are ranked top to bottom as listed", () => {
-    const ranks = ["Foo.kt", "a.json", "src/test/ATest.kt", "b.md"].map((p) => order.rank(p, isTestPath(p, DEFAULT_TEST_GLOBS)));
-    expect(ranks).toEqual([0, 1, 2, 3]);
+    const ranks = ["Foo.kt", "a.json", "src/test/ATest.kt", "src/FooMock.kt", "b.md"].map((p) => order.rank(p, isTestPath(p, DEFAULT_TEST_GLOBS)));
+    expect(ranks).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  test.each([
+    ["app/src/main/java/shop/MockPricingApi.kt"],
+    ["app/src/main/java/shop/PricingApiMock.kt"],
+    ["app/src/main/java/shop/PricingApiMocks.kt"],
+    ["app/src/main/java/shop/HTTPMock.kt"],
+    ["src/api/mocks/cart.json"],
+    ["src/api/Mocks/cart.ts"],
+    ["src/api/mock/cart.ts"],
+    ["src/__mocks__/client.ts"],
+    ["fixtures/user.mock.ts"],
+    ["fixtures/user_mock.py"],
+    ["fixtures/mock-user.ts"],
+    ["src/mockServer.ts"],
+    ["src/MOCK_DATA.json"],
+    ["mock.json"],
+  ])("%p is a mock", (path) => {
+    expect(isMockPath(path)).toBe(true);
+    expect(kind(path)).toBe("mocks");
+  });
+
+  test.each([["src/garden/Hammock.kt"], ["src/garden/hammocks.json"], ["src/mockingbird/Song.kt"], ["src/Mockingbird.kt"], ["docs/mockups.md"], ["src/hammock_mocked.ts"]])(
+    "%p only has the letters, not the word, and is no mock",
+    (path) => expect(isMockPath(path)).toBe(false),
+  );
+
+  test("a mock JSON is a mock, not config; a mock inside the tests stays with the tests", () => {
+    expect(kind("src/api/mocks/cart.json")).toBe("mocks");
+    expect(kind("src/api/cart.json")).toBe("config");
+    expect(kind("app/src/test/java/shop/MockPricingApi.kt")).toBe("tests");
+    expect(kind("src/__tests__/__mocks__/client.ts")).toBe("tests");
+  });
+
+  test("a renamed file is a mock when either of its names is, as a test is", () => {
+    const renamed = (from: string, to: string) =>
+      parsePatchFiles(`diff --git a/${from} b/${to}\nsimilarity index 90%\nrename from ${from}\nrename to ${to}\n--- a/${from}\n+++ b/${to}\n@@ -1 +1 @@\n-a\n+b\n`, to)[0]!.files[0]!;
+    const files = [renamed("README.md", "README.md"), renamed("src/MockPricingApi.kt", "src/PricingApi.kt"), renamed("src/cart.json", "src/mocks/cart.json"), renamed("src/OldCart.kt", "src/Cart.kt")];
+    const rows = fileRows(files, { folds: new Map(), open: { tests: false, generated: false }, placements: [], order, tests: DEFAULT_TEST_GLOBS });
+    expect(rows.map((r) => [r.fd.name, r.kind, r.section])).toEqual([
+      ["src/Cart.kt", "code", "Code"],
+      ["src/PricingApi.kt", "mocks", "Mocks"],
+      ["src/mocks/cart.json", "mocks", null],
+      ["README.md", "docs", "Docs"],
+    ]);
+    const list = files.map((fd) => ({ path: fd.name, prevPath: fd.prevName }));
+    expect(list.sort(fileComparator(order, DEFAULT_TEST_GLOBS)).map((f) => f.path)).toEqual(rows.map((r) => r.fd.name));
+  });
+
+  test("an order of one's own without a mocks group leaves mocks where its globs put them; a mocks group takes them and its own globs", () => {
+    const none = new FileOrder(parseOrder("code; config: **/*.json; tests"));
+    expect(none.name(none.rank("src/api/mocks/cart.json", false))).toBe("config");
+    expect(none.name(none.rank("src/MockApi.kt", false))).toBe("code");
+    const own = new FileOrder(parseOrder("mocks: **/fakes/**; config: **/*.json; main"));
+    expect(own.groups.map((g) => g.name)).toEqual(["mocks", "config", "main"]);
+    expect(own.name(own.rank("src/api/mocks/cart.json", false))).toBe("mocks");
+    expect(own.name(own.rank("src/fakes/FakeApi.kt", false))).toBe("mocks");
+    expect(own.name(own.rank("src/Api.kt", false))).toBe("main");
+    expect(new FileOrder(parseOrder("mocks; docs: **/*.md")).groups.map((g) => g.name)).toEqual(["code", "mocks", "docs"]);
   });
 
   test("a custom order: first match wins, anything unmatched goes to the group without globs", () => {
@@ -52,6 +111,7 @@ describe("file order by kind", () => {
     expect(custom.groups.map((g) => g.name)).toEqual(["code", "docs"]);
     expect(custom.name(custom.rank("FooTest.kt", true))).toBe("code");
     expect(groupTitle("config")).toBe("Resources, build and config");
+    expect(groupTitle("mocks")).toBe("Mocks");
     expect(groupTitle("build")).toBe("build");
   });
 
