@@ -8,7 +8,9 @@ The **Changes** page says in plain words which code it shows ("Changes after v3,
 yet", "What changed in v3", "Since you last looked"). A strip of versions `base · v1 · v2 · now` marks the
 range: **from** and **to** under a step set that end of the diff exactly (the code of the "from" step is the
 old side, of the "to" step the new side), a click on a step shows only what changed in it, and a drag
-across steps picks both ends. Presets sit next to it. "✓ Done up to vN" (or marking the last file viewed)
+across steps picks both ends. A version's card counts the files it changed against the one before (`25 files vs v14`;
+`now`: `1 file vs v15`); the diff from a version leaves those out, so its card offers **what changed in vN**. Presets
+sit next to it. "✓ Done up to vN" (or marking the last file viewed)
 remembers your pass per review, and next time `v` opens "since I last looked"
 ([guide](guide/README.md#viewed-files-and-your-last-pass)). The header says what "now" is: `now = v3`, or `now: 30 files after v3` when the agent changed code without a new version. A long
 branch stays usable: the strip folds the versions far from the range (`v1…v38`), the header shows the last

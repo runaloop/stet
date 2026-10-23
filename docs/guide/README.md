@@ -41,6 +41,8 @@ every version, and `now` (the working tree). The diff runs between two of them:
   moves along (and the other way round);
 - a click on a step itself: only what changed in it (`v2`: from `v1` to `v2`; `now`: what is not saved as
   a version yet);
+- **what changed in v2** under the step the diff starts at: the same as a click on it. A step counts the files it
+  changed against the step before (`3 files vs v1`), and a diff from that step does not show them;
 - a drag from one step to another sets both ends;
 - keys: `]v` / `[v` move **to**, `}` / `{` move **from**.
 
