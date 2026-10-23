@@ -927,8 +927,10 @@ const { Body } = await import("../../web/components/Bits.tsx");
 const { FileRefLink } = await import("../../web/components/FileRef.tsx");
 const { peek, fileChoice } = await import("../../web/compare.ts");
 const { picker } = await import("../../web/keys.ts");
+const { installHistory } = await import("../../web/jumps.ts");
 
 describe("file references in messages", () => {
+  beforeAll(() => installHistory());
   const from = { thread: 7, agent: true, snapshot: "snap", version: 1 };
   const serve = (blobs: Record<string, string[]>) => {
     respond = (url) => {
@@ -965,9 +967,46 @@ describe("file references in messages", () => {
     (links[0]!.querySelector("a") as HTMLAnchorElement).click();
     await tick(60);
     expect(peek.value).toEqual({ path: "src/app/Foo.kt", jumped: true, sha: "snap", label: "snap", line: 14, end: 15, note: "as in the agent's reply on #7 (the code after v1)", latest: { sha: "v2", label: "v2" } });
+    expect(history.state?.stetPeek).toBe(1);
     expect(key("Escape")).toBe(true);
     await tick();
     expect(peek.value).toBeNull();
+    expect(history.state?.stetPeek).toBeUndefined();
+    render(null, host);
+  });
+
+  test("the browser's Back closes a preview a link opened and Forward opens it again; Ctrl+O and Esc leave no entry of it behind", async () => {
+    serve({ snap: ["src/app/Foo.kt"], v2: ["src/app/Foo.kt"] });
+    location.hash = "#/compare/base..2";
+    location.hash = "#/thread/7";
+    state.route.value = { name: "thread", id: 7 };
+    await tick();
+    const host = await show("see Foo.kt:14-15");
+    const open = async () => {
+      (host.querySelector(".fref a") as HTMLAnchorElement).click();
+      await tick(60);
+      return peek.value;
+    };
+    const opened = await open();
+    expect(opened?.path).toBe("src/app/Foo.kt");
+    history.back();
+    await tick();
+    expect(peek.value).toBeNull();
+    expect(location.hash).toBe("#/thread/7");
+    history.forward();
+    await tick();
+    expect(peek.value).toEqual(opened);
+    history.back();
+    await tick();
+    expect(peek.value).toBeNull();
+    await open();
+    expect(handleKey(new KeyboardEvent("keydown", { key: "o", code: "KeyO", ctrlKey: true }))).toBe(true);
+    await tick();
+    expect(peek.value).toBeNull();
+    expect(history.state?.stetPeek).toBeUndefined();
+    history.back();
+    await tick();
+    expect(location.hash).toBe("#/compare/base..2");
     render(null, host);
   });
 

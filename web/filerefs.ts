@@ -2,9 +2,10 @@ import { signal, untracked } from "@preact/signals";
 import { fileIndex, linesText, movedLines, resolveFile, type FileIndex, type FileRef } from "../src/ui/filerefs.ts";
 import type { Route } from "../src/ui/route.ts";
 import { api } from "./api.ts";
-import { compareData, fileChoice, peek, type Peek } from "./compare.ts";
+import { compareData, fileChoice, type Peek } from "./compare.ts";
+import { openPeek } from "./jumps.ts";
 import { picker } from "./keys.ts";
-import { lastCompare, navigate, noteJump, notify, reviewId, status, tipRef, versions } from "./state.ts";
+import { lastCompare, navigate, notify, reviewId, status, tipRef, versions } from "./state.ts";
 
 /** A message whose text names files: the code it was written against. */
 export interface MessageCode {
@@ -120,8 +121,7 @@ export async function openFileRef(path: string, ref: FileRef, from: MessageCode)
   }
   if (!at) return;
   const b = untracked(branch);
-  noteJump();
-  peek.value = {
+  openPeek({
     path,
     jumped: true,
     sha: at.sha,
@@ -130,7 +130,7 @@ export async function openFileRef(path: string, ref: FileRef, from: MessageCode)
     ...(ref.start !== null ? { end: ref.end ?? ref.start } : {}),
     ...(at.note ? { note: at.note } : {}),
     ...(b && b.sha !== at.sha ? { latest: { sha: b.sha, label: b.label } } : {}),
-  };
+  });
 }
 
 /** The preview's file and lines in the latest version: where its marked lines went since. */
@@ -142,8 +142,7 @@ export async function peekLatest(p: Peek): Promise<void> {
     return;
   }
   const lines = p.end !== undefined && was?.contents ? movedLines(was.contents, now.contents, { start: p.line, end: p.end }) : null;
-  noteJump();
-  peek.value = {
+  openPeek({
     path: p.path,
     jumped: true,
     sha: p.latest.sha,
@@ -151,7 +150,7 @@ export async function peekLatest(p: Peek): Promise<void> {
     line: lines?.start ?? p.line,
     ...(lines ? { end: lines.end } : {}),
     ...(lines ? { note: `the same lines in ${p.latest.label}${lines.changed ? ", edited since" : ""}` } : {}),
-  };
+  });
 }
 
 /** Several files have the name a message wrote: the file finder lists them, with the name typed in. */

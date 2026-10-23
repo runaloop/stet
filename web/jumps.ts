@@ -120,8 +120,8 @@ interface PeekEntry {
 }
 
 const depthOf = (state: unknown) => (state as PeekEntry | null)?.stetPeek ?? 0;
-let depth = depthOf(history.state);
-let entryHash = location.hash;
+let depth = 0;
+let entryHash = "";
 // before[d]: the spot on the entry of depth d that the preview of d + 1 opened from; after[d]: the spot Back left on d + 1
 const before: Spot[] = [];
 const after: Spot[] = [];
@@ -142,8 +142,7 @@ function otherPage(): boolean {
   return true;
 }
 
-window.addEventListener("hashchange", otherPage);
-window.addEventListener("popstate", (e) => {
+function stepped(e: PopStateEvent): void {
   const to = depthOf(e.state);
   if (otherPage() || to === depth) return;
   const here = capture();
@@ -162,7 +161,15 @@ window.addEventListener("popstate", (e) => {
   depth = to;
   transition();
   apply(spot ?? { ...here, peek: (e.state as PeekEntry | null)?.peek ?? null });
-});
+}
+
+/** Follows the browser's Back and Forward between a page and the previews its links opened. */
+export function installHistory(): void {
+  depth = depthOf(history.state);
+  entryHash = location.hash;
+  window.addEventListener("hashchange", otherPage);
+  window.addEventListener("popstate", stepped);
+}
 
 export function leftPage(oldHash: string, own: boolean): void {
   if (own) return;

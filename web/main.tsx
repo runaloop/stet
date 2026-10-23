@@ -8,7 +8,7 @@ import { GitChip, GitPanel } from "./components/GitState.tsx";
 import { Help, Pickers, WhichKey } from "./components/KeyUi.tsx";
 import { Splitter, widthOf } from "./components/Splitter.tsx";
 import { refLabel } from "./components/VersionStrip.tsx";
-import { leftPage } from "./jumps.ts";
+import { installHistory, leftPage } from "./jumps.ts";
 import { layoutPage, swapped, toggleSwap } from "./layout.ts";
 import { takeToken } from "../src/ui/route.ts";
 import { installKeys, picker } from "./keys.ts";
@@ -396,6 +396,7 @@ window.addEventListener("hashchange", () => {
   void loadDetail();
 });
 installKeys();
+installHistory();
 window.addEventListener("dblclick", onDoubleClick, true);
 render(<App />, document.getElementById("app")!);
 void boot();

@@ -7,6 +7,7 @@ import { useBlob } from "../components/useBlob.ts";
 import { usePlacements } from "../components/usePlacements.ts";
 import { currentGrepHit, grepHits, hoverThread, onThreadPage, peek, type Peek } from "../compare.ts";
 import { peekLatest } from "../filerefs.ts";
+import { jumpBack } from "../jumps.ts";
 import { wrap } from "../state.ts";
 import { peekView } from "../modules.tsx";
 
@@ -92,7 +93,7 @@ export function PeekView() {
         <span class="hint">
           {onThreadPage.value ? "select lines to quote them in your reply or start a thread" : "select lines to comment"} · <Kbd>Esc</Kbd> {onThreadPage.value ? "back to the thread's code" : "back to the diff"}
         </span>
-        <button class="btn ghost small" onClick={() => (peek.value = null)}>close</button>
+        <button class="btn ghost small" onClick={() => (p.jumped ? jumpBack() : (peek.value = null))}>close</button>
       </div>
       <PeekBody key={`${p.sha}:${p.path}`} p={p} />
     </div>
