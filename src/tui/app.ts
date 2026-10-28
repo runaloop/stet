@@ -23,12 +23,12 @@ import { linksOf, messageCode, messageRefs, statesOf, type MessageCode, type Ref
 import { fileIndex, linesText, type FileRef } from "../ui/filerefs.ts";
 import { ComposerView } from "./composer.ts";
 import { editLine, KeyReader } from "./keys/input.ts";
-import { KeyMatcher, rowFor, runRow, type Actions } from "../ui/keys/match.ts";
-import { tokens } from "../ui/keys/names.ts";
+import { KeyMatcher, rowFor, runRow, type Action, type Actions } from "../ui/keys/match.ts";
+import { keyLabel, tokens } from "../ui/keys/names.ts";
 import { COUNT_SCOPES, KEYS, type KeyRow, type Scope } from "../ui/keys/table.ts";
 import { menuEntries, OFF, rowOf, SCOPE, tuiReader } from "./keys/menu.ts";
 import { KeyTester, type Tried } from "./keys/tester.ts";
-import { terminalOf, type Terminal } from "../ui/keys/terminal.ts";
+import { terminalOf, workingKeys, type Terminal } from "../ui/keys/terminal.ts";
 import { ordered, threadGroups } from "./model.ts";
 import { columnOf, helpFor, initialView, render, scopeOf, type Branch, type Writing } from "./render.ts";
 import { pickerRows, type VersionItem } from "./views/picker.ts";
@@ -73,7 +73,11 @@ export class App {
   private landedTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly keys = new KeyReader();
   private readonly actions = this.registry();
-  private readonly conditions = { drafts: () => this.v.data.drafts.length > 0 };
+  private readonly conditions = {
+    drafts: () => this.v.data.drafts.length > 0,
+    visual: () => this.diffHere().anchor >= 0,
+    searching: () => this.v.changes.search.hits.length > 0,
+  };
   private readonly reader = tuiReader(new Set(Object.keys(this.actions)));
   private readonly matcher = new KeyMatcher(() => KEYS, this.reader, (row) => this.runRow(row));
   private tester: KeyTester | null = null;
@@ -901,15 +905,38 @@ export class App {
     if (!v.data.status?.versionsList.length) return this.say("no versions yet");
     const c = v.changes;
     const range = c.from !== null && c.to !== null ? { from: c.from, to: c.to } : defaultCompare(refsOf(v.data), c.reviewed);
-    v.picker = { kind: "versions", query: "", at: 0, paths: [], verb: "what changed in it", range };
+    v.picker = { kind: "versions", query: "", at: 0, paths: [], verb: "what changed in it", range, ends: this.versionEnds() };
+    this.redraw();
+  }
+
+  /** The keys that make a version "from" and "to" in this terminal: Shift+Enter and Ctrl+Enter need the kitty protocol. */
+  private versionEnds(): { from: string; to: string } {
+    const term = this.terminal();
+    const label = (id: string) => {
+      const row = rowOf(id);
+      const k = row ? workingKeys(row, term)[0] : undefined;
+      return k ? keyLabel(k) : id;
+    };
+    return { from: label("picker.from"), to: label("picker.to") };
+  }
+
+  private movePicker(dir: 1 | -1): void {
+    const p = this.v.picker;
+    if (p) p.at = Math.max(0, p.at + dir);
+    this.redraw();
+  }
+
+  private closePicker(): void {
+    this.v.picker = null;
+    this.choosing = null;
     this.redraw();
   }
 
   /** A key while a finder is open: its own keys, else text for the query. */
   private pickerKey(k: KeyEvent, token: string): void {
     const p = this.v.picker!;
-    const row = rowsIn(KEYS, ["picker"]).find((x) => x.keys === token)?.row;
-    if (row) return this.run(row.id);
+    const row = rowFor(KEYS, token, ["picker"], this.reader);
+    if (row) return this.runRow(row);
     const next = editLine(p.query, k, token);
     if (next === null) return;
     p.query = next;
@@ -933,7 +960,10 @@ export class App {
       const [from, to] = how === "pick" ? onlyVersion(n) : withEnd(how, String(n), p.range.from, p.range.to, latest);
       return this.openRange(from, to);
     }
-    if (how !== "pick") return this.say("Shift+Enter and Ctrl+Enter pick the ends of a range in the version finder");
+    if (how !== "pick") {
+      const ends = this.versionEnds();
+      return this.say(`${ends.from} and ${ends.to} pick the ends of a range in the version finder`);
+    }
     const path = hit as string;
     if (this.choosing) {
       const open = this.choosing;
@@ -1063,13 +1093,10 @@ export class App {
     this.followDiff();
   }
 
-  /** n, N, F3: the next match, round the end; n and N go through unread threads while nothing is searched. */
-  private stepHit(dir: 1 | -1, unread: boolean): void {
+  /** F3, and n while the search has matches: the next match, round the end. */
+  private stepHit(dir: 1 | -1): void {
     const q = this.v.changes.search;
-    if (!q.hits.length) {
-      if (unread) return this.run(dir === 1 ? "unread.next" : "unread.prev");
-      return this.say(q.query ? `no match for “${q.query}”` : "nothing searched: / searches the diff");
-    }
+    if (!q.hits.length) return this.say(q.query ? `no match for “${q.query}”` : "nothing searched: / searches the diff");
     const n = q.hits.length;
     this.goToHit(q.at === -1 ? (dir === 1 ? 0 : n - 1) : (q.at + dir + n) % n);
   }
@@ -1174,70 +1201,14 @@ export class App {
     this.write({ kind: "thread", path: step.path, side: sel.side === 0 ? "old" : "new", start: sel.start, end: sel.end, at: step.sha, label: step.label, from: "thread" });
   }
 
-  /** The keys of a cursor on a thread's code: the moves, sides and selection of the diff's own. */
-  private runLines(id: string, n: number): boolean {
-    const d = this.v.code.diff;
-    const to = (r: number, align: "nearest" | "center" = "nearest") => {
-      if (r !== -1) d.goTo(r, align);
-      this.redraw();
-      return true;
-    };
-    const repeat = (step: () => number) => {
-      let r = -1;
-      for (let i = 0; i < n; i++) {
-        const next = step();
-        if (next === -1) break;
-        d.goTo((r = next));
-      }
-      if (r === -1) this.say("nothing further that way");
-      return to(-1);
-    };
-    const lines = (by: number) => to(d.lay.rowAt(Math.max(0, Math.min(d.lay.total - 1, d.lay.top(d.cursor) + by))));
-    const half = Math.max(1, Math.floor(this.v.geom.page / 2));
-    switch (id) {
-      case "diff.down":
-      case "diff.up": {
-        let r = d.cursor;
-        for (let i = 0; i < n; i++) {
-          const next = this.codeRow(r, id === "diff.down" ? 1 : -1);
-          if (next === -1) break;
-          r = next;
-        }
-        return to(r);
-      }
-      case "diff.first":
-      case "diff.last":
-        return to(this.codeRow(id === "diff.first" ? -1 : d.rows.len, id === "diff.first" ? 1 : -1));
-      case "diff.pageDown":
-      case "diff.pageUp":
-        return lines(id === "diff.pageDown" ? half : -half);
-      case "diff.nextChange":
-      case "diff.prevChange":
-        return repeat(() => d.nextChange(id === "diff.nextChange" ? 1 : -1));
-      case "diff.nextHunk":
-      case "diff.prevHunk":
-        return repeat(() => d.nextHunk(id === "diff.nextHunk" ? 1 : -1));
-      case "diff.center":
-        return this.redraw(), true;
-      case "diff.visual":
-        if (d.anchor >= 0) d.clearSelection();
-        else d.startSelection();
-        return this.redraw(), true;
-      case "diff.otherEnd":
-        d.swapEnds();
-        return this.redraw(), true;
-      case "diff.comment":
-        return this.commentThread(), true;
-      case "diff.sideOld":
-      case "diff.sideNew":
-        if (!d.setSide(id === "diff.sideOld" ? 0 : 1)) this.say(d.split ? "no line on that side here" : "the sides stand next to each other in split: Space u d");
-        return this.redraw(), true;
-      case "diff.escape":
-        if (d.anchor >= 0) d.clearSelection();
-        else this.leaveCode();
-        return this.redraw(), true;
-    }
-    return false;
+  /** The cursor is on a thread's code (V or i on its page), not on the Changes tab's diff. */
+  private inLines(): boolean {
+    return columnOf(this.v) === "tcode";
+  }
+
+  /** The diff the keys move in: a thread's code under its cursor, else the Changes tab's. */
+  private diffHere(): DiffView {
+    return this.inLines() ? this.v.code.diff : this.v.changes.diff;
   }
 
   /** The next row of a thread's code that is a line, from `r` on in `dir`; -1 at the end. */
@@ -1250,9 +1221,17 @@ export class App {
   // --- actions: what the keys run, by the ids of the shared key table (src/ui/keys/table.ts), one record per page.
   // The records only make closures: nothing in them reads the state until a key runs, so App.ids() can list them.
 
-  /** Every action the terminal runs, and the rows it lists without running them yet (OFF). */
+  /**
+   * Every action the terminal runs, and the rows it lists without running them yet (OFF). The cursor on a thread's
+   * code runs the ids of the diff's keys on that code: they go to linesActions while it is there.
+   */
   private registry(): Actions {
-    return { ...this.roundActions(), ...this.draftsActions(), ...this.changesActions(), ...this.globalActions(), ...this.boxActions(), ...this.offActions() };
+    const all: Actions = { ...this.roundActions(), ...this.draftsActions(), ...this.changesActions(), ...this.globalActions(), ...this.boxActions(), ...this.offActions() };
+    const lines = Object.entries(this.linesActions()).map(([id, act]): [string, Action] => {
+      const other = all[id];
+      return [id, (n) => (this.inLines() ? act(n) : other ? other(n) : false)];
+    });
+    return { ...all, ...Object.fromEntries(lines) };
   }
 
   /** The ids the terminal reads rows for, where there is no app: the menus and help in frame tests. */
@@ -1272,9 +1251,12 @@ export class App {
       this.select(next);
       this.land(next);
     };
+    // On the Changes tab the unread thread opens, as the web does.
     const unread = (dir: 1 | -1) => () => {
-      const next = stepUnread(list(), this.v.selected, dir);
+      const changes = v().tab === "changes";
+      const next = stepUnread(changes ? ordered(v().data, v().filter, null) : list(), v().selected, dir);
       if (next === null) return this.say("no unread threads");
+      if (changes) return this.openThread(next);
       this.select(next);
     };
     const thread = (dir: 1 | -1) => () => {
@@ -1343,6 +1325,7 @@ export class App {
       "focus.next": focusStep(1),
       "focus.prev": focusStep(-1),
       "focus.left": () => {
+        if (this.closePeek()) return;
         const cols = v().geom.columns;
         if (v().back === "changes" && !(cols === 3 && v().focus === "conv")) {
           v().back = null;
@@ -1359,6 +1342,9 @@ export class App {
       "scroll.bottom": () => this.scroll("bottom"),
       "msg.next": () => this.message(1),
       "msg.prev": () => this.message(-1),
+      "msg.files": () => void this.filesOfMessages(),
+      "code.visual": () => this.intoCode("visual"),
+      "code.comment": () => this.intoCode("comment"),
       "code.view": () => {
         const d = v().detail;
         if (!d) return;
@@ -1383,6 +1369,64 @@ export class App {
       },
       "thread.resolve": () => void this.resolve(),
       "thread.reopen": () => void this.reopen(),
+    };
+  }
+
+  /** The cursor on a thread's code: the moves, sides and selection of the diff's own, on the lines of the code shown. */
+  private linesActions(): Actions {
+    const d = () => this.v.code.diff;
+    const to = (r: number) => {
+      if (r !== -1) d().goTo(r);
+      this.redraw();
+    };
+    const step = (dir: 1 | -1) => (n: number) => {
+      let r = d().cursor;
+      for (let i = 0; i < n; i++) {
+        const next = this.codeRow(r, dir);
+        if (next === -1) break;
+        r = next;
+      }
+      to(r);
+    };
+    const repeat = (next: () => number) => (n: number) => {
+      let r = -1;
+      for (let i = 0; i < n; i++) {
+        const at = next();
+        if (at === -1) break;
+        d().goTo((r = at));
+      }
+      if (r === -1) this.say("nothing further that way");
+      this.redraw();
+    };
+    const half = () => Math.max(1, Math.floor(this.v.geom.page / 2));
+    const page = (dir: 1 | -1) => () => to(d().lay.rowAt(Math.max(0, Math.min(d().lay.total - 1, d().lay.top(d().cursor) + dir * half()))));
+    const side = (s: 0 | 1) => () => {
+      if (!d().setSide(s)) this.say(d().split ? "no line on that side here" : "the sides stand next to each other in split: Space u d");
+      this.redraw();
+    };
+    return {
+      "diff.down": step(1),
+      "diff.up": step(-1),
+      "diff.first": () => to(this.codeRow(-1, 1)),
+      "diff.last": () => to(this.codeRow(d().rows.len, -1)),
+      "diff.pageDown": page(1),
+      "diff.pageUp": page(-1),
+      "diff.nextChange": repeat(() => d().nextChange(1)),
+      "diff.prevChange": repeat(() => d().nextChange(-1)),
+      "diff.nextHunk": repeat(() => d().nextHunk(1)),
+      "diff.prevHunk": repeat(() => d().nextHunk(-1)),
+      "diff.center": () => this.redraw(),
+      "visual.start": () => {
+        if (d().anchor >= 0) d().clearSelection();
+        else d().startSelection();
+        this.redraw();
+      },
+      "visual.swap": () => (d().swapEnds(), this.redraw()),
+      "visual.clear": () => (d().clearSelection(), this.redraw()),
+      "comment.start": () => this.commentThread(),
+      "diff.sideOld": side(0),
+      "diff.sideNew": side(1),
+      "code.leave": () => (this.leaveCode(), this.redraw()),
     };
   }
 
@@ -1443,6 +1487,11 @@ export class App {
       d().scrollSide(by * n);
       this.redraw();
     };
+    const toSide = (to: 0 | 1) => () => {
+      if (!d().split) return this.say("the sides stand next to each other in split: Space u d");
+      if (!d().setSide(to)) this.say(d().anchor >= 0 ? "a selection keeps its side: Esc drops it" : `no ${to === 0 ? "old" : "new"} line on this row`);
+      this.redraw();
+    };
     return {
       "diff.down": (n) => move(() => d().cursor + n)(),
       "diff.up": (n) => move(() => d().cursor - n)(),
@@ -1467,6 +1516,24 @@ export class App {
       "diff.right": side(8),
       "diff.left": side(-8),
       "diff.enter": () => this.enter(),
+      "thread.open": () => this.enter(),
+      "visual.start": () => {
+        if (d().anchor >= 0) d().clearSelection();
+        else if (!d().startSelection()) this.say("put the cursor on a line of code: a file's header, a bar or a card has none");
+        this.redraw();
+      },
+      "visual.swap": () => (d().swapEnds(), this.followDiff()),
+      "visual.clear": () => (d().clearSelection(), this.redraw()),
+      "comment.start": () => this.commentChanges(),
+      "diff.sideOld": toSide(0),
+      "diff.sideNew": toSide(1),
+      "search.diff": () => this.openSearch(),
+      "search.clear": () => {
+        if (!c().search.query) return false;
+        this.clearSearch();
+      },
+      "match.next": () => this.stepHit(1),
+      "match.prev": () => this.stepHit(-1),
       "diff.viewed": () => void this.toggleViewed(),
       "range.toNext": () => this.shiftRange("to", 1),
       "range.toPrev": () => this.shiftRange("to", -1),
@@ -1524,10 +1591,15 @@ export class App {
       submit: () => this.setTab("drafts"),
       refresh: () => void this.refreshNow(),
       help: () => this.openHelp(),
+      "review.done": () => void this.markDone(),
+      "find.file": () => void this.findFile(),
+      "find.version": () => this.findVersion(),
+      "guide.toggle": () => this.guide(),
+      "browser.open": () => void this.browser("this place"),
     };
   }
 
-  /** The boxes over a tab: the keys list and a question. The reply box runs its keys in composerKey. */
+  /** The boxes over a tab: the keys list, a question and a finder. The reply box runs its keys in composerKey. */
   private boxActions(): Actions {
     const v = () => this.v;
     return {
@@ -1539,6 +1611,12 @@ export class App {
       "composer.draft": () => void this.send("draft"),
       "composer.now": () => void this.send(v().writing?.kind === "reply" || v().writing?.kind === "thread" ? "now" : "draft"),
       "composer.leave": () => this.leave(),
+      "picker.down": () => this.movePicker(1),
+      "picker.up": () => this.movePicker(-1),
+      "picker.pick": () => this.pickRow("pick"),
+      "picker.from": () => this.pickRow("from"),
+      "picker.to": () => this.pickRow("to"),
+      "picker.close": () => this.closePicker(),
     };
   }
 

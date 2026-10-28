@@ -6,9 +6,6 @@ import { KEYS, type KeyRow, type Scope } from "../../ui/keys/table.ts";
  * in the browser, `later` is greyed.
  */
 export const OFF: Readonly<Record<string, "browser" | "later">> = {
-  "find.file": "later",
-  "find.version": "later",
-  "search.diff": "later",
   "search.keys": "later",
   "git.state": "later",
   "git.link": "later",

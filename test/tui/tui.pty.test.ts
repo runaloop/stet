@@ -74,7 +74,7 @@ test("stet tui: the list previews the selected thread, l goes into it and marks 
     run.write("?");
     await run.waitFor((s) => s.includes("press any key: its row lights up"));
     run.write("\r");
-    await run.waitFor((s) => s.includes("got Enter: into the thread") && s.includes("Ctrl+Enter, Ctrl+Shift+Enter are plain Enter in this terminal"));
+    await run.waitFor((s) => s.includes("got Enter: into the thread") && s.includes("Ctrl+Enter, Ctrl+Shift+Enter, Ctrl+J, Shift+Enter are plain Enter in this terminal"));
     run.write("\x07");
     await run.waitFor((s) => s.includes("got Ctrl+G: nothing here"));
     run.write("q");

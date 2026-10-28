@@ -70,6 +70,8 @@ test("stet tui, the Changes tab: / searches, n and F3 step; V and i start a draf
     await run.waitFor((s) => s.includes(" Threads ") && footer(s).includes("THREADS"), 30_000);
     run.write(" fv");
     await run.waitFor((s) => s.includes("Find a version") && s.includes("rate limit and API key"));
+    // no kitty protocol here: Shift+Enter and Ctrl+Enter arrive as Enter, so the hint names the stand-ins
+    expect(run.screen()).toMatch(/Ctrl\+[FR]\s+from ·\s+Ctrl\+T\s+to/);
     await type(run, "v2");
     run.write("\r");
     await run.waitFor((s) => s.includes("What changed in v2 v1 → v2") && footer(s).includes("CHANGES"));
@@ -83,6 +85,11 @@ test("stet tui, the Changes tab: / searches, n and F3 step; V and i start a draf
     run.write("\x1bOR");
     await run.waitFor((s) => s.includes("/given · match 3 of 4"));
     run.write("N");
+    await run.waitFor((s) => s.includes("/given · match 2 of 4"));
+    // Shift+F3 does not arrive here; N above and Space s N stand in for it
+    run.write(" sN");
+    await run.waitFor((s) => s.includes("/given · match 1 of 4"));
+    run.write(" sn");
     await run.waitFor((s) => s.includes("/given · match 2 of 4"));
     run.write("\x1b");
     await run.waitFor((s) => !s.includes("/given ·") && s.includes("threads on this diff"));

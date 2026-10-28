@@ -25,6 +25,8 @@ export interface PickerState {
   verb: string;
   /** The range shown, whose ends the version finder marks. */
   range: { from: string; to: string };
+  /** The keys that make a version "from" and "to" in this terminal, for the hint. */
+  ends?: { from: string; to: string };
 }
 
 export interface VersionItem {
@@ -115,7 +117,7 @@ export function pickerBox(p: PickerState, d: Data, w: number, h: number, pass: n
   const lines = [input, blank(), ...shown];
   const how: Span[] =
     p.kind === "versions"
-      ? [key("Enter"), s(" what changed in it · "), key("Shift+Enter"), s(" from · "), key("Ctrl+Enter"), s(" to · "), key("Esc"), s(" close")]
+      ? [key("Enter"), s(" what changed in it · "), key(p.ends?.from ?? "Shift+Enter"), s(" from · "), key(p.ends?.to ?? "Ctrl+Enter"), s(" to · "), key("Esc"), s(" close")]
       : [key("↑"), key("↓"), s(" · "), key("Enter"), s(` ${p.name ? (p.name.lines ? `open it at ${p.name.lines.includes("–") ? "lines" : "line"} ${p.name.lines}` : "open it") : p.verb} · `), key("Esc"), s(" close")];
   const title = p.kind === "versions" ? "Find a version" : "Find a file";
   return pane({ w: bw, title: [s(title, "b")], right: rows.length > room ? [s(`${rows.length}`, "dim")] : [], bottom: how, lines, focus: true, hit: "focus:picker" }, lines.length + 2);

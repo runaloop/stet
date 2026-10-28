@@ -207,7 +207,9 @@ test("120×40: ? is the key tester: a key lights up its row; Enter says Ctrl+Ent
   expect(press("<F5>").text).toBe("got F5: nothing here");
   const enter = press("<CR>");
   expect(enter.row?.id).toBe("list.open");
-  expect(enter.text).toBe("got Enter: into the thread · Ctrl+Enter, Ctrl+Shift+Enter are plain Enter in this terminal, use Ctrl+S (save as a draft), Ctrl+G (send now)");
+  expect(enter.text).toBe(
+    "got Enter: into the thread · Ctrl+Enter, Ctrl+Shift+Enter, Ctrl+J, Shift+Enter are plain Enter in this terminal, use Ctrl+S (save as a draft), Ctrl+G (send now), ↓ (next), Ctrl+F (make the version “from”), Ctrl+T (make the version “to”)",
+  );
   expect(new KeyTester(reader, { ...legacy, kitty: true }, ["round.list", "global"], () => {}).press("<CR>").text).toBe("got Enter: into the thread");
   tester.reset();
   const text = frame(v, 120, 40);
@@ -332,8 +334,7 @@ test("256 colours under TERM=screen-256color: the frame paints with palette inde
 
 test("? waits for the next key of a sequence, and says what the first key did when none comes", async () => {
   const tried: Tried[] = [];
-  // as the terminal UI will read the rows once it comments on lines: gc comments on a selection, gcc on a line
-  const tester = new KeyTester(tuiReader(new Set([...App.ids(), "comment.start"])), legacy, ["changes", "global"], (t) => tried.push(t), 5);
+  const tester = new KeyTester(tuiReader(App.ids()), legacy, ["changes", "global"], (t) => tried.push(t), 5);
   expect(tester.press("z").row).toBeNull();
   expect(tester.press("a").row?.id).toBe("diff.toggle");
   expect(tester.press("g").row).toBeNull();
@@ -342,7 +343,7 @@ test("? waits for the next key of a sequence, and says what the first key did wh
   expect(tried.map((t) => [t.keys, t.row?.id, t.text])).toEqual([["gc", "comment.start", "got g c: comment on the selection"]]);
   expect(tester.press("<C-w>").row).toBeNull();
   expect(tester.press("W").row?.id).toBe("focus.prev");
-  expect(tester.press("<S-F3>").text).toBe("got Shift+F3: nothing here");
+  expect(tester.press("<S-F3>").row?.id).toBe("match.prev");
 });
 
 /** The lines `start..end` of `path` picked with V on a side, as the keys pick them. */
@@ -509,6 +510,9 @@ test("180×46: Space f v lists the versions newest first under their rounds; the
   expect(text).toMatchSnapshot();
   v.picker.query = "sweep";
   expect(frame(v, 180, 46)).not.toContain("rate limit and API key");
+  // without the kitty protocol Shift+Enter and Ctrl+Enter arrive as Enter: the hint names their stand-ins
+  v.picker.ends = { from: "Ctrl+F", to: "Ctrl+T" };
+  expect(frame(v, 180, 46)).toContain("Ctrl+F  from ·  Ctrl+T  to");
 });
 
 test("80×24: a name two files share opens the file finder with the name typed in", async () => {

@@ -170,7 +170,7 @@ stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v
 │   #11 L13  draft                     ││   this branch.                                                               │
 │   Should 401 come with a \`www-authen…││                                                                              │
 │ src/server.ts                       1││                                                                              │
-│   #10 L3  agent's turn               ││  Enter  or  l  go into the ╭─ Space ────────────────────────────────────────╮│
+│ ● #10 L3  your turn                  ││  Enter  or  l  go into the ╭─ Space ────────────────────────────────────────╮│
 │   \`Number(undefined ?? 8080)\` is fin…││                            │ f +find                 r +review              ││
 │                                      ││                            │ s +search               g +git                 ││
 │ 2 resolved hidden ·  Space u r       ││                            │ u +ui toggles           e files of the review  ││
@@ -336,8 +336,8 @@ stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v
 
 exports[`120×40: ? lists the column's keys, how to move around and the mouse 1`] = `
 "
-stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v2      Round 5   Changes   Drafts 1    ?  
-╭─╭─ Keys ─────────────────────────────────────────────────────────────────────────────────────────────── 20 more ↓ ─╮─╮
+stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2      Round 6   Changes   Drafts 1    ?  
+╭─╭─ Keys ─────────────────────────────────────────────────────────────────────────────────────────────── 23 more ↓ ─╮─╮
 │ │ press any key: its row lights up · Esc or q closes                                                               │ │
 │ │                                                                                                                  │ │
 │ │ The thread list                                                                                                  │ │
@@ -372,9 +372,8 @@ stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v
 │ │  s  Space r d         your drafts                                                                                │ │
 │ │  S  Space r s         drafts, then S again submits (approves when there are no drafts)                           │ │
 │ │  R  Space r r         re-read “now” from the working tree                                                        │ │
+│ │  Space f v            find a version: what changed in it, or make it from / to                                   │ │
 │ │  Space n              only threads with news                                                                     │ │
-│ │  w  Space u w         wrap long lines                                                                            │ │
-│ │  Space u d            split / unified diff                                                                       │ │
 ╰─╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯─╯
  KEYS   any key  what it does here   Esc   q  close                                                                     
 "
@@ -382,10 +381,11 @@ stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v
 
 exports[`120×40: ? is the key tester: a key lights up its row; Enter says Ctrl+Enter is plain Enter here and which key to use 1`] = `
 "
-stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v2      Round 5   Changes   Drafts 1    ?  
-╭─╭─ Keys ─────────────────────────────────────────────────────────────────────────────────────────────── 21 more ↓ ─╮─╮
-│ │ got Enter: into the thread · Ctrl+Enter, Ctrl+Shift+Enter are plain Enter in this terminal, use Ctrl+S (save as  │ │
-│ │ a draft), Ctrl+G (send now)                                                                                      │ │
+stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v2      Round 6   Changes   Drafts 1    ?  
+╭─╭─ Keys ─────────────────────────────────────────────────────────────────────────────────────────────── 25 more ↓ ─╮─╮
+│ │ got Enter: into the thread · Ctrl+Enter, Ctrl+Shift+Enter, Ctrl+J, Shift+Enter are plain Enter in this terminal, │ │
+│ │ use Ctrl+S (save as a draft), Ctrl+G (send now), ↓ (next), Ctrl+F (make the version “from”), Ctrl+T (make the    │ │
+│ │ version “to”)                                                                                                    │ │
 │ │                                                                                                                  │ │
 │ │ The thread list                                                                                                  │ │
 │ │  j  ↓  ] t            next thread                                                                                │ │
@@ -402,6 +402,7 @@ stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v
 │ │  r                    reply to the thread                                                                        │ │
 │ │  Esc  h               hide the list (narrow screens)                                                             │ │
 │ │  q                    quit                                                                                       │ │
+│ │  g x                  the thread in the browser                                                                  │ │
 │ │                                                                                                                  │ │
 │ │ Moving around                                                                                                    │ │
 │ │  h  l  Tab            columns: h left, l right, Tab cycles them; or click a column                               │ │
@@ -418,8 +419,6 @@ stet  feature/rate-limit  not pushed · 2 not staged · 5 new   v1   v2  now = v
 │ │  s  Space r d         your drafts                                                                                │ │
 │ │  S  Space r s         drafts, then S again submits (approves when there are no drafts)                           │ │
 │ │  R  Space r r         re-read “now” from the working tree                                                        │ │
-│ │  Space n              only threads with news                                                                     │ │
-│ │  w  Space u w         wrap long lines                                                                            │ │
 ╰─╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯─╯
  KEYS   any key  what it does here   Esc   q  close                                                                     
 "
@@ -1193,7 +1192,7 @@ stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v
 │                                      ││            this.windowMs);                                                   │
 │                                      ││       8 +     if (list.length >= this.limit) return false;                   │
 ╰──────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────╯
- FIND  type to narrow   ↑ ↓   Ctrl+J   Ctrl+K  move   Enter  pick   Esc  close                                          
+ FIND  type to narrow   ↑ ↓   Ctrl+N   Ctrl+P  move   Enter  pick   Esc  close                                          
 "
 `;
 
@@ -1244,7 +1243,7 @@ stet  feature/rate-limit  not pushed · 2 not staged · 7 new   v1   v2  now = v
 │                                      ││  11  12       return true;                                                                                                               │
 │                                      ││  12  13     }                                                                                                                            │
 ╰──────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
- FIND  type to narrow   ↑ ↓   Ctrl+J   Ctrl+K  move   Enter  pick   Esc  close                                                                                                      
+ FIND  type to narrow   ↑ ↓   Ctrl+N   Ctrl+P  move   Enter  pick   Esc  close                                                                                                      
 "
 `;
 
@@ -1273,7 +1272,7 @@ stet rate-limit   v2                               Round 6   Changes   Drafts 1
 │                                                                              │
 │                                                                              │
 ╰──────────────────────────────────────────────────────────────────────────────╯
- FIND  type to narrow   ↑ ↓   Ctrl+J   Ctrl+K  move   Enter  pick   Esc  close  
+ FIND  type to narrow   ↑ ↓   Ctrl+N   Ctrl+P  move   Enter  pick   Esc  close  
 "
 `;
 
