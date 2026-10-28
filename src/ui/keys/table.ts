@@ -6,9 +6,9 @@
 
 /**
  * Where a key works. Both UIs: everywhere, the diff of the Changes page, the Drafts page, the reply box, a question,
- * a finder (files, versions, keys), the search box and the list of keys. The web: the Guide tab, a thread's page, the
- * code of a thread or of the guide once it has the focus (V or i), the blame popover. The terminal: the columns of the
- * Round tab and the files of the Changes tab.
+ * a finder (files, versions, keys), the search box, the list of keys, and the code of a thread once it has the focus
+ * (V or i; on the web the guide's code too). The web: the Guide tab, a thread's page, the blame popover. The terminal:
+ * the columns of the Round tab and the files of the Changes tab.
  */
 export type Scope =
   | "global"
@@ -33,7 +33,7 @@ export type Scope =
 
 /** The places each UI has. */
 export const WEB_SCOPES: ReadonlySet<Scope> = new Set<Scope>(["global", "changes", "drafts", "composer", "choice", "picker", "search", "help", "guide", "thread", "code", "blame"]);
-export const TUI_SCOPES: ReadonlySet<Scope> = new Set<Scope>(["global", "changes", "drafts", "composer", "choice", "picker", "search", "help", "round.list", "round.files", "round.search", "round.code", "round.conv", "round.thread", "changes.files"]);
+export const TUI_SCOPES: ReadonlySet<Scope> = new Set<Scope>(["global", "changes", "drafts", "composer", "choice", "picker", "search", "help", "code", "round.list", "round.files", "round.search", "round.code", "round.conv", "round.thread", "changes.files"]);
 
 /** `visual`: lines are being selected (V); a row without `modes` works in normal mode only. */
 export type Mode = "normal" | "visual" | "insert";
@@ -118,12 +118,14 @@ const changes: KeyRow[] = [
   { id: "diff.right", keys: ["zl"], scope: "changes", count: true, desc: "scroll right (without wrap)" },
   { id: "diff.left", keys: ["zh"], scope: "changes", count: true, desc: "scroll left (without wrap)" },
   { id: "visual.start", keys: ["V", "v"], scope: "changes", desc: "select lines (visual mode)" },
-  { id: "thread.open", keys: ["o"], scope: "changes", modes: V, ui: "web", before: [{ if: "visual", run: "visual.swap" }], desc: "other end of the selection" },
+  { id: "thread.open", keys: ["o"], scope: "changes", modes: V, before: [{ if: "visual", run: "visual.swap" }], desc: "other end of the selection" },
   { id: "comment.start", keys: ["i", "a", "c"], scope: "changes", modes: V, desc: "comment on the cursor line or the selection" },
   { id: "comment.start", keys: ["gc"], scope: "changes", modes: V, desc: "comment on the selection" },
   { id: "comment.start", keys: ["gcc"], scope: "changes", desc: "comment on the cursor line" },
   { id: "diff.enter", keys: ["<CR>"], scope: "changes", ui: "web", desc: "open the thread under the cursor" },
-  { id: "diff.enter", keys: ["<CR>", "o"], scope: "changes", ui: "tui", desc: "open the thread under the cursor; on a bar, its lines; on a file's header, open or fold it" },
+  { id: "diff.enter", keys: ["<CR>"], scope: "changes", ui: "tui", desc: "open the thread under the cursor; on a bar, its lines; on a file's header, open or fold it" },
+  { id: "diff.sideOld", keys: ["<Left>"], scope: "changes", modes: V, ui: "tui", desc: "split: the cursor to the old side, to comment on removed lines" },
+  { id: "diff.sideNew", keys: ["<Right>"], scope: "changes", modes: V, ui: "tui", desc: "split: the cursor to the new side" },
   { id: "diff.viewed", keys: ["m"], scope: "changes", desc: "mark the file under the cursor viewed, or not: a viewed file folds until it changes" },
   { id: "range.toNext", keys: ["]v"], scope: "changes", desc: "“to” one version later" },
   { id: "range.toPrev", keys: ["[v"], scope: "changes", desc: "“to” one version earlier" },
@@ -135,6 +137,8 @@ const changes: KeyRow[] = [
   { id: "search.word", keys: ["*"], scope: "changes", desc: "find where the selected word is used (all files)" },
   { id: "match.next", keys: ["<F3>"], scope: "changes", desc: "next search match" },
   { id: "match.prev", keys: ["<S-F3>"], scope: "changes", fallback: ["N"], desc: "previous search match" },
+  { id: "match.next", keys: ["<Space>sn"], scope: "changes", ui: "tui", desc: "next search match" },
+  { id: "match.prev", keys: ["<Space>sN"], scope: "changes", ui: "tui", desc: "previous search match" },
   { id: "git.commits", keys: ["<Space>gc"], scope: "changes", ui: "web", desc: "commits: pick the two ends of the compare" },
   { id: "git.link", keys: ["<Space>gY"], scope: "changes", modes: V, ui: "web", desc: "copy a link to the cursor line or the selection" },
   { id: "git.blame", keys: ["<Space>gb"], scope: "changes", modes: V, ui: "web", desc: "blame: the version, round and threads that brought the cursor line or the selection" },
@@ -151,10 +155,19 @@ const changes: KeyRow[] = [
     ],
     desc: "close the commits or the preview, the selection, then the comment box",
   },
-  { id: "changes.back", keys: ["<Esc>"], scope: "changes", modes: V, ui: "tui", before: [{ if: "visual", run: "visual.clear" }], desc: "back to the round" },
+  {
+    id: "changes.back",
+    keys: ["<Esc>"],
+    scope: "changes",
+    modes: V,
+    ui: "tui",
+    before: [{ if: "visual", run: "visual.clear" }, { run: "search.clear" }],
+    desc: "drop the selection, then the search, then back to the round",
+  },
+  { id: "browser.open", keys: ["gx"], scope: "changes", modes: V, ui: "tui", desc: "in the browser: the lines picked or the file under the cursor, a picture or rendered Markdown as the web shows it" },
   { id: "tab.round", keys: ["q"], scope: "changes", desc: "back to the round" },
   { id: "changes.files", keys: ["h"], scope: "changes", desc: "the files" },
-  { id: "guide.toggle", keys: ["<Space>ug"], scope: "changes", modes: V, desc: "the agent's guide to the version on the right, or back to the diff (experimental)" },
+  { id: "guide.toggle", keys: ["<Space>ug"], scope: "changes", modes: V, ui: "web", desc: "the agent's guide to the version on the right, or back to the diff (experimental)" },
   { id: "find.file", keys: ["<Space><Space>", "<Space>ff"], scope: "changes", ui: "web", desc: "find a file of the diff" },
   { id: "search.files", keys: ["<Space>/"], scope: "changes", ui: "web", desc: "search all files" },
   { id: "search.files", keys: ["<Space>sg"], scope: "changes", ui: "web", desc: "search all files (grep)" },
@@ -244,15 +257,20 @@ const code: KeyRow[] = [
   { id: "diff.center", keys: ["zz"], scope: "code", desc: "center the cursor line" },
   { id: "visual.start", keys: ["V", "v"], scope: "code", desc: "select lines (visual mode)" },
   { id: "visual.swap", keys: ["o"], scope: "code", modes: V, desc: "other end of the selection" },
-  { id: "comment.start", keys: ["i", "a", "c"], scope: "code", modes: V, desc: "comment on the cursor line or the selection: a new thread, or quote it in the reply" },
+  { id: "comment.start", keys: ["i", "a", "c"], scope: "code", modes: V, ui: "web", desc: "comment on the cursor line or the selection: a new thread, or quote it in the reply" },
+  { id: "comment.start", keys: ["i", "a", "c"], scope: "code", modes: V, ui: "tui", desc: "comment on the cursor line or the selection: a new thread, a draft until you submit" },
   { id: "comment.start", keys: ["gc"], scope: "code", modes: V, desc: "comment on the selection" },
   { id: "comment.start", keys: ["gcc"], scope: "code", desc: "comment on the cursor line" },
   { id: "git.link", keys: ["<Space>gY"], scope: "code", modes: V, desc: "copy a link to the cursor line or the selection, on the Changes page of the versions shown" },
+  { id: "diff.sideOld", keys: ["<Left>"], scope: "code", modes: V, ui: "tui", desc: "split: the cursor to the old side" },
+  { id: "diff.sideNew", keys: ["<Right>"], scope: "code", modes: V, ui: "tui", desc: "split: the cursor to the new side" },
+  { id: "browser.open", keys: ["gx"], scope: "code", modes: V, ui: "tui", desc: "the lines picked or under the cursor, on the Changes page in the browser" },
   {
     id: "code.leave",
     keys: ["<Esc>"],
     scope: "code",
     modes: V,
+    ui: "web",
     before: [
       { if: "peek", run: "peek.close" },
       { if: "visual", run: "visual.clear" },
@@ -260,6 +278,7 @@ const code: KeyRow[] = [
     ],
     desc: "close the preview, the selection, the comment box, then leave the code: the page's keys again",
   },
+  { id: "code.leave", keys: ["<Esc>"], scope: "code", modes: V, ui: "tui", before: [{ if: "visual", run: "visual.clear" }], desc: "drop the selection, then leave the code: the thread's keys again" },
 ];
 
 const drafts: KeyRow[] = [
@@ -297,6 +316,7 @@ const global: KeyRow[] = [
   { id: "submit", keys: ["<Space>rs"], scope: "global", desc: "submit the review from the drafts page (approve when there are no drafts)", short: "submit the review" },
   { id: "tab.changes", keys: ["v", "<Space>rv"], scope: "global", desc: "changes since you last looked", short: "changes since last look" },
   { id: "refresh", keys: ["<Space>rr"], scope: "global", desc: "re-read “now”" },
+  { id: "review.done", keys: ["<Space>rm"], scope: "global", ui: "tui", desc: "done up to the version on the right of the Changes tab: “since I last looked” starts there next time", short: "done up to here" },
   { id: "help", keys: ["?", "<Space>?"], scope: "global", desc: "all keys" },
   // The terminal has no page per place: these work wherever its columns are.
   { id: "side.files", keys: ["<Space>e"], scope: "global", ui: "tui", desc: "the changed files, in the left column", short: "files of the review" },
@@ -304,7 +324,8 @@ const global: KeyRow[] = [
   { id: "focus.next", keys: ["<Tab>", "<C-w>w", "<Space>ww"], scope: "global", desc: "next column", short: "next column" },
   { id: "focus.prev", keys: ["<S-Tab>", "<C-w>W", "<Space>wW"], scope: "global", desc: "previous column", short: "previous column" },
   { id: "diff.tests", keys: ["<Space>ut"], scope: "global", ui: "tui", desc: "show / hide test files that only add code", short: "tests with only new code" },
-  { id: "find.file", keys: ["<Space><Space>", "<Space>ff"], scope: "global", ui: "tui", desc: "find a file of the diff", short: "find a file" },
+  { id: "guide.toggle", keys: ["<Space>ug"], scope: "global", ui: "tui", desc: "the agent's guide to the version on the right, in the browser", short: "the agent's guide" },
+  { id: "find.file", keys: ["<Space><Space>", "<Space>ff"], scope: "global", ui: "tui", desc: "find a file of the diff (on a thread: of the branch's diff, opened on the Changes tab)", short: "find a file" },
   { id: "search.files", keys: ["<Space>/", "<Space>sg"], scope: "global", ui: "tui", desc: "search all files (grep)", short: "search all files" },
   { id: "search.word", keys: ["<Space>sw"], scope: "global", ui: "tui", desc: "find the selected word in all files", short: "the word in all files" },
   { id: "search.diff", keys: ["<Space>sd"], scope: "global", ui: "tui", desc: "search the diff" },
@@ -364,8 +385,12 @@ const inThread = (scope: "round.code" | "round.conv" | "round.thread"): KeyRow[]
   { id: "code.more", keys: ["z"], scope, desc: "how much of the file: around the thread, all changes, the whole file" },
   { id: "msg.prev", keys: ["{"], scope, desc: "previous message" },
   { id: "msg.next", keys: ["}"], scope, desc: "next message" },
+  { id: "msg.files", keys: ["gf"], scope, desc: "a file a message names, at its lines over the thread's code (several: pick one; a name two files have: the file finder)" },
+  { id: "code.visual", keys: ["V"], scope, desc: "into the code: select lines from the cursor, at first on the thread's lines" },
+  { id: "code.comment", keys: ["i", "a", "c", "gcc"], scope, desc: "into the code: comment on the cursor line, at first the thread's first line" },
   ...(scope === "round.code" ? [{ id: "focus.right", keys: ["l"], scope, desc: "the conversation" }] : []),
   { id: "focus.left", keys: ["h", "<Esc>", "q"], scope, desc: scope === "round.conv" ? "the code" : "the list" },
+  { id: "browser.open", keys: ["gx"], scope, desc: "in the browser: the thread, or the file a message named shown over its code" },
 ];
 
 const round: KeyRow[] = [
@@ -383,12 +408,14 @@ const round: KeyRow[] = [
   { id: "list.reply", keys: ["r"], scope: "round.list", desc: "reply to the thread" },
   { id: "list.close", keys: ["<Esc>", "h"], scope: "round.list", desc: "hide the list (narrow screens)" },
   { id: "quit", keys: ["q"], scope: "round.list", desc: "quit" },
+  { id: "browser.open", keys: ["gx"], scope: "round.list", desc: "the thread in the browser" },
 
   { id: "files.down", keys: ["j", "<Down>"], scope: "round.files", desc: "next file" },
   { id: "files.up", keys: ["k", "<Up>"], scope: "round.files", desc: "previous file" },
   { id: "files.open", keys: ["<CR>", "l", "o"], scope: "round.files", desc: "into the file's first thread" },
   { id: "files.first", keys: ["gg"], scope: "round.files", desc: "first file" },
   { id: "files.last", keys: ["G"], scope: "round.files", desc: "last file" },
+  { id: "browser.open", keys: ["gx"], scope: "round.files", desc: "the selected file's thread in the browser" },
   { id: "list.close", keys: ["<Esc>", "h"], scope: "round.files", desc: "hide the list (narrow screens)" },
   { id: "quit", keys: ["q"], scope: "round.files", desc: "quit" },
 
@@ -406,6 +433,7 @@ const round: KeyRow[] = [
   { id: "cfiles.open", keys: ["<CR>", "l", "o"], scope: "changes.files", desc: "into the diff, at the file" },
   { id: "diff.viewed", keys: ["m"], scope: "changes.files", desc: "mark the file viewed, or not" },
   { id: "diff.toggle", keys: ["za"], scope: "changes.files", desc: "open / close the file in the diff" },
+  { id: "browser.open", keys: ["gx"], scope: "changes.files", desc: "the file in the browser" },
   { id: "list.close", keys: ["<Esc>", "h"], scope: "changes.files", desc: "hide the list (narrow screens)" },
   { id: "tab.round", keys: ["q"], scope: "changes.files", desc: "back to the round" },
 ];

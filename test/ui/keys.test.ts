@@ -8,7 +8,7 @@ import { arrives, arrivingAs, needOf, risky, terminalOf, workingKeys, type Termi
 
 const SCOPES: Scope[] = ["global", "changes", "drafts", "composer", "choice", "picker", "search", "help", "guide", "thread", "code", "blame", "round.list", "round.files", "round.search", "round.code", "round.conv", "round.thread", "changes.files"];
 const NAMED = new Set(["CR", "Esc", "Tab", "BS", "Del", "Insert", "Space", "Up", "Down", "Left", "Right", "Home", "End", "PageUp", "PageDown", "lt", ...Array.from({ length: 12 }, (_, i) => `F${i + 1}`)]);
-const WEB_ONLY = new Set<Scope>(["guide", "thread", "code", "blame"]);
+const WEB_ONLY = new Set<Scope>(["guide", "thread", "blame"]);
 const everything = (ui: "web" | "tui"): Reader => ({ ui, has: () => true });
 const legacy: Terminal = { kitty: false, name: null, tmux: false };
 const orca: Terminal = { kitty: false, name: "orca", tmux: false };
@@ -97,6 +97,25 @@ describe("the key table", () => {
     expect(arrivingAs("<CR>", KEYS, { ...legacy, kitty: true })).toEqual([]);
   });
 
+  test("the Changes tab's search and the version finder where Shift+F3 and Enter with modifiers do not arrive", () => {
+    const tui: Reader = { ui: "tui", has: () => true };
+    const kitty: Terminal = { kitty: true, name: "kitty", tmux: false };
+    const prev = KEYS.find((r) => r.id === "match.prev" && r.keys.includes("<S-F3>"))!;
+    expect(workingKeys(prev, kitty)).toEqual(["<S-F3>"]);
+    expect(workingKeys(prev, legacy)).toEqual(["N"]);
+    expect(rowFor(KEYS, "<Space>sN", ["changes", "global"], tui)?.id).toBe("match.prev");
+    expect(rowFor(KEYS, "<Space>sn", ["changes", "global"], tui)?.id).toBe("match.next");
+    expect(rowFor(KEYS, "<Space>sN", ["changes", "global"], everything("web"))).toBeNull();
+    const ran: string[] = [];
+    const actions = { "match.prev": () => void ran.push("match"), "unread.prev": () => void ran.push("unread") };
+    runRow(rowFor(KEYS, "N", ["changes"], tui)!, 1, actions, { searching: () => true });
+    expect(ran).toEqual(["match"]);
+    const picker = (id: string) => KEYS.find((r) => r.id === id && r.scope === "picker")!;
+    expect(workingKeys(picker("picker.to"), legacy)).toEqual(["<C-t>"]);
+    expect(workingKeys(picker("picker.to"), kitty)).toEqual(["<C-CR>"]);
+    expect(workingKeys(picker("picker.down"), legacy)).toEqual(["<Down>", "<C-n>"]);
+  });
+
   test("the terminal's name comes from its environment, else from its answer", () => {
     expect(terminalOf({ TERM_PROGRAM: "Orca", ORCA_IMAGE_PROTOCOL: "kitty" }, true).name).toBe("orca");
     expect(terminalOf({ TERM_PROGRAM: "tmux", TMUX: "/tmp/tmux-1/default,1,0" }, false, "xterm.js(6.1.0)")).toEqual({ kitty: false, name: "xterm.js", tmux: true });
@@ -154,7 +173,8 @@ describe("matching", () => {
   test("a UI reads only the rows it has an action for, and its own", () => {
     const tui: Reader = { ui: "tui", has: (id) => id === "unread.next" || id === "diff.enter" };
     expect(rowFor(KEYS, "n", ["changes"], tui)?.id).toBe("unread.next");
-    expect(rowFor(KEYS, "o", ["changes"], tui)?.ui).toBe("tui");
+    expect(rowFor(KEYS, "<CR>", ["changes"], tui)?.ui).toBe("tui");
+    expect(rowFor(KEYS, "o", ["changes"], tui)).toBeNull();
     expect(rowFor(KEYS, "V", ["changes"], tui)).toBeNull();
     expect(rowFor(KEYS, "<C-g>", ["composer"], { ui: "tui", has: () => true })?.id).toBe("composer.now");
     expect(rowFor(KEYS, "<C-g>", ["composer"], web)).toBeNull();
