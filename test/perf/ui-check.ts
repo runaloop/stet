@@ -2024,12 +2024,14 @@ try {
     const homeTab = b.context;
     const linkTab = await b.send("browsingContext.create", { type: "tab" });
     b.context = linkTab.context;
+    // Read the link in the foreground: a hidden tab can defer the virtualizer's first layout.
+    await b.send("browsingContext.activate", { context: linkTab.context });
     await b.viewport(1400, 900);
     await b.navigate(`${url.split("#")[0]}#/compare/${longV - 1}..${longV}?file=docs%2Freadme.md&line=130-132`);
     const linkedBlocks = `[...(${rd}?.querySelectorAll(".md-linked") ?? [])].map(e => e.closest(".md-cell").dataset.side + ":" + e.dataset.start).sort()`;
     await waitFor(`${linkedBlocks}.length > 0`, 15000);
     await sleep(1500);
-    const mdLink = await b.eval(`({ linked: ${linkedBlocks}, cursor: [...(${rd}?.querySelectorAll(".md-cursor") ?? [])].map(e => e.dataset.start), top: Math.round((${rd}?.querySelector(".md-linked")?.getBoundingClientRect().top ?? NaN) - document.querySelector(".codeview-host").getBoundingClientRect().top), text: ${rd}?.querySelector('.md-linked[data-start="132"]')?.textContent.slice(0, 26) ?? null, bars: ${rd}?.querySelectorAll(".md-fold").length ?? -1 })`);
+    const mdLink = await b.eval(`({ visibility: document.visibilityState, linked: ${linkedBlocks}, cursor: [...(${rd}?.querySelectorAll(".md-cursor") ?? [])].map(e => e.dataset.start), top: Math.round((${rd}?.querySelector(".md-linked")?.getBoundingClientRect().top ?? NaN) - document.querySelector(".codeview-host").getBoundingClientRect().top), text: ${rd}?.querySelector('.md-linked[data-start="132"]')?.textContent.slice(0, 26) ?? null, bars: ${rd}?.querySelectorAll(".md-fold").length ?? -1 })`);
     await b.screenshot(join(OUT, "shots", "ui-check-markdown-link.png"));
     await keys("j");
     await sleep(200);
@@ -3018,6 +3020,9 @@ try {
     check("when the server goes away the header says so, and the page picks it up again when it comes back on its port", /offline/.test(offline ?? "") && !!reconnected, { offline, reconnected });
 
     // File references in an agent's reply: one file's lines, and a name two files have.
+    writeFileSync(join(repo, "src/Legacy.kt"), ["package demo", "", "fun legacy() = 1", "", "fun legacyToo() = 1"].join("\n") + "\n");
+    run(repo, ["git", "add", "-A"]);
+    run(repo, ["bun", CLI, "version", "create", "--label", "legacy before deletion", "--json"]);
     for (const dir of ["a", "b"]) {
       mkdirSync(join(repo, `src/${dir}`), { recursive: true });
       writeFileSync(join(repo, `src/${dir}/Twin.kt`), `val twin = "${dir}"\nval two = 2\n`);
@@ -3078,6 +3083,27 @@ try {
       { entries, backClosed, forwardOpened, escClosed, afterEsc, pageBack, beforeRefs },
     );
 
+    // Returning from a different page must keep the preview's own history entry closable in one step.
+    await b.eval(`${refLink}.click(); true`);
+    await waitFor(linked, 8000);
+    await b.eval(`document.querySelector('nav a[href*="/compare/"]').click(); true`);
+    await waitFor(`location.hash.startsWith("#/compare/") && !!document.querySelector(".codeview-host diffs-container")`, 10000);
+    await b.traverse(-1);
+    const returnedPreview = await waitFor(linked, 8000);
+    await b.eval(`document.activeElement?.blur(); true`);
+    await keys(KEY.Escape);
+    const returnedClosed = await waitFor(peekGone, 3000);
+    const returnedState = await b.eval(`history.state?.stetPeek ?? 0`);
+    await b.traverse(-1);
+    const returnedBack = await waitFor(`location.hash === ${JSON.stringify(beforeRefs)} ? location.hash : null`, 5000);
+    check(
+      "after Changes and Back restore a file preview, one Esc closes it and the next Back leaves the thread's page",
+      JSON.stringify(returnedPreview) === "[14,15]" && returnedClosed === `#/thread/${refThread}` && returnedState === 0 && returnedBack === beforeRefs,
+      { returnedPreview, returnedClosed, returnedState, returnedBack },
+    );
+    await b.traverse(1);
+    await waitFor(`location.hash === "#/thread/${refThread}" && ${refLink} && !document.querySelector(".view-fade")`, 10000);
+
     // the link a little above the bottom of what the conversation shows: its card has no room below
     const lowered = await b.eval(`(() => {
       const a = ${refLink};
@@ -3127,6 +3153,28 @@ try {
     await b.eval(`document.activeElement?.blur(); true`);
     await keys(KEY.Escape);
     await waitFor(peekGone, 3000);
+    const goneHref = await b.eval(`${goneLink}.getAttribute("href")`);
+    const refContext = b.context;
+    const goneTab = await b.send("browsingContext.create", { type: "tab" });
+    try {
+      b.context = goneTab.context;
+      await b.send("browsingContext.activate", { context: goneTab.context });
+      await b.navigate(new URL(goneHref, url).href);
+      const goneInTab = await waitFor(`(() => {
+        const containers = [...document.querySelectorAll("diffs-container"), ...document.querySelectorAll("code-view")].flatMap(el => [el, ...(el.shadowRoot?.querySelectorAll("diffs-container") ?? [])]);
+        const lines = containers.flatMap(el => [...(el.shadowRoot?.querySelectorAll('[data-content] > [data-line="3"]') ?? [])]);
+        const line = lines.find(el => el.textContent.includes("fun legacy() = 1"));
+        return line ? { text: line.textContent, marked: (line.getAttribute("data-stet-mark") ?? "").split(" ").includes("linked"), hash: location.hash } : null;
+      })()`, 10000);
+      check(
+        "a deleted file's link opened in a new tab shows the last existing code, including changes after base, at the marked line",
+        !!goneInTab && goneInTab.marked === true,
+        { goneHref, goneInTab },
+      );
+    } finally {
+      b.context = refContext;
+      await b.send("browsingContext.close", { context: goneTab.context });
+    }
     await b.eval(`[...document.querySelectorAll(".thread-msgs .fref a")].find(a => a.textContent === "Twin.kt:2").click(); true`);
     const twinPick = await waitFor(`(() => { const p = document.querySelector(".picker"); return p && document.activeElement === p.querySelector("input") ? { q: p.querySelector("input").value, rows: [...p.querySelectorAll("li")].map(l => l.textContent) } : null; })()`, 3000);
     check("a name two files have opens the file finder with the name typed in, listing both", twinPick?.q === "Twin.kt" && twinPick.rows.length === 2, twinPick);

@@ -1,6 +1,7 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { CommentDto, ThreadDetail } from "../../src/core/types.ts";
+import { parseHash } from "../../src/ui/route.ts";
 import { thread } from "../helpers/threads.ts";
 
 const realFetch = globalThis.fetch;
@@ -1028,9 +1029,17 @@ describe("file references in messages", () => {
     const later = { ...from, version: null };
     const draw = () => render(<Body text="moved out of Legacy.kt:2 and Gone.kt:5" fileLink={(r) => <FileRefLink r={r} from={later} />} />, host);
     draw();
+    expect(host.querySelector(".fref a")!.getAttribute("href")).toBe("#/compare/base..2?file=src%2Fold%2FLegacy.kt&line=2&side=old");
     await tick(60);
     draw();
     expect(host.querySelector(".fref .tref-card")!.textContent).toContain("the branch deletes this file");
+    const links = [...host.querySelectorAll<HTMLAnchorElement>(".fref a")];
+    expect(parseHash(links[0]!.getAttribute("href")!)).toEqual({ name: "compare", from: "v1", to: "2", file: "src/old/Legacy.kt", line: 2, side: "old" });
+    expect(parseHash(links[1]!.getAttribute("href")!)).toEqual({ name: "compare", from: "b0", to: "2", file: "src/old/Gone.kt", line: 5, side: "old" });
+    const modified = new MouseEvent("click", { button: 0, ctrlKey: true, bubbles: true, cancelable: true });
+    links[0]!.dispatchEvent(modified);
+    expect(modified.defaultPrevented).toBe(false);
+    expect(peek.value).toBeNull();
     (host.querySelector(".fref a") as HTMLAnchorElement).click();
     await tick(60);
     expect(peek.value).toEqual({ path: "src/old/Legacy.kt", jumped: true, sha: "v1", label: "v1", line: 2, end: 2, note: "as in v1, the last version that has it", deleted: true });
@@ -1044,6 +1053,61 @@ describe("file references in messages", () => {
     (host.querySelectorAll(".fref a")[1] as HTMLAnchorElement).click();
     await tick(60);
     expect(peek.value).toMatchObject({ path: "src/old/Gone.kt", sha: "b0", label: "base", note: "as in base, before the branch", deleted: true });
+    peek.value = null;
+    render(null, host);
+  });
+
+  test("a deleted file's new-tab link prefers the message snapshot and preserves its line range", async () => {
+    serve({ "before-deletion": ["src/old/Legacy.kt"] });
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const message = { ...from, snapshot: "before-deletion" };
+    const draw = () => render(<Body text="see Legacy.kt:2-3" fileLink={(r) => <FileRefLink r={r} from={message} />} />, host);
+    const start = calls.length;
+    draw();
+    draw();
+    await tick(60);
+    const anchor = host.querySelector<HTMLAnchorElement>(".fref a")!;
+    expect(parseHash(anchor.getAttribute("href")!)).toEqual({ name: "compare", from: "before-deletion", to: "2", file: "src/old/Legacy.kt", line: 2, end: 3, side: "old" });
+    expect(calls.slice(start).filter((c) => c.includes("/api/blob") && c.includes("sha=before-deletion"))).toHaveLength(1);
+    anchor.click();
+    await tick(60);
+    expect(peek.value).toEqual({ path: "src/old/Legacy.kt", jumped: true, sha: "before-deletion", label: "before-", line: 2, end: 3, note: "as in the agent's reply on #7 (the code after v1)", deleted: true });
+    expect(calls.slice(start).filter((c) => c.includes("/api/blob") && c.includes("sha=before-deletion"))).toHaveLength(1);
+    peek.value = null;
+    render(null, host);
+  });
+
+  test("a deleted reference retries a failed snapshot lookup on click, without retrying on render", async () => {
+    serve({ "retry-message": ["src/old/Legacy.kt"] });
+    const normal = respond!;
+    let fail = true;
+    respond = (url, init) => {
+      if (fail && url.startsWith("/api/blob") && new URL(url, "http://x").searchParams.get("sha") === "retry-message") {
+        return Response.json({ error: { message: "temporarily unavailable" } }, { status: 503 });
+      }
+      return normal(url, init);
+    };
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const message = { ...from, snapshot: "retry-message" };
+    const draw = () => render(<Body text="see Legacy.kt:2" fileLink={(r) => <FileRefLink r={r} from={message} />} />, host);
+    const start = calls.length;
+    const requests = () => calls.slice(start).filter((c) => c.includes("/api/blob") && c.includes("sha=retry-message"));
+    draw();
+    await tick(60);
+    const anchor = host.querySelector<HTMLAnchorElement>(".fref a")!;
+    expect(parseHash(anchor.getAttribute("href")!)).toMatchObject({ from: "v1", side: "old" });
+    fail = false;
+    draw();
+    draw();
+    await tick(60);
+    expect(requests()).toHaveLength(1);
+    anchor.click();
+    await tick(60);
+    expect(requests()).toHaveLength(2);
+    expect(peek.value).toMatchObject({ sha: "retry-message", path: "src/old/Legacy.kt", line: 2, deleted: true });
+    expect(parseHash(anchor.getAttribute("href")!)).toMatchObject({ from: "retry-message", side: "old" });
     peek.value = null;
     render(null, host);
   });

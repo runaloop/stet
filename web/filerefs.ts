@@ -1,4 +1,4 @@
-import { signal, untracked } from "@preact/signals";
+import { signal, untracked, type Signal } from "@preact/signals";
 import { fileIndex, linesText, movedLines, resolveFile, type FileIndex, type FileRef } from "../src/ui/filerefs.ts";
 import type { Route } from "../src/ui/route.ts";
 import { api } from "./api.ts";
@@ -84,11 +84,20 @@ export function deletedFile(path: string): boolean {
   return !!branch()?.deleted.has(path);
 }
 
-/** The Changes page at a file's lines in the whole branch: where the link goes in a new tab. */
-export function branchRoute(path: string, ref: FileRef): Route | null {
+/** The Changes page at a file's lines: deleted files use the same code as their message preview. */
+export function branchRoute(path: string, ref: FileRef, from: MessageCode): Route | null {
   const b = branch();
   if (!b) return null;
-  return { name: "compare", from: "base", to: b.ref, file: path, ...(ref.start !== null ? { line: ref.start, ...(ref.end !== ref.start ? { end: ref.end! } : {}) } : {}) };
+  let before = "base";
+  const gone = b.deleted.has(path);
+  if (gone) {
+    const states = statesOf(from);
+    states.push(...lastStates(states));
+    const at = deletedState(path, states).index.value;
+    // A branch deletion always exists at the base, including while its message's code is loading.
+    before = at === undefined || at === null ? "base" : states[at]!.sha;
+  }
+  return { name: "compare", from: before, to: b.ref, file: path, ...(gone ? { side: "old" } : {}), ...(ref.start !== null ? { line: ref.start, ...(ref.end !== ref.start ? { end: ref.end! } : {}) } : {}) };
 }
 
 interface CodeState {
@@ -129,19 +138,60 @@ function lastStates(tried: CodeState[]): CodeState[] {
   return out;
 }
 
+interface StateResolution {
+  index: Signal<number | null | undefined>;
+  ready: Promise<number | null>;
+  retry: boolean;
+}
+
+let resolutionReview: number | null = null;
+const resolutions = new Map<string, StateResolution>();
+
+async function firstState(path: string, states: CodeState[]): Promise<{ index: number | null; failed: boolean }> {
+  let failed = false;
+  for (const [i, s] of states.entries()) {
+    const blob = await api.blob(s.sha, path).catch(() => {
+      failed = true;
+      return null;
+    });
+    if (blob?.exists) return { index: i, failed };
+  }
+  return { index: null, failed };
+}
+
+/** Resolve once per file and candidate order: all its message links and ordinary clicks share the request. */
+function deletedState(path: string, states: CodeState[], retry = false): StateResolution {
+  const rid = reviewId.peek();
+  if (resolutionReview !== rid) {
+    resolutions.clear();
+    resolutionReview = rid;
+  }
+  const key = JSON.stringify([path, states.map((s) => s.sha)]);
+  let have = resolutions.get(key);
+  if (!have || (retry && have.retry)) {
+    // Keep the current href while retrying. Only an explicit click retries an incomplete lookup.
+    const index = have?.index ?? signal<number | null | undefined>(undefined);
+    const next: StateResolution = {
+      index,
+      retry: false,
+      ready: firstState(path, states).then((at) => {
+        next.retry = at.failed || at.index === null;
+        return (index.value = at.index);
+      }),
+    };
+    have = next;
+    resolutions.set(key, have);
+  }
+  return have;
+}
+
 /** Opens a file a message names over the thread's code, as the code was for the message, its lines marked in the middle. */
 export async function openFileRef(path: string, ref: FileRef, from: MessageCode): Promise<void> {
   const gone = !!untracked(branch)?.deleted.has(path);
   const states = statesOf(from);
   if (gone) states.push(...lastStates(states));
-  let at = states[0];
-  for (const s of states) {
-    const blob = await api.blob(s.sha, path).catch(() => null);
-    if (blob?.exists) {
-      at = s;
-      break;
-    }
-  }
+  const index = gone ? await deletedState(path, states, true).ready : (await firstState(path, states)).index;
+  const at = states[index ?? 0];
   if (!at) return;
   const b = untracked(branch);
   openPeek({

@@ -30,7 +30,7 @@ export function FileRefLink({ r, from }: { r: FileRef; from: MessageCode }) {
   }
   const path = paths[0]!;
   const open = () => void openFileRef(path, r, from);
-  const target = branchRoute(path, r);
+  const target = branchRoute(path, r, from);
   return (
     <span class="fref" onMouseEnter={placeCard} onFocusIn={placeCard}>
       <a {...(target ? link(target, open) : { href: "#", onClick: (e: MouseEvent) => plainClick(e) && (e.preventDefault(), open()) })}>{r.text}</a>

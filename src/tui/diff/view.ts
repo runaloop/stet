@@ -137,7 +137,7 @@ export class DiffView {
     return Math.min(WRAP_CAP, h);
   }
 
-  private anchorAt(row: number, sub: number): Anchor | null {
+  private anchorAt(row: number, sub: number, side?: 0 | 1): Anchor | null {
     if (row < 0 || row >= this.rows.len) return null;
     const item = this.items[this.rows.item[row]!]!;
     const k = this.rows.kind[row]!;
@@ -145,8 +145,8 @@ export class DiffView {
     return {
       key: item.key,
       kind: k,
-      oldNo: this.rows.oldNo[row]!,
-      newNo: this.rows.newNo[row]!,
+      oldNo: isLine(k) && side === 1 ? 0 : this.rows.oldNo[row]!,
+      newNo: isLine(k) && side === 0 ? 0 : this.rows.newNo[row]!,
       thread: k === CARD && f ? (f.placed?.[this.rows.x[row]!]?.threadId ?? -1) : -1,
       sub,
     };
@@ -184,8 +184,12 @@ export class DiffView {
   private relayout(rebuild: Item[] | null): void {
     const topRow = this.lay.len ? this.lay.rowAt(this.top) : 0;
     const anchor = this.anchorAt(topRow, this.top - this.lay.top(topRow));
-    const cur = this.anchorAt(this.cursor, 0);
-    const picked = this.anchor >= 0 ? this.anchorAt(this.anchor, 0) : null;
+    // A split row can name two different lines. Cursor and selection anchors must name their own side;
+    // the viewport anchor above keeps its usual preference for the new side.
+    const wantedSide = this.anchor >= 0 ? this.anchorSide : this.side;
+    const curSide = this.lineOn(this.cursor, wantedSide) ? wantedSide : this.sideAt();
+    const cur = this.anchorAt(this.cursor, 0, curSide);
+    const picked = this.anchor >= 0 ? this.anchorAt(this.anchor, 0, this.anchorSide) : null;
     const screenY = this.lay.len ? this.lay.top(this.cursor) - this.top : 0;
     if (rebuild) this.items = rebuild;
     let most = 1;
@@ -207,6 +211,7 @@ export class DiffView {
     if (cur) {
       const r = this.find(cur);
       this.cursor = r === -1 ? Math.min(this.cursor, Math.max(0, this.rows.len - 1)) : r;
+      if (isLine(cur.kind)) this.side = curSide;
     } else this.cursor = Math.min(this.cursor, Math.max(0, this.rows.len - 1));
     this.anchor = picked ? this.find(picked) : -1;
     this.painted.clear();

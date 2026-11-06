@@ -110,7 +110,8 @@ function cellOf(screen: string, text: string): { x: number; y: number } {
 test("stet tui with the mouse: a click on a row previews its thread, a click on a side tab opens it, the wheel scrolls the column under the pointer", async () => {
   const run = startPty(["bun", CLI, "tui"], { cwd: f.root, cols: 120, rows: 30, env: { ...GIT_ENV, STET_ROLE: "reviewer", STET_AUTHOR: "alice" } });
   try {
-    await run.waitFor((s) => s.includes(" Files ") && s.includes("preview") && s.includes(`#${first} a.kt:3–4`), 20_000);
+    // A frame may reach xterm in chunks: wait for the row the click needs as well as the header above it.
+    await run.waitFor((s) => s.includes(" Files ") && s.includes("preview") && s.includes(`#${first} a.kt:3–4`) && s.includes(`#${second} L2`), 20_000);
     expect(run.modes.state.mouse).toBe(true);
 
     const row = cellOf(run.screen(), `#${second} L2`);

@@ -238,6 +238,78 @@ test("in split the cursor stands on one side: Left and Right pick it on a row wi
   expect(v.sideAt()).toBe(1);
 });
 
+for (const change of ["resize", "layout"] as const) {
+  for (const side of [0, 1] as const) {
+    for (const ends of ["forward", "reverse", "single"] as const) {
+      test(`${change} keeps ${ends} selection endpoints on the ${side === 0 ? "old" : "new"} side`, () => {
+        const v = view(170, 30);
+        const first = side === 0 ? 4 : 6;
+        const start = ends === "reverse" ? first + 2 : first;
+        const end = ends === "forward" ? first + 2 : first;
+        v.goTo(v.lineRow("src/auth.ts", side, start));
+        v.setSide(side);
+        v.startSelection();
+        v.goTo(v.lineRow("src/auth.ts", side, end));
+        const check = () => {
+          expect(v.lineOn(v.anchor, side)).toBe(start);
+          expect(v.lineOn(v.cursor, side)).toBe(end);
+          expect(v.selection()).toMatchObject({ key: "src/auth.ts", side, start: first, end: ends === "single" ? first : first + 2 });
+        };
+        check();
+        if (change === "resize") v.setSize(80, 30);
+        else v.setLayout("unified");
+        expect(v.split).toBe(false);
+        check();
+        if (change === "resize") v.setSize(170, 30);
+        else v.setLayout("split");
+        expect(v.split).toBe(true);
+        check();
+        v.swapEnds();
+        expect(v.lineOn(v.cursor, side)).toBe(start);
+        expect(v.lineOn(v.anchor, side)).toBe(end);
+      });
+    }
+  }
+}
+
+for (const change of ["resize", "layout"] as const) {
+  test(`${change} keeps an unselected cursor's line and side`, () => {
+    for (const side of [0, 1] as const) {
+      const v = view(80, 30);
+      const n = side === 0 ? 4 : 6;
+      v.goTo(v.lineRow("src/auth.ts", side, n));
+      for (const pref of ["split", "unified", "split"] as const) {
+        if (change === "resize") v.setSize(pref === "split" ? 170 : 80, 30);
+        else v.setLayout(pref);
+        expect(v.lineOn(v.cursor, side)).toBe(n);
+        expect(v.sideAt()).toBe(side);
+        expect(v.selection()).toMatchObject({ side, start: n, end: n });
+      }
+    }
+  });
+}
+
+test("a split cursor on old context returns to that side after unified layout", () => {
+  const v = view(170, 30);
+  v.goTo(v.lineRow("src/auth.ts", 0, 6));
+  v.setSide(0);
+  v.setLayout("unified");
+  expect(v.info()).toMatchObject({ oldNo: 6, newNo: 8 });
+  v.setLayout("split");
+  expect(v.sideAt()).toBe(0);
+  expect(v.selection()).toMatchObject({ side: 0, start: 6, end: 6 });
+});
+
+test("an offscreen cursor leaves the viewport anchored to its new-side line on resize", () => {
+  const v = view(170, 3);
+  v.setSide(0);
+  v.top = v.lay.top(v.lineRow("src/auth.ts", 0, 4));
+  const newNo = v.info(v.lay.rowAt(v.top))!.newNo;
+  expect(newNo).toBe(6);
+  v.setSize(80, 3);
+  expect(v.info(v.lay.rowAt(v.top))!.newNo).toBe(newNo);
+});
+
 test("search matches are marked on their lines, the current one stronger", () => {
   const v = view(80, 30);
   const found = new Map([["src/auth.ts", { old: new Map([[4, [[8, 13]] as [number, number][]]]), new: new Map([[6, [[8, 13]] as [number, number][]]]) }]]);
