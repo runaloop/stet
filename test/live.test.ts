@@ -79,6 +79,27 @@ class Stream {
   }
 }
 
+class Socket {
+  readonly ws: WebSocket;
+  private got: { event: string; data: unknown }[] = [];
+  constructor(since: number) {
+    this.ws = new WebSocket(`ws://127.0.0.1:${port}/api/events?token=${token}&review=${review}&since=${since}`);
+    this.ws.addEventListener("message", (e) => this.got.push(JSON.parse(String(e.data))));
+  }
+  async next<T>(event: string, want: (d: T) => boolean = () => true): Promise<T> {
+    const until = Date.now() + 4000;
+    while (Date.now() < until) {
+      const at = this.got.findIndex((m) => m.event === event && want(m.data as T));
+      if (at !== -1) return this.got.splice(at, 1)[0]!.data as T;
+      await Bun.sleep(10);
+    }
+    throw new Error(`no ${event} on the socket`);
+  }
+  close() {
+    this.ws.close();
+  }
+}
+
 type Now = { sha: string; pinned: string; pinnedAt: string; files: number | null };
 type Git = { files: { path: string; staged: boolean; unstaged: boolean; untracked: boolean }[]; upstream: string | null; ahead: number };
 
@@ -150,4 +171,37 @@ test("a restarted server takes the port it had, so open pages find it again", as
   const info = await start();
   expect(info.port).toBe(port);
   expect((await api("/api/ping")).status).toBe(200);
+});
+
+test("eight sockets receive review events without holding up API requests, and resume after a missed event", async () => {
+  const status = await (await api(`/api/review?review=${review}`)).json();
+  const sockets = Array.from({ length: 8 }, () => new Socket(status.lastSeq));
+  let resumed: Socket | undefined;
+  try {
+    for (const s of sockets) {
+      expect(await s.next<{ build: string }>("hello")).toEqual({ build: "dev" });
+      expect((await s.next<Git>("git")).files.length).toBeGreaterThan(0);
+      expect((await s.next<Now>("now")).pinned).toBe(status.pinnedNow);
+    }
+    expect((await api("/api/ping")).status).toBe(200);
+    const thread = await (await api(`/api/threads?review=${review}`, { method: "POST", body: JSON.stringify({ path: "a.kt", start: 2, end: 2, at: "1", body: "socket review", draft: false }) })).json();
+    type Change = { seq: number; events: { type: string; thread_id: number }[] };
+    let seq = 0;
+    for (const s of sockets) {
+      const change = await s.next<Change>("change", (d) => d.events.some((e) => e.thread_id === thread.id));
+      expect(change.seq).toBeGreaterThan(status.lastSeq);
+      seq = change.seq;
+    }
+    await api(`/api/viewed?review=${review}`, { method: "POST", body: JSON.stringify({ keys: ["socket-test"], on: true }) });
+    for (const s of sockets) expect(await s.next<{ kinds: string[] }>("store")).toEqual({ kinds: ["viewed"] });
+    for (const s of sockets) s.close();
+    await api(`/api/threads/${thread.id}/comments?review=${review}`, { method: "POST", body: JSON.stringify({ body: "while disconnected", draft: false }) });
+    resumed = new Socket(seq);
+    const missed = await resumed.next<Change>("change");
+    expect(missed.seq).toBeGreaterThan(seq);
+    expect(missed.events.every((e) => e.type === "comment.published" && e.thread_id === thread.id)).toBe(true);
+  } finally {
+    for (const s of sockets) s.close();
+    resumed?.close();
+  }
 });

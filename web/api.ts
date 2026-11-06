@@ -159,54 +159,62 @@ export interface Live {
 
 const LOST_AFTER_MS = 3000;
 
-/** The server's event stream, kept open across server restarts: the browser retries a broken stream, this retries a refused one. */
+/** Live updates use a WebSocket so open tabs leave the browser's HTTP connections free for API requests. */
 export function subscribe(review: number, since: number, live: Live): () => void {
-  let es: EventSource | null = null;
+  let socket: WebSocket | null = null;
   let last = since;
   let lost = false;
   let closed = false;
   let lostTimer: ReturnType<typeof setTimeout> | undefined;
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let retries = 0;
-  const data = (e: Event) => JSON.parse((e as MessageEvent).data);
   const open = () => {
-    es = new EventSource(`/api/events?token=${encodeURIComponent(token)}&review=${review}&since=${last}`);
-    es.addEventListener("open", () => {
-      retries = 0;
+    const url = new URL("/api/events", location.href);
+    url.protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    url.search = new URLSearchParams({ token, review: String(review), since: String(last) }).toString();
+    const ws = new WebSocket(url);
+    socket = ws;
+    ws.addEventListener("open", () => {
+      if (closed || socket !== ws) return;
       clearTimeout(lostTimer);
       lostTimer = undefined;
-      if (lost) {
+      // Store changes have no replay cursor: refresh after a short interruption too.
+      if (lost || retries > 0) {
         lost = false;
         live.connection(true);
       }
+      retries = 0;
     });
-    es.addEventListener("error", () => {
-      if (closed) return;
+    ws.addEventListener("close", () => {
+      if (closed || socket !== ws) return;
+      socket = null;
       lostTimer ??= setTimeout(() => {
         lost = true;
         live.connection(false);
       }, LOST_AFTER_MS);
-      if (es?.readyState === EventSource.CLOSED) {
-        es = null;
-        clearTimeout(retryTimer);
-        retryTimer = setTimeout(open, Math.min(10_000, 1000 * 2 ** retries++));
+      clearTimeout(retryTimer);
+      retryTimer = setTimeout(open, Math.min(10_000, 1000 * 2 ** retries++));
+    });
+    ws.addEventListener("message", (e) => {
+      if (closed || socket !== ws) return;
+      const { event, data } = JSON.parse(e.data);
+      switch (event) {
+        case "hello": live.hello(data.build); break;
+        case "change":
+          last = Math.max(last, data.seq);
+          live.change(data.seq, data.events);
+          break;
+        case "store": live.store(data.kinds); break;
+        case "now": live.now(data); break;
+        case "git": live.git(data); break;
       }
     });
-    es.addEventListener("hello", (e) => live.hello(data(e).build));
-    es.addEventListener("change", (e) => {
-      const d = data(e);
-      last = Math.max(last, d.seq);
-      live.change(d.seq, d.events);
-    });
-    es.addEventListener("store", (e) => live.store(data(e).kinds));
-    es.addEventListener("now", (e) => live.now(data(e)));
-    es.addEventListener("git", (e) => live.git(data(e)));
   };
   open();
   return () => {
     closed = true;
     clearTimeout(lostTimer);
     clearTimeout(retryTimer);
-    es?.close();
+    socket?.close();
   };
 }

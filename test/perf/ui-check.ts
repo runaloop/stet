@@ -3270,6 +3270,34 @@ try {
       rmSync(sideDir, { recursive: true, force: true });
     }
 
+    // Each SSE tab used to consume an HTTP/1.1 connection: the sixth could hang on its diff and the next stay white.
+    const original = b.context;
+    const tabs: string[] = [];
+    const preload = await b.send("script.addPreloadScript", { functionDeclaration: `() => {
+      window.__liveSockets = [];
+      const Socket = WebSocket;
+      window.WebSocket = class extends Socket {
+        constructor(...args) { super(...args); window.__liveSockets.push(this); }
+      };
+    }` });
+    try {
+      for (let i = 0; i < 8; i++) {
+        const tab = await b.send("browsingContext.create", { type: "tab" });
+        tabs.push(tab.context);
+        b.context = tab.context;
+        await b.send("browsingContext.navigate", { context: b.context, url, wait: "none" });
+        const loaded = await waitFor(`document.querySelector(".codeview-host diffs-container")?.shadowRoot?.querySelector("[data-column-number]") && window.__liveSockets?.some(s => s.readyState === WebSocket.OPEN)`, 8000);
+        check(`tab ${i + 1} loads its diff and live updates while the other tabs stay open`, !!loaded, await b.eval(`({ ready: document.readyState, text: document.body.innerText.slice(0, 300), sockets: window.__liveSockets?.map(s => s.readyState) })`));
+      }
+      await b.screenshot(join(OUT, "shots", "ui-check-eight-tabs.png"));
+      const responsive = await b.eval(`Promise.race([fetch("/api/ping", { headers: { "x-stet-token": sessionStorage.getItem("stet.token") } }).then(r => r.ok), new Promise(r => setTimeout(() => r(false), 3000))])`);
+      check("API requests complete with eight live review tabs open", responsive === true, responsive);
+    } finally {
+      for (const context of tabs) await b.send("browsingContext.close", { context });
+      b.context = original;
+      await b.send("script.removePreloadScript", { script: preload.script });
+    }
+
   } catch (e) {
     check("script ran to the end", false, (e as Error).message);
     await b.screenshot(join(OUT, "shots", "ui-check-error.png")).catch(() => null);

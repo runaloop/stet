@@ -1,27 +1,32 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { afterAll, beforeEach, expect, spyOn, test } from "bun:test";
+import { getToken, setToken, subscribe, type Live } from "../../web/api.ts";
 
 const mine = !GlobalRegistrator.isRegistered;
 if (mine) GlobalRegistrator.register({ url: "http://127.0.0.1:4000/" });
 
-class FakeEventSource extends EventTarget {
-  static readonly CLOSED = 2;
-  static last: FakeEventSource | null = null;
+class FakeWebSocket extends EventTarget {
+  static readonly CLOSED = 3;
+  static last: FakeWebSocket | null = null;
   readyState = 1;
-  constructor(readonly url: string) {
+  constructor(readonly url: string | URL) {
     super();
-    FakeEventSource.last = this;
+    FakeWebSocket.last = this;
   }
   close() {
-    this.readyState = FakeEventSource.CLOSED;
+    this.readyState = FakeWebSocket.CLOSED;
+  }
+  disconnect() {
+    this.close();
+    this.dispatchEvent(new Event("close"));
   }
   emit(event: string, data: unknown) {
-    this.dispatchEvent(new MessageEvent(event, { data: JSON.stringify(data) }));
+    this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ event, data }) }));
   }
 }
 
 const realFetch = globalThis.fetch;
-const realEventSource = (globalThis as { EventSource?: unknown }).EventSource;
+const realWebSocket = (globalThis as { WebSocket?: unknown }).WebSocket;
 const calls: string[] = [];
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
@@ -30,7 +35,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   if (url.startsWith("/api/threads")) return Response.json([]);
   return Response.json({ ok: true });
 }) as typeof fetch;
-(globalThis as { EventSource?: unknown }).EventSource = FakeEventSource;
+(globalThis as { WebSocket?: unknown }).WebSocket = FakeWebSocket;
 
 const state = await import("../../web/state.ts");
 const { BUILD } = await import("../../src/core/build.ts");
@@ -42,7 +47,7 @@ afterAll(async () => {
   state.startLive();
   state.reviewId.value = before;
   globalThis.fetch = realFetch;
-  (globalThis as { EventSource?: unknown }).EventSource = realEventSource;
+  (globalThis as { WebSocket?: unknown }).WebSocket = realWebSocket;
   if (mine) await GlobalRegistrator.unregister();
 });
 
@@ -53,7 +58,7 @@ beforeEach(() => {
 });
 
 test("a store change fetches only its part of the page", async () => {
-  const es = FakeEventSource.last!;
+  const es = FakeWebSocket.last!;
   es.emit("store", { kinds: ["reads"] });
   await tick();
   expect(calls).toEqual(["GET /api/threads"]);
@@ -86,7 +91,7 @@ test("a store change fetches only its part of the page", async () => {
 test("a hello from a server of another build reloads the page, once for that build", () => {
   const reload = spyOn(location, "reload").mockImplementation(() => {});
   try {
-    const es = FakeEventSource.last!;
+    const es = FakeWebSocket.last!;
     es.emit("hello", { build: BUILD });
     expect(reload).not.toHaveBeenCalled();
     es.emit("hello", { build: "next" });
@@ -97,5 +102,56 @@ test("a hello from a server of another build reloads the page, once for that bui
   } finally {
     reload.mockRestore();
     sessionStorage.removeItem("stet.reloadedFor");
+  }
+});
+
+test("a broken socket resumes after the last event, reports a long outage and stops retrying when unsubscribed", async () => {
+  const connections: boolean[] = [];
+  const changes: number[] = [];
+  const live: Live = { hello() {}, store() {}, now() {}, git() {}, change: (seq) => changes.push(seq), connection: (up) => connections.push(up) };
+  const before = getToken();
+  setToken("test-token");
+  const stop = subscribe(17, 5, live);
+  try {
+    const first = FakeWebSocket.last!;
+    expect(String(first.url)).toBe("ws://127.0.0.1:4000/api/events?token=test-token&review=17&since=5");
+    first.emit("change", { seq: 9, events: [] });
+    first.disconnect();
+    await tick(1100);
+    const second = FakeWebSocket.last!;
+    expect(second).not.toBe(first);
+    expect(new URL(second.url).searchParams.get("since")).toBe("9");
+    first.emit("change", { seq: 100, events: [] });
+    expect(changes).toEqual([9]);
+    await tick(2100);
+    expect(connections).toEqual([false]);
+    second.dispatchEvent(new Event("open"));
+    expect(connections).toEqual([false, true]);
+    second.emit("change", { seq: 10, events: [] });
+    expect(changes).toEqual([9, 10]);
+    second.disconnect();
+    stop();
+    await tick(1100);
+    expect(FakeWebSocket.last).toBe(second);
+    expect(second.readyState).toBe(FakeWebSocket.CLOSED);
+  } finally {
+    stop();
+    setToken(before);
+  }
+});
+
+test("a short reconnect refreshes store state even before the offline banner would appear", async () => {
+  const connections: boolean[] = [];
+  const stop = subscribe(1, 0, { hello() {}, store() {}, now() {}, git() {}, change() {}, connection: (up) => connections.push(up) });
+  try {
+    const first = FakeWebSocket.last!;
+    first.dispatchEvent(new Event("open"));
+    expect(connections).toEqual([]);
+    first.disconnect();
+    await tick(1100);
+    FakeWebSocket.last!.dispatchEvent(new Event("open"));
+    expect(connections).toEqual([true]);
+  } finally {
+    stop();
   }
 });

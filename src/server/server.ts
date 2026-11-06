@@ -35,13 +35,50 @@ function hostAllowed(req: Request, port: number): boolean {
   return true;
 }
 
-function eventStream(state: ServerState, req: Request, reviewId: number | null, since: number): Response {
-  const encoder = new TextEncoder();
-  let timer: ReturnType<typeof setInterval> | undefined;
-  let ping: ReturnType<typeof setInterval> | undefined;
-  let unwatch: (() => void) | undefined;
+/** The same review events feed the browser's WebSocket and the CLI's event stream. */
+function followEvents(state: ServerState, reviewId: number | null, since: number, send: (event: string, data: unknown, id?: number) => void): () => void {
   let last = since;
   let counts = state.ctx.store.changeCounts(reviewId);
+  send("hello", { build: BUILD });
+  let unwatch = reviewId !== null ? state.watcher?.subscribe(reviewId, (event, data) => send(event, data)) : undefined;
+  const timer = setInterval(() => {
+    const rows = state.ctx.store.db
+      .query<{ seq: number; type: string; role: string; thread_id: number | null }, [number, number, number]>(
+        "SELECT seq, type, role, thread_id FROM events WHERE seq > ? AND (? = 0 OR review_id = ?) ORDER BY seq LIMIT 200",
+      )
+      .all(last, reviewId ?? 0, reviewId ?? 0);
+    if (rows.length > 0) {
+      last = rows[rows.length - 1]!.seq;
+      send("change", { seq: last, events: rows }, last);
+    }
+    const now = state.ctx.store.changeCounts(reviewId);
+    const kinds = [...now].filter(([kind, n]) => n > (counts.get(kind) ?? 0)).map(([kind]) => kind);
+    counts = now;
+    if (kinds.length > 0) send("store", { kinds });
+  }, 300);
+  return () => {
+    clearInterval(timer);
+    unwatch?.();
+    unwatch = undefined;
+  };
+}
+
+interface LiveSocket {
+  review: number | null;
+  since: number;
+  stop?: () => void;
+}
+
+function eventStream(state: ServerState, req: Request, reviewId: number | null, since: number): Response {
+  const encoder = new TextEncoder();
+  let ping: ReturnType<typeof setInterval> | undefined;
+  let stopEvents = () => {};
+  let abort = () => {};
+  const cleanup = () => {
+    stopEvents();
+    clearInterval(ping);
+    req.signal.removeEventListener("abort", abort);
+  };
   const stream = new ReadableStream({
     start(controller) {
       const send = (chunk: string) => {
@@ -51,47 +88,21 @@ function eventStream(state: ServerState, req: Request, reviewId: number | null, 
           cleanup();
         }
       };
-      const cleanup = () => {
-        clearInterval(timer);
-        clearInterval(ping);
-        unwatch?.();
-        unwatch = undefined;
-      };
       send(`retry: 2000\n\n`);
-      send(`event: hello\ndata: ${JSON.stringify({ build: BUILD })}\n\n`);
-      if (reviewId !== null && state.watcher) {
-        unwatch = state.watcher.subscribe(reviewId, (event, data) => send(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
-      }
-      timer = setInterval(() => {
-        const rows = state.ctx.store.db
-          .query<{ seq: number; type: string; role: string; thread_id: number | null }, [number, number, number]>(
-            "SELECT seq, type, role, thread_id FROM events WHERE seq > ? AND (? = 0 OR review_id = ?) ORDER BY seq LIMIT 200",
-          )
-          .all(last, reviewId ?? 0, reviewId ?? 0);
-        if (rows.length > 0) {
-          last = rows[rows.length - 1]!.seq;
-          send(`id: ${last}\nevent: change\ndata: ${JSON.stringify({ seq: last, events: rows })}\n\n`);
-        }
-        const now = state.ctx.store.changeCounts(reviewId);
-        const kinds = [...now].filter(([kind, n]) => n > (counts.get(kind) ?? 0)).map(([kind]) => kind);
-        counts = now;
-        if (kinds.length > 0) send(`event: store\ndata: ${JSON.stringify({ kinds })}\n\n`);
-      }, 300);
+      stopEvents = followEvents(state, reviewId, since, (event, data, id) => send(`${id === undefined ? "" : `id: ${id}\n`}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
       ping = setInterval(() => send(`: ping\n\n`), 15_000);
-      req.signal.addEventListener("abort", () => {
+      abort = () => {
         cleanup();
         try {
           controller.close();
         } catch {
           return;
         }
-      });
+      };
+      req.signal.addEventListener("abort", abort, { once: true });
+      if (req.signal.aborted) abort();
     },
-    cancel() {
-      clearInterval(timer);
-      clearInterval(ping);
-      unwatch?.();
-    },
+    cancel: cleanup,
   });
   return new Response(stream, {
     headers: { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" },
@@ -154,7 +165,7 @@ export async function serve(ctx: Ctx, opts: ServeOptions): Promise<number> {
 
   // Open tabs reconnect to the port they came from, so a restarted server takes the same one when it is free.
   const saved = opts.port ? null : savedPort(ctx.repo.commonDir);
-  const listen = (at: number) => Bun.serve({
+  const listen = (at: number) => Bun.serve<LiveSocket>({
     hostname: "127.0.0.1",
     port: at,
     development: false,
@@ -162,6 +173,17 @@ export async function serve(ctx: Ctx, opts: ServeOptions): Promise<number> {
     routes: {
       "/": index,
       "/diffs-worker.js": new Response(diffsWorker, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "max-age=86400" } }),
+    },
+    websocket: {
+      open(ws) {
+        ws.data.stop = followEvents(state, ws.data.review, ws.data.since, (event, data) => {
+          ws.send(JSON.stringify({ event, data }));
+        });
+      },
+      message() {},
+      close(ws) {
+        ws.data.stop?.();
+      },
     },
     async fetch(req, srv) {
       const url = new URL(req.url);
@@ -179,10 +201,16 @@ export async function serve(ctx: Ctx, opts: ServeOptions): Promise<number> {
         return Response.json({ ok: true }, { headers: { "set-cookie": `${cookie}=${token}; Path=/api/session; HttpOnly; SameSite=Strict` } });
       }
       if (url.pathname === "/api/events") {
-        srv.timeout(req, 0);
         const reviewId = url.searchParams.get("review");
         const lastId = req.headers.get("last-event-id") ?? url.searchParams.get("since");
-        return eventStream(state, req, reviewId ? Number(reviewId) : null, lastId ? Number(lastId) : ctx.store.maxSeq());
+        const review = reviewId ? Number(reviewId) : null;
+        const since = lastId ? Number(lastId) : ctx.store.maxSeq();
+        if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
+          if (srv.upgrade(req, { data: { review, since } })) return;
+          return new Response("websocket upgrade failed", { status: 400 });
+        }
+        srv.timeout(req, 0);
+        return eventStream(state, req, review, since);
       }
       return handleApi(state, req, url);
     },

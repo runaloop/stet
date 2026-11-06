@@ -71,6 +71,19 @@ test("a wrong token of the right length, or with non-ASCII characters, is a 401,
   expect((await fetch(`${base}/api/reviews?token=${token}`)).status).toBe(200);
 });
 
+test("the WebSocket upgrade requires the token and rejects a foreign Origin even with a valid token", async () => {
+  // DOM's constructor type omits the headers Bun's WebSocket client accepts.
+  const Socket = WebSocket as unknown as new (url: string, options: Bun.WebSocketOptions) => WebSocket;
+  const connect = (given: string, origin: string) => new Promise<boolean>((resolve) => {
+    const ws = new Socket(`${base.replace("http:", "ws:")}/api/events?token=${given}&review=1`, { headers: { origin } });
+    ws.addEventListener("open", () => { ws.close(); resolve(true); });
+    ws.addEventListener("error", () => resolve(false));
+  });
+  expect(await connect("bad", base)).toBe(false);
+  expect(await connect(token, "http://evil.example")).toBe(false);
+  expect(await connect(token, base)).toBe(true);
+});
+
 test("the Editor button runs STET_EDITOR without a shell: a file named $(touch pwned).kt stays a name", async () => {
   const r = await api("/api/actions/editor.open?review=1", { method: "POST", body: JSON.stringify({ thread: threadId }) });
   expect(await r.json()).toMatchObject({ launched: true });
