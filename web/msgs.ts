@@ -1,9 +1,23 @@
 import { effect, signal } from "@preact/signals";
 import type { CommentDto, ThreadDetail } from "../src/core/types.ts";
-import { currentThreadId } from "./state.ts";
+import { currentThreadId, notify, reviewId, routeHash } from "./state.ts";
 import { foldedByDefault, isLong, readingOrder } from "../src/ui/msgs.ts";
 
 export { isLong };
+
+export function commentUrl(thread: number, comment: number): string {
+  return `${location.origin}${location.pathname}${routeHash({ name: "thread", id: thread, comment, review: reviewId.peek() ?? undefined })}`;
+}
+
+export async function copyCommentUrl(thread: number, comment: number): Promise<void> {
+  const url = commentUrl(thread, comment);
+  try {
+    await navigator.clipboard.writeText(url);
+    notify(`copied a link to message #${comment}`);
+  } catch {
+    notify(url);
+  }
+}
 
 /** The message under the cursor. Null until you move it there (keys or a click on the message). */
 export const msgCursor = signal<number | null>(null);
@@ -148,16 +162,15 @@ function scrollToNews(): void {
 let settling: (() => void) | null = null;
 
 /**
- * When a thread opens: the first new message under a "new" line, else the last one with the reply box.
  * The messages keep growing for a moment after the first paint, so the scroll is repeated on every resize
  * until you scroll, click or press a key, or for 1.5 s.
  */
-export function openAtNews(): void {
+function settleScroll(scroll: () => void): () => void {
   settling?.();
   const col = column();
   const conv = col?.querySelector(".conversation");
-  if (!col || !conv) return;
-  const ro = new ResizeObserver(() => scrollToNews());
+  if (!col || !conv) return () => {};
+  const ro = new ResizeObserver(scroll);
   const stop = () => {
     ro.disconnect();
     clearTimeout(timer);
@@ -170,7 +183,23 @@ export function openAtNews(): void {
   window.addEventListener("keydown", stop, true);
   settling = stop;
   ro.observe(conv);
-  scrollToNews();
+  scroll();
+  return stop;
+}
+
+/** A thread without a message target opens at the first new message, else at the reply box. */
+export function openAtNews(): () => void {
+  return settleScroll(scrollToNews);
+}
+
+/** A permalink opens the whole message and keeps it in view while its content lays out. */
+export function openAtComment(id: number): () => void {
+  msgOpen.value = new Map(msgOpen.peek()).set(id, true);
+  msgCursor.value = id;
+  return settleScroll(() => {
+    const el = nodes().find((el) => idOf(el) === id);
+    if (el) reveal(el);
+  });
 }
 
 export function jumpToNew(): void {

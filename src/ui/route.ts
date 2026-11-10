@@ -1,7 +1,7 @@
 export type Route = (
   | { name: "home" }
   | { name: "overview" }
-  | { name: "thread"; id: number }
+  | { name: "thread"; id: number; comment?: number }
   | { name: "compare"; from: string; to: string; file?: string; line?: number; end?: number; side?: "old" | "new"; guide?: true }
   | { name: "drafts" }
 ) & { review?: number };
@@ -14,7 +14,11 @@ export function parseHash(hash: string): Route {
   const review = Number(params.get("review")) || undefined;
   const withReview = <R extends Route>(r: R): R => (review ? { ...r, review } : r);
   let m = /^\/thread\/(\d+)/.exec(h);
-  if (m) return withReview({ name: "thread", id: Number(m[1]) });
+  if (m) {
+    const comment = params.get("comment") ?? "";
+    const id = /^[1-9]\d*$/.test(comment) ? Number(comment) : 0;
+    return withReview({ name: "thread", id: Number(m[1]), ...(Number.isSafeInteger(id) && id > 0 ? { comment: id } : {}) });
+  }
   m = /^\/compare\/([^/.]+)\.\.([^/]+)/.exec(h);
   if (m) {
     const r: Route = { name: "compare", from: decodeURIComponent(m[1]!), to: decodeURIComponent(m[2]!) };
@@ -43,6 +47,7 @@ export function routeHash(r: Route, review?: number | null): string {
   switch (r.name) {
     case "thread":
       path = `/thread/${r.id}`;
+      if (r.comment) params.set("comment", String(r.comment));
       break;
     case "compare":
       path = `/compare/${encodeURIComponent(r.from)}..${encodeURIComponent(r.to)}`;

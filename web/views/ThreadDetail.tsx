@@ -38,7 +38,7 @@ import { usePlacements } from "../components/usePlacements.ts";
 import { apply, takeSpot } from "../jumps.ts";
 import { swapped, toggleSwap } from "../layout.ts";
 import { transition } from "../transition.ts";
-import { latchNew, openAtNews } from "../msgs.ts";
+import { latchNew, openAtComment, openAtNews } from "../msgs.ts";
 import { stepThread, stepUnread } from "../../src/ui/nav.ts";
 import { contextPatch, filePatch, regionPatch } from "../../src/ui/region.ts";
 import { snapshot, visibleBox, type Fade } from "../lib/fade.ts";
@@ -65,6 +65,7 @@ import {
   reloadAll,
   replyQuote,
   reviewId,
+  route,
   selectedStep,
   threads,
   wrap,
@@ -739,6 +740,9 @@ export function ThreadDetailView({ id }: { id: number }) {
   const rid = reviewId.value;
   const root = useRef<HTMLDivElement>(null);
   const msgs = useRef<HTMLDivElement>(null);
+  const r = route.value;
+  const comment = r.name === "thread" && r.id === id ? r.comment : undefined;
+  const hasComment = comment !== undefined && !!d?.comments.some((c) => c.id === comment);
 
   useEffect(() => {
     compareFocus.value = id;
@@ -750,8 +754,21 @@ export function ThreadDetailView({ id }: { id: number }) {
     latchNew(d);
     const spot = takeSpot(location.hash);
     if (spot) apply(spot);
-    if (!spot || d.comments.some((c) => c.unread)) requestAnimationFrame(() => requestAnimationFrame(openAtNews));
-  }, [d?.thread.id]);
+    if (comment !== undefined && !hasComment) notify(`message #${comment} is not available in this thread`, "error");
+    let second = 0;
+    let stop: (() => void) | undefined;
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => {
+        if (comment !== undefined && hasComment) stop = openAtComment(comment);
+        else if (!spot || d.comments.some((c) => c.unread)) stop = openAtNews();
+      });
+    });
+    return () => {
+      cancelAnimationFrame(first);
+      cancelAnimationFrame(second);
+      stop?.();
+    };
+  }, [id, d?.thread.id, comment, hasComment]);
 
   useEffect(() => {
     if (!d || d.thread.id !== id || !d.thread.unread || rid === null) return;

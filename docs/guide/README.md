@@ -246,6 +246,9 @@ was taken on top of that commit, with the working tree or the staged changes.
 A thread opens where you stopped reading. Long messages you have read fold, and keys move a cursor over
 the messages the way `j` / `k` move one over the diff.
 
+To point someone to a particular reply, press **Copy link** in that message's header. Opening the link
+unfolds and highlights the message and scrolls to it. The timestamp is a link to the same message.
+
 ![A thread opens at the first new message](conversation-1.png)
 
 ![The message cursor and a folded message](conversation-2.png)

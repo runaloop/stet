@@ -187,6 +187,17 @@ describe("the thread's code block", () => {
 });
 
 describe("routes", () => {
+  test("message links round-trip their thread, comment and review, without an access token", () => {
+    const r: Route = { name: "thread", id: 8, comment: 42, review: 2 };
+    expect(routeHash(r)).toBe("#/thread/8?comment=42&review=2");
+    expect(parseHash(routeHash(r))).toEqual(r);
+    expect(takeToken(`${routeHash(r)}&token=ab12`)).toEqual({ token: "ab12", hash: routeHash(r) });
+    expect(sameView(r, { ...r, comment: 43 })).toBe(false);
+    for (const comment of ["0", "-1", "1.5", "2e2", "42x", "9007199254740992", ""]) {
+      expect(parseHash(`#/thread/8?comment=${comment}&review=2`)).toEqual({ name: "thread", id: 8, review: 2 });
+    }
+  });
+
   test("a compare link carries the file, the line and the side; the review only when asked", () => {
     const r = { name: "compare" as const, from: "1", to: "now", file: "src/a b.kt", line: 40, side: "old" as const };
     expect(routeHash(r)).toBe("#/compare/1..now?file=src%2Fa+b.kt&line=40&side=old");

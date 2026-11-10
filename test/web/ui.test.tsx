@@ -44,6 +44,46 @@ function key(k: string): boolean {
 }
 
 describe("thread tree", () => {
+  for (const previous of ["files", "search"] as const) {
+    test(`opening a thread from the tree replaces its remembered ${previous} tab with Threads`, async () => {
+      const { sideTab } = await import("../../web/compare.ts");
+      const savedRoute = state.route.peek();
+      state.threads.value = [thread({ id: 3, path: "src/a.kt" })];
+      state.route.value = { name: "thread", id: 3 };
+      sideTab.value = previous;
+      state.route.value = { name: "compare", from: "base", to: "1" };
+      sideTab.value = "threads";
+      const host = document.createElement("div");
+      document.body.appendChild(host);
+      try {
+        render(<ThreadTree />, host);
+        const a = host.querySelector<HTMLAnchorElement>(".thread-row a")!;
+        const modified = new MouseEvent("click", { button: 0, ctrlKey: true, bubbles: true, cancelable: true });
+        a.dispatchEvent(modified);
+        expect(modified.defaultPrevented).toBe(false);
+        expect(state.route.value.name).toBe("compare");
+        state.route.value = { name: "thread", id: 3 };
+        expect(sideTab.value as string).toBe(previous);
+        state.route.value = { name: "compare", from: "base", to: "1" };
+
+        a.click();
+        // The app updates the route from the hashchange event.
+        state.route.value = parseHash(location.hash);
+        expect(state.route.value).toEqual({ name: "thread", id: 3 });
+        expect(sideTab.value).toBe("threads");
+        state.route.value = { name: "compare", from: "base", to: "1" };
+        expect(sideTab.value).toBe("threads");
+      } finally {
+        render(null, host);
+        host.remove();
+        state.route.value = { name: "thread", id: 3 };
+        sideTab.value = "threads";
+        state.route.value = savedRoute;
+      }
+      await tick();
+    });
+  }
+
   test("lists threads grouped by file with badges, and opens one on click", async () => {
     state.threads.value = [
       thread({ id: 1, path: "src/a.kt", range: { start: 10, end: 12 }, unread: true, needsReply: "reviewer", title: "Bug here" }),
@@ -105,6 +145,72 @@ describe("thread detail", () => {
     expect(key("x")).toBe(true);
     expect(calls).toEqual(["POST /api/threads/7/resolve?review=1"]);
     render(null, host);
+  });
+
+  test("Copy link copies a message permalink with its review; its timestamp is a real link", async () => {
+    const copied: string[] = [];
+    const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", { value: { writeText: async (text: string) => void copied.push(text) }, configurable: true });
+    state.route.value = { name: "thread", id: 7 };
+    state.detail.value = detail;
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    try {
+      render(<ThreadDetailView id={7} />, host);
+      await tick();
+      const msg = host.querySelector('.msg[data-id="2"]')!;
+      const timestamp = msg.querySelector<HTMLAnchorElement>("a.when")!;
+      expect(parseHash(timestamp.getAttribute("href")!)).toEqual({ name: "thread", id: 7, comment: 2, review: 1 });
+      const modified = new MouseEvent("click", { button: 0, ctrlKey: true, bubbles: true, cancelable: true });
+      timestamp.dispatchEvent(modified);
+      expect(modified.defaultPrevented).toBe(false);
+      const hash = location.hash;
+      msg.querySelector<HTMLButtonElement>(".copy-comment-link")!.click();
+      await tick();
+      expect(copied).toEqual(["http://127.0.0.1:4000/#/thread/7?comment=2&review=1"]);
+      expect(location.hash).toBe(hash);
+      expect(state.toast.value?.text).toBe("copied a link to message #2");
+      Object.defineProperty(navigator, "clipboard", { value: { writeText: async () => { throw Error("denied"); } }, configurable: true });
+      msg.querySelector<HTMLButtonElement>(".copy-comment-link")!.click();
+      await tick();
+      expect(state.toast.value?.text).toBe(copied[0]);
+    } finally {
+      render(null, host);
+      host.remove();
+      if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard);
+      else Reflect.deleteProperty(navigator, "clipboard");
+    }
+  });
+
+  test("a message link waits for the thread, unfolds a nested old reply and follows same-thread link changes", async () => {
+    state.route.value = { name: "thread", id: 7, comment: 2 };
+    state.detail.value = null;
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    try {
+      render(<ThreadDetailView id={7} />, host);
+      await tick();
+      expect(host.textContent).toContain("loading thread #7");
+      state.detail.value = { ...detail, comments: detail.comments.map((c) => ({ ...c, unread: c.id === 3, ...(c.id === 2 ? { body: "An old reply\n".repeat(20) } : {}) })) };
+      await tick(100);
+      const msg = host.querySelector('.msg[data-id="2"]')!;
+      expect(msg.classList.contains("linked")).toBe(true);
+      expect(msg.classList.contains("at-cursor")).toBe(true);
+      expect(msg.classList.contains("folded")).toBe(false);
+      state.route.value = { name: "thread", id: 7, comment: 1 };
+      await tick(100);
+      expect(host.querySelectorAll(".msg.linked")).toHaveLength(1);
+      expect(host.querySelector(".msg.linked")!.getAttribute("data-id")).toBe("1");
+      state.route.value = { name: "thread", id: 7, comment: 999 };
+      await tick(100);
+      expect(host.querySelector(".msg.linked")).toBeNull();
+      expect(state.toast.value?.text).toBe("message #999 is not available in this thread");
+    } finally {
+      render(null, host);
+      host.remove();
+      state.route.value = { name: "thread", id: 7 };
+      state.detail.value = detail;
+    }
   });
 
   test("the conversation goes left of the code and back, remembered with its width; Space u L resets both", async () => {

@@ -594,6 +594,40 @@ try {
     await b.send("browsingContext.activate", { context: mainContext }).catch(() => null);
     check("a link opened in a new tab works without the token in the URL", opened === `#${t100}`, opened);
 
+    const sidebarCompare = await b.eval("location.hash");
+    await b.eval(`location.hash = "#/thread/${t100}"; true`);
+    await waitFor(`document.querySelector(".detail-head .tid")?.textContent === "#${t100}"`, 8000);
+    await sideTab("Files");
+    await b.eval(`document.querySelector('nav a[href*="/compare/"]').click(); true`);
+    await waitFor(`location.hash.startsWith("#/compare/") && !!document.querySelector(".range-title")`, 8000);
+    await sideTab("Threads");
+    await waitFor(`!!document.querySelector(".thread-row a")`, 3000);
+    const pickedThread = await b.eval(`document.querySelector(".thread-row a").getAttribute("href")`);
+    await click(".thread-row a");
+    await waitFor(`location.hash === ${JSON.stringify(pickedThread)} && !!document.querySelector(".thread-msgs")`, 8000);
+    const pickedTab = await b.eval(`document.querySelector(".side-tabs .on")?.textContent`);
+    await b.traverse(-1);
+    await waitFor(`location.hash.startsWith("#/compare/") && !!document.querySelector(".range-title")`, 8000);
+    const backTab = await b.eval(`document.querySelector(".side-tabs .on")?.textContent`);
+    await b.traverse(1);
+    await waitFor(`location.hash === ${JSON.stringify(pickedThread)} && !!document.querySelector(".thread-msgs")`, 8000);
+    const forwardTab = await b.eval(`document.querySelector(".side-tabs .on")?.textContent`);
+    check("picking a thread from Threads keeps its tree visible after a previous Files choice, including Back and Forward", pickedTab === "Threads" && backTab === "Threads" && forwardTab === "Threads", { pickedTab, backTab, forwardTab });
+    await sideTab("Files");
+    await b.traverse(-1);
+    await waitFor(`location.hash.startsWith("#/compare/") && !!document.querySelector(".range-title")`, 8000);
+    await b.traverse(1);
+    await waitFor(`location.hash === ${JSON.stringify(pickedThread)} && !!document.querySelector(".thread-msgs")`, 8000);
+    const explicitTab = await b.eval(`document.querySelector(".side-tabs .on")?.textContent`);
+    check("an explicit Files choice on the thread still survives browser Back and Forward", explicitTab === "Files", { explicitTab });
+    await b.traverse(-1);
+    await waitFor(`location.hash.startsWith("#/compare/") && !!document.querySelector(".range-title")`, 8000);
+    if (await b.eval("location.hash") !== sidebarCompare) {
+      await b.eval(`location.hash = ${JSON.stringify(sidebarCompare)}; true`);
+      await waitFor(`!!document.querySelector(".codeview-host diffs-container")`, 8000);
+    }
+    await sideTab("Files");
+
     const boxAt = await rect(".file-row input[type=checkbox]");
     const scrollBefore = await b.eval(`document.querySelector(".codeview-host").scrollTop`);
     if (boxAt) await pointer([{ type: "pointerMove", x: boxAt.x, y: boxAt.y }, { type: "pointerDown", button: 0 }, { type: "pointerUp", button: 0 }]);
@@ -1029,6 +1063,47 @@ try {
       { atLast, atFirst, atSecond, unfolded, replyingTo },
     );
     await b.screenshot(join(OUT, "shots", "ui-check-conversation.png"));
+
+    const oldMessage = `.msg[data-id="${longOld}"]`;
+    await b.eval(`document.querySelector(${JSON.stringify(oldMessage)}).scrollIntoView({ block: "start" }); true`);
+    await click(`${oldMessage} .copy-comment-link`);
+    const messageUrl = await clipboard();
+    const expectedMessageUrl = `${origin}#/thread/${talk}?comment=${longOld}&review=1`;
+    check("Copy link copies the exact message and review, without the access token", messageUrl === expectedMessageUrl, { messageUrl, expectedMessageUrl });
+    const messageHome = b.context;
+    const messageTab = await b.send("browsingContext.create", { type: "tab" });
+    try {
+      b.context = messageTab.context;
+      await b.send("browsingContext.activate", { context: messageTab.context });
+      await b.viewport(1600, 800);
+      await b.navigate(messageUrl);
+      await waitFor(`document.querySelector(${JSON.stringify(`${oldMessage}.linked:not(.folded)`)}).classList.contains("at-cursor")`, 10000);
+      await sleep(1800);
+      const messageLanding = await b.eval(`(() => { const m = document.querySelector(${JSON.stringify(oldMessage)}); const r = m.getBoundingClientRect(); const h = document.querySelector('.msgs-head').getBoundingClientRect(); return { linked: m.classList.contains('linked'), folded: m.classList.contains('folded'), top: Math.round(r.top), head: Math.round(h.bottom), count: document.querySelectorAll('.msg.linked').length }; })()`);
+      check("a message permalink in a new tab unfolds the old reply, highlights it and stays there after the new-message scroll settles", messageLanding.linked && !messageLanding.folded && messageLanding.count === 1 && messageLanding.top >= messageLanding.head - 2 && messageLanding.top < messageLanding.head + 100, messageLanding);
+      await b.screenshot(join(OUT, "shots", "ui-check-message-link.png"));
+      await b.eval(`document.querySelector('.msg[data-id="${firstNewId}"] a.when').click(); true`);
+      await waitFor(`document.querySelector('.msg[data-id="${firstNewId}"].linked.at-cursor')`, 5000);
+      await b.traverse(-1);
+      const messageBack = await waitFor(`document.querySelector(${JSON.stringify(`${oldMessage}.linked.at-cursor`)})?.dataset.id ?? null`, 5000);
+      await b.traverse(1);
+      const messageForward = await waitFor(`document.querySelector('.msg[data-id="${firstNewId}"].linked.at-cursor')?.dataset.id ?? null`, 5000);
+      check("timestamps navigate between messages in the same thread; browser Back and Forward restore their targets", messageBack === String(longOld) && messageForward === String(firstNewId), { messageBack, messageForward });
+      await b.viewport(780, 900);
+      await b.navigate(messageUrl);
+      await waitFor(`document.querySelector(${JSON.stringify(`${oldMessage}.linked.at-cursor:not(.folded)`)})`, 10000);
+      await sleep(1800);
+      const narrowMessage = await b.eval(`(() => { const r = document.querySelector(${JSON.stringify(oldMessage)}).getBoundingClientRect(); return { top: Math.round(r.top), height: innerHeight }; })()`);
+      check("a message permalink scrolls into view on a narrow page too", narrowMessage.top >= 0 && narrowMessage.top < narrowMessage.height - 100, narrowMessage);
+      await b.eval(`location.hash = "#/thread/${talk}?comment=9007199254740991&review=1"; true`);
+      const missingMessage = await waitFor(`document.querySelector('.toast.error')?.textContent.includes('is not available in this thread') && !!document.querySelector('.thread-msgs') && !document.querySelector('.msg.linked')`, 5000);
+      check("a missing message permalink explains the missing target and keeps the thread readable", missingMessage === true, { missingMessage });
+    } finally {
+      b.context = messageHome;
+      await b.send("browsingContext.close", { context: messageTab.context });
+      await b.send("browsingContext.activate", { context: messageHome });
+    }
+
     await b.viewport(1400, 900);
     const injected = await b.eval(`({ pwned: String(window.__pwned ?? "none"), imgs: document.querySelectorAll("img").length + [...document.querySelectorAll("diffs-container")].reduce((n, c) => n + c.shadowRoot.querySelectorAll("img").length, 0), csp: window.__csp })`);
     check("HTML in file names and comments renders as text, and the page breaks no CSP rule", injected.pwned === "none" && injected.imgs === 0 && injected.csp.length === 0, injected);

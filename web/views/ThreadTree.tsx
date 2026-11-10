@@ -1,12 +1,13 @@
 import type { ThreadSummary } from "../../src/core/types.ts";
 import { Badge, ThreadBadges, whereText } from "../components/Bits.tsx";
 import { lineOf } from "../../src/ui/tree.ts";
+import { openTreeThread } from "../compare.ts";
 import { currentThreadId, filters, groups, link, setFilters, threads, versions } from "../state.ts";
 
 function ThreadRow({ t, active }: { t: ThreadSummary; active: boolean }) {
   return (
     <li class={`thread-row${active ? " active" : ""}${t.unread ? " unread" : ""}${t.status === "resolved" ? " resolved" : ""}`}>
-      <a {...link({ name: "thread", id: t.id })}>
+      <a {...link({ name: "thread", id: t.id }, () => openTreeThread(t.id))}>
         <div class="row-top">
           <span class={`dot${t.unread ? " on" : ""}`} title={t.unread ? "new since you last looked" : ""} />
           <span class="tid">{t.status === "resolved" ? <span class="check" title="resolved">✓</span> : null}#{t.id}</span>

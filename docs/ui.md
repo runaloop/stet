@@ -277,6 +277,8 @@ The side panel has three tabs on the Changes page and on a thread:
 
 The Changes page opens on the tab you last picked, except that a review with no open thread and no drafts
 opens on Files instead of an empty Threads tab, on load and when you switch reviews in the header.
+Picking a thread from the Threads tree keeps Threads visible on the thread page, even if that page
+previously showed Files or Search.
 
 ## Thread page
 
@@ -311,6 +313,10 @@ deletes links as well: it opens as it last was (the message's code when that has
 does, else the base), marked "the branch deletes this file". A name that several files have opens the file finder with
 the name typed in. A card that has no room under its link opens above it. The agent's and your messages have their
 own colours.
+
+Each message has **Copy link** in its header. The link includes the review, thread and message, opens
+with that message unfolded, scrolls to it and highlights it. The timestamp is also a link to the message
+and can be opened in a new tab. A missing message leaves the thread open with an explanatory notice.
 
 **Resolve with message** next to **Resolve** (or `Space r x`) closes a thread with your last word to the agent, for
 when it only has to go ahead ("yes, do it as you wrote in docs/x.md"). The box under the conversation saves the message

@@ -2,8 +2,8 @@ import type { ComponentChild } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import type { CommentDto, ThreadDetail, ThreadEventDto } from "../../src/core/types.ts";
 import { api } from "../api.ts";
-import { guard, reloadAll, reviewId, selectedStep } from "../state.ts";
-import { firstNew, isFolded, isLong, jumpToNew, msgCursor, msgOpen, newMark, replyTo } from "../msgs.ts";
+import { guard, link, reloadAll, reviewId, route, selectedStep } from "../state.ts";
+import { copyCommentUrl, firstNew, isFolded, isLong, jumpToNew, msgCursor, msgOpen, newMark, replyTo } from "../msgs.ts";
 import { ago, Badge, Body, IntentBadge, Kbd } from "./Bits.tsx";
 import { Composer } from "./Composer.tsx";
 import { FileRefLink } from "./FileRef.tsx";
@@ -24,6 +24,8 @@ function CommentNode({ c, childrenOf, detail, depth, newId }: { c: CommentDto; c
   const step = detail.timeline[c.step];
   const kids = childrenOf.get(c.id) ?? [];
   const rid = reviewId.value!;
+  const r = route.value;
+  const linked = r.name === "thread" && r.id === detail.thread.id && r.comment === c.id;
   const own = c.role === "reviewer";
   const since = c.role === "agent" && c.intent === "fixed" ? unchangedSince(detail, c) : null;
   const ask = replyTo.value;
@@ -39,7 +41,7 @@ function CommentNode({ c, childrenOf, detail, depth, newId }: { c: CommentDto; c
       {c.id === newId ? <div class="new-line">new</div> : null}
       <div class={`comment depth-${Math.min(depth, 6)} role-${c.role}${c.draft ? " is-draft" : ""}`}>
         <div
-          class={`msg${msgCursor.value === c.id ? " at-cursor" : ""}${folded ? " folded" : ""}`}
+          class={`msg${msgCursor.value === c.id ? " at-cursor" : ""}${linked ? " linked" : ""}${folded ? " folded" : ""}`}
           data-id={c.id}
           onMouseDown={(e) => {
             if (!(e.target as HTMLElement).closest("a, button, textarea, input, select")) msgCursor.value = c.id;
@@ -62,8 +64,9 @@ function CommentNode({ c, childrenOf, detail, depth, newId }: { c: CommentDto; c
                 @{step.label}
               </button>
             ) : null}
-            <span class="when" title={c.createdAt}>{ago(c.createdAt)}</span>
+            <a class="when" title={c.createdAt} {...link({ name: "thread", id: detail.thread.id, comment: c.id, review: rid })}>{ago(c.createdAt)}</a>
             <span class="spacer" />
+            <button class="link copy-comment-link" title="copy a link to this message" onClick={() => void copyCommentUrl(detail.thread.id, c.id)}>Copy link</button>
             {c.draft && own ? (
               <>
                 <button class="link" onClick={() => setEditing(!editing)}>edit</button>

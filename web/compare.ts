@@ -13,7 +13,7 @@ import { compileQuery, diffRows, flatHits, matchRanges, searchDiff, type Hit, ty
 import { clampStep } from "../src/ui/timeline.ts";
 import * as ui from "../src/ui/compare.ts";
 import type { FileRow, GrepHit } from "../src/ui/compare.ts";
-import { compareFocus, detail, drafts, fileOrder, guard, loadedReview, markReviewed, noteJump, notify, reviewedCursor, reviewId, route, selectedStep, setting, showResolved, testGlobs, threads, versions, viewedKeys } from "./state.ts";
+import { compareFocus, detail, drafts, fileOrder, guard, loadedReview, markReviewed, navigate, noteJump, notify, reviewedCursor, reviewId, route, selectedStep, setting, showResolved, testGlobs, threads, versions, viewedKeys } from "./state.ts";
 
 export type { FileRow, GrepHit };
 
@@ -141,6 +141,12 @@ export const sideTab = {
     sideTabs.value = { ...sideTabs.value, [tabPage()]: t };
   },
 };
+
+/** A thread picked from the tree keeps that tree visible on the destination page. */
+export function openTreeThread(id: number): void {
+  sideTabs.value = { ...sideTabs.peek(), thread: "threads" };
+  navigate({ name: "thread", id });
+}
 
 let autoTab = false;
 
