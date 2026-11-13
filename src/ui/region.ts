@@ -15,6 +15,14 @@ const overlaps = (start: number, count: number, r: LineRange) => start <= r.end 
 
 type Hunk = ReturnType<typeof structuredPatch>["hunks"][number];
 
+/** All originally commented lines are on the removed side of a change, rather than surviving as context. */
+export function rangeWasReplaced(oldText: string, newText: string, range: LineRange): boolean {
+  const withoutIndent = (text: string) => text.split("\n").map((line) => line.trim()).join("\n");
+  return structuredPatch("source", "target", withoutIndent(oldText), withoutIndent(newText), undefined, undefined, { context: 0 }).hunks.some(
+    (h) => h.oldLines > 0 && h.newLines > 0 && h.oldStart <= range.start && h.oldStart + h.oldLines - 1 >= range.end,
+  );
+}
+
 function patchOf(oldPath: string, newPath: string, hunks: readonly Hunk[]): string {
   const body = hunks.map((h) => `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@\n${h.lines.join("\n")}`).join("\n");
   const rename = oldPath !== newPath ? `rename from ${oldPath}\nrename to ${newPath}\n` : "";

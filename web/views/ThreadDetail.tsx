@@ -40,7 +40,7 @@ import { swapped, toggleSwap } from "../layout.ts";
 import { transition } from "../transition.ts";
 import { latchNew, openAtComment, openAtNews } from "../msgs.ts";
 import { stepThread, stepUnread } from "../../src/ui/nav.ts";
-import { contextPatch, filePatch, regionPatch } from "../../src/ui/region.ts";
+import { contextPatch, filePatch, rangeWasReplaced, regionPatch } from "../../src/ui/region.ts";
 import { snapshot, visibleBox, type Fade } from "../lib/fade.ts";
 import { drawnLines } from "../lib/marks.ts";
 import { threadMarks, type ThreadLines } from "../../src/ui/marks.ts";
@@ -48,7 +48,7 @@ import { CHUNK, expansionOf, hydrateSubset, NOTHING, revealedPatch, textLines, w
 import { carry, type Cursor, type CursorFile, type LineRange, type NavBlock, type Seen, type Span } from "../../src/ui/cursor.ts";
 import type { Side } from "../../src/ui/search.ts";
 import { blocksInSight, linesInSight, stopElement } from "./anchor.ts";
-import { clampStep, diffPair } from "../../src/ui/timeline.ts";
+import { clampStep, diffPair, missingThreadCode } from "../../src/ui/timeline.ts";
 import { threadStrip } from "../../src/ui/strip.ts";
 import {
   codeMode,
@@ -78,10 +78,10 @@ const hoverProps = (id: number) => ({
   onMouseLeave: () => hoverThread.value === id && (hoverThread.value = null),
 });
 
-function Marker({ id, step }: { id: number; step: TimelineStepDto }) {
+function Marker({ id, step, historical = false }: { id: number; step: TimelineStepDto; historical?: boolean }) {
   return (
     <div class={`anno-focus thread-marker${spotted.value?.id === id ? " spot" : ""}`} {...hoverProps(id)}>
-      ▲ thread #{id} · {step.label} · <StateBadge state={step.state} label={step.index === 0 ? "written here" : step.state} />
+      ▲ thread #{id} · {step.label} · {historical ? <Badge tone="muted">historical location</Badge> : <StateBadge state={step.state} label={step.index === 0 ? "written here" : step.state} />}
     </div>
   );
 }
@@ -145,14 +145,21 @@ const halfScreen = (el: Element | null) => Math.min(innerHeight, el?.closest(".t
  * The thread's code between two steps, with the Changes page's layer for comments: the cursor and its keys while the
  * code has the focus, a click or + on a line, a selection, and the same box under the lines.
  */
-function CodeBlock({ d, from, to }: { d: Detail; from: TimelineStepDto; to: TimelineStepDto }) {
+function CodeBlock({ d, from, to, history }: { d: Detail; from: TimelineStepDto; to: TimelineStepDto; history?: "deleted" | "unlocated" }) {
   const single = from.index === to.index;
   const [scope, setScope] = useState<Scope>("region");
   const [more, setMore] = useState(0);
   const oldBlob = useBlob(from.range && !single ? from.sha : null, from.path);
   const newBlob = useBlob(to.range ? to.sha : null, to.path);
+  const original = d.timeline[0]!;
+  const needsOriginal = !history && to.index > 0 && to.state === "changed" && to.method !== "whitespace";
+  const originalBlob = useBlob(needsOriginal ? original.sha : null, original.path);
   const newText = newBlob === "loading" ? null : (newBlob?.contents ?? null);
   const oldText = single ? newText : oldBlob === "loading" ? null : (oldBlob?.contents ?? null);
+  const replaced = useMemo(() => !!(needsOriginal && original.range && originalBlob && originalBlob !== "loading" && originalBlob.contents !== null && newText !== null &&
+    rangeWasReplaced(originalBlob.contents, newText, original.range)), [needsOriginal, originalBlob, newText, original.range]);
+  const markerSide: Side = replaced && !single ? "deletions" : "additions";
+  const markerStep = replaced && !single ? from : to;
   const region = useMemo(
     () =>
       oldText !== null && newText !== null && from.path && to.path && to.range
@@ -342,12 +349,12 @@ function CodeBlock({ d, from, to }: { d: Detail; from: TimelineStepDto; to: Time
 
   // The thread's lines (its blocks, rendered) as drawn, for going back to them and for the button that does it.
   const rangeElements = (): Element[] => {
-    const range = to.range;
+    const range = replaced && !single ? from.range : replaced ? null : to.range;
     const host = body.current;
     if (!range || !host) return [];
     if (rendered) return [...host.querySelectorAll(`[data-threads~="${d.thread.id}"]`)];
     const code = host.querySelector("diffs-container");
-    return code ? drawnLines(code).filter((r) => r.at.some(([s, n]) => s === "additions" && n >= range.start && n <= range.end)).map((r) => r.el) : [];
+    return code ? drawnLines(code).filter((r) => r.at.some(([s, n]) => s === markerSide && n >= range.start && n <= range.end)).map((r) => r.el) : [];
   };
   const backAfterDraw = useRef(false);
   const back = (): boolean => {
@@ -365,7 +372,7 @@ function CodeBlock({ d, from, to }: { d: Detail; from: TimelineStepDto; to: Time
     const bottom = els[els.length - 1]!.getBoundingClientRect().bottom;
     const by = bottom - top > view.bottom - view.top - 80 ? top - view.top - 40 : (top + bottom - view.top - view.bottom) / 2;
     (box ?? window).scrollBy({ top: by, behavior: "instant" as ScrollBehavior });
-    const at = cursorSpace.peek().locate(to.path!, "additions", to.range!.start);
+    const at = cursorSpace.peek().locate(to.path!, markerSide, markerStep.range!.start);
     if (at) cursor.value = at;
     spotThread(d.thread.id);
     return true;
@@ -423,34 +430,27 @@ function CodeBlock({ d, from, to }: { d: Detail; from: TimelineStepDto; to: Time
   const othersKey = others.map((x) => `${x.threadId}:${x.range.start}-${x.range.end}`).join(",");
   const annotations = useMemo(
     (): { side: "additions" | "deletions"; lineNumber: number; metadata: Anno }[] => [
-      { side: "additions", lineNumber: toEnd, metadata: { kind: "marker", id: d.thread.id, state: "" } },
+      ...(replaced && single ? [] : [{ side: markerSide, lineNumber: markerStep.range?.end ?? toEnd, metadata: { kind: "marker" as const, id: d.thread.id, state: "" } }]),
       ...others.map((x) => ({ side: "additions" as const, lineNumber: x.range.end, metadata: { kind: "thread" as const, id: x.threadId, state: x.state as string } })),
       ...(mine ? [{ side: mineSide, lineNumber: hi(mine.range), metadata: { kind: "new" as const, id: 0, state: "" } }] : []),
     ],
-    [toEnd, mine, othersKey],
+    [toEnd, mine, othersKey, replaced, markerSide, markerStep],
   );
   const selected = useMemo(() => (mine ? { start: lo(mine.range), end: hi(mine.range), side: mineSide } : null), [mine]);
   const spot = spotted.value;
   const marks = useMemo(() => {
     const placed: ThreadLines[] = [
-      ...(to.range ? [{ threadId: d.thread.id, side: "additions" as const, range: to.range }] : []),
+      ...(to.range && !replaced ? [{ threadId: d.thread.id, side: "additions" as const, range: to.range }] : []),
       ...(!single && from.range ? [{ threadId: d.thread.id, side: "deletions" as const, range: from.range }] : []),
       ...others.map((x) => ({ threadId: x.threadId, side: "additions" as const, range: x.range })),
     ];
-    return threadMarks(placed, d.thread.id, spot);
-  }, [to.range?.start, to.range?.end, from.range?.start, from.range?.end, single, othersKey, spot?.id, spot?.flash]);
+    return [...threadMarks(placed, d.thread.id, spot), ...(history === "deleted" && to.range ? [{ side: "additions" as const, ...to.range, tag: "history-removed" }] : [])];
+  }, [to.range?.start, to.range?.end, from.range?.start, from.range?.end, single, othersKey, spot?.id, spot?.flash, replaced, history]);
   const layer = codeFocus.value && to.path ? cursorLayer.value.get(to.path) : undefined;
   const shownMarks = useMemo(() => (layer ? [...marks, ...layer] : marks), [marks, layer]);
 
-  if (!to.range || !to.path) {
-    return (
-      <>
-        <div class="code-label">At {to.label} this code is gone ({to.reason ?? "outdated"}). Below: as it was at {from.label}.</div>
-        {from.range ? <CodeBlock d={d} from={from} to={from} /> : null}
-      </>
-    );
-  }
-  if (newBlob === "loading" || (!single && oldBlob === "loading")) return <div class="note">loading…</div>;
+  if (!to.range || !to.path) return null;
+  if (newBlob === "loading" || (!single && oldBlob === "loading") || (needsOriginal && originalBlob === "loading")) return <div class="note">loading…</div>;
   if (newText === null) return <div class="note">{to.path} is not a text file at {to.label}.</div>;
 
   const restoreFrom = single && to.sha !== newest.sha ? restorable(to.label) : null;
@@ -494,16 +494,16 @@ function CodeBlock({ d, from, to }: { d: Detail; from: TimelineStepDto; to: Time
     marks: shownMarks,
     annotations,
     renderAnnotation: (a: { metadata: Anno }) =>
-      a.metadata.kind === "thread" ? <ThreadMini id={a.metadata.id} state={a.metadata.state} /> : a.metadata.kind === "new" && mine ? <PendingBox p={mine} /> : <Marker id={d.thread.id} step={to} />,
+      a.metadata.kind === "thread" ? <ThreadMini id={a.metadata.id} state={a.metadata.state} /> : a.metadata.kind === "new" && mine ? <PendingBox p={mine} /> : <Marker id={d.thread.id} step={markerStep} historical={!!history || replaced} />,
     onSelect,
     onLineClick,
   };
   const mdThreads: MdThread[] = [
-    { threadId: d.thread.id, side: "additions", range: to.range, state: to.state },
+    ...(!replaced ? [{ threadId: d.thread.id, side: "additions" as const, range: to.range, state: to.state }] : []),
     ...(!single && from.range ? [{ threadId: d.thread.id, side: "deletions" as const, range: from.range, state: from.state }] : []),
     ...others.map((x) => ({ threadId: x.threadId, side: "additions" as const, range: x.range, state: x.state })),
   ];
-  const cardOf = (x: MdThread) => (x.threadId !== d.thread.id ? <ThreadMini id={x.threadId} state={x.state} /> : x.side === "additions" ? <Marker id={d.thread.id} step={to} /> : null);
+  const cardOf = (x: MdThread) => (x.threadId !== d.thread.id ? <ThreadMini id={x.threadId} state={x.state} /> : x.side === markerSide ? <Marker id={d.thread.id} step={markerStep} historical={!!history || replaced} /> : null);
   const expand = (hunk: number, direction: "up" | "down" | "both", count: number | undefined) =>
     open(shared ? expansionOf(shared.hunks, textLines(newText).lines.length, hunk, direction, count ?? CHUNK) : null);
   const scopes: [Scope, string][] = [
@@ -513,6 +513,10 @@ function CodeBlock({ d, from, to }: { d: Detail; from: TimelineStepDto; to: Time
   ];
   return (
     <>
+      {replaced ? <div class="thread-code-notice replaced" role="status" data-code-state="replaced">
+        <strong>Original commented lines replaced at {to.label}.</strong>{" "}
+        {single ? <>This is their replacement. <button class="link" onClick={() => { diffBase.value = "then"; codeMode.value = "diff"; }}>Compare with the original code</button>.</> : <>The thread marker stays with the earlier code; the other side shows its replacement.</>}
+      </div> : null}
       <div class="code-label">
         <span>{label}</span>
         <span class="spacer" />
@@ -538,6 +542,10 @@ function CodeBlock({ d, from, to }: { d: Detail; from: TimelineStepDto; to: Time
           ))}
         </span>
         {md ? md.text.toggle({ rendered, onClick: toggle }) : null}
+      </div>
+      <div class={`thread-version-headings${single ? " single" : ""}`} aria-label="code versions">
+        {!single ? <span data-side="old">− {from.label} · {from.index === 0 ? "original commented code" : "earlier version"}</span> : null}
+        <span data-side={history || to.index === 0 ? "historical" : "new"}>{!single ? "+ " : ""}{to.label} · {history ? "historical code" : to.index === 0 ? "original commented code" : "selected version"}</span>
       </div>
       <div class="code-body" ref={body}>
       {rendered && md ? (
@@ -570,12 +578,30 @@ function CodeBlock({ d, from, to }: { d: Detail; from: TimelineStepDto; to: Time
   );
 }
 
+function MissingCode({ d, from, to }: { d: Detail; from: TimelineStepDto; to: TimelineStepDto }) {
+  const missing = missingThreadCode(d, to.index);
+  if (!missing) return null;
+  const source = from.range && from.path ? from : missing.previous;
+  return <>
+    <div class="thread-code-absent" data-code-state={missing.kind}>
+      <b>{to.label} · selected version</b>
+      <p>{missing.kind === "deleted" ? missing.at.reason === "file-deleted" ? "This file is absent from the selected version." : "The commented lines are absent from the selected version." : "There is no reliable location for this thread in the selected version."}</p>
+    </div>
+    {source.range && source.path ? <section class={`historical-code ${missing.kind}`} aria-label={`Historical code at ${source.label}`}>
+      <h4>History · {source.label} · {missing.kind === "deleted" ? "before deletion" : "earlier location"}</h4>
+      <p class="note">These line numbers belong to {source.label}, not {to.label}.</p>
+      <CodeBlock key={`${source.index}-${missing.kind}`} d={d} from={source} to={source} history={missing.kind} />
+    </section> : null}
+  </>;
+}
+
 function CodeArea({ d }: { d: Detail }) {
   const sel = clampStep(d, selectedStep.value);
   const mode = codeMode.value;
   const step = d.timeline[sel]!;
   const pair = diffPair(d, sel, diffBase.value);
   const first = d.timeline[0]!;
+  const missing = missingThreadCode(d, sel);
   const [from, to] = mode === "diff" && pair ? [pair.from, pair.to] : mode === "now" ? [step, step] : [first, first];
   const area = useRef<HTMLDivElement>(null);
   // A click or a focused field in the lines or the rendered text puts the keys on the code, one outside the code
@@ -596,6 +622,10 @@ function CodeArea({ d }: { d: Detail }) {
   const focused = codeFocus.value;
   return (
     <div class={`code-area${focused ? " code-focus" : ""}`} ref={area}>
+      {missing && !d.thread.region ? <div class={`thread-code-notice ${missing.kind}`} role="status" data-code-state={missing.kind}>
+        <strong>{missing.kind === "deleted" ? `${missing.at.reason === "file-deleted" ? "File" : "Commented lines"} deleted at ${missing.at.label}.` : `Cannot locate the commented code at ${step.label}.`}</strong>{" "}
+        {missing.kind === "unlocated" ? "Deletion is not confirmed. " : ""}{d.thread.status === "open" ? "The discussion is still open." : "The discussion is resolved."}
+      </div> : null}
       <div class="code-tabs">
         <div class="seg">
           {(["diff", "then", "now"] as const).map((m) => (
@@ -630,7 +660,12 @@ function CodeArea({ d }: { d: Detail }) {
           </>
         )}
       </div>
-      {d.thread.region ? <ThreadArea key={`${from.index}-${to.index}`} d={d} from={from} to={to} /> : <CodeBlock key={`${from.index}-${to.index}`} d={d} from={from} to={to} />}
+      {d.thread.region ? <ThreadArea key={`${from.index}-${to.index}`} d={d} from={from} to={to} /> : !to.range || !to.path
+        ? <MissingCode key={`${from.index}-${to.index}`} d={d} from={from} to={to} />
+        : missing ? <section class={`historical-code ${missing.kind}`} aria-label={`Historical code at ${to.label}`}>
+          <h4>History · {to.label}</h4>
+          <CodeBlock key={`${from.index}-${to.index}`} d={d} from={from} to={to} history={missing.kind} />
+        </section> : <CodeBlock key={`${from.index}-${to.index}`} d={d} from={from} to={to} />}
     </div>
   );
 }
@@ -724,7 +759,7 @@ function ThreadPlace({ d }: { d: Detail }) {
   return (
     <div class={`thread-place${spotted.value?.id === t.id ? " spot" : ""}`} {...hoverProps(t.id)}>
       <b>#{t.id}</b>
-      <span class="path" title={path}>{path.split("/").pop()}:{rangeText(t.anchor.range ?? t.range)}</span>
+      <span class="path" title={path}>{path.split("/").pop()}{t.anchor.range ? `:${rangeText(t.anchor.range)}` : ` · originally L${rangeText(t.range)} at ${d.timeline[0]!.label}`}</span>
       <span class="spacer" />
       {rangeAway.value ? (
         <button class="btn small to-code" title="the thread's lines in the code, marked" onClick={() => void showThreadCode()}>
@@ -796,7 +831,7 @@ export function ThreadDetailView({ id }: { id: number }) {
       <div class="detail-head">
         <h2>
           <span class="tid">#{t.id}</span> <span class="path">{t.anchor.path ?? t.path}</span>
-          <span class="line">{t.region ? ` · ${whereText(t)}` : `:${rangeText(t.anchor.range ?? t.range)}`}</span>
+          <span class="line">{t.region ? ` · ${whereText(t)}` : t.anchor.range ? `:${rangeText(t.anchor.range)}` : ` · originally L${rangeText(t.range)} at ${d.timeline[0]!.label}`}</span>
         </h2>
         <div class="head-badges">
           <ThreadBadges t={t} />

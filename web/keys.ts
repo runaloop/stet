@@ -33,7 +33,7 @@ import { stepFile, stepThread, stepUnread } from "../src/ui/nav.ts";
 import { commitPicker } from "./commits.ts";
 import { gitOpen } from "./components/GitState.tsx";
 import { edgeMsg, foldAllMsgs, foldMsg, halfPage, replyAtCursor, stepMsg } from "./msgs.ts";
-import { clampStep, diffPair } from "../src/ui/timeline.ts";
+import { clampStep, diffPair, missingThreadCode } from "../src/ui/timeline.ts";
 import { openBlame } from "./components/Blame.tsx";
 import { foldAllGuide, foldGuide, guideCursor, openGuideStep, scrollGuide, stepGuide } from "./components/Guide.tsx";
 import { guideAt, guideShown, toggleGuide } from "./guide.ts";
@@ -261,7 +261,10 @@ function blameThread(): boolean {
   const step = codeMode.value === "diff" && pair ? pair.to : codeMode.value === "now" ? d.timeline[sel]! : d.timeline[0]!;
   const exact = step.version !== null && step.label === `v${step.version}`;
   const at = step.kind === "now" || step.sha === status.value?.pinnedNow ? "now" : exact ? String(step.version) : null;
-  if (!step.path || !step.range) notify(`the thread's code is gone at ${step.label}`);
+  if (!step.path || !step.range) {
+    const missing = missingThreadCode(d, step.index);
+    notify(missing?.kind === "deleted" ? `the commented code was deleted at ${missing.at.label}` : `cannot locate the commented code at ${step.label}; deletion is not confirmed`);
+  }
   else if (!at) notify(`the thread was written on code between versions (${step.label}): blame goes over versions, pick a later step`);
   else
     openBlame({

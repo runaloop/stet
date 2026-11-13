@@ -18,7 +18,7 @@ export function StateBadge({ state, label }: { state: AnchorState; label?: strin
     ok: "the commented code is unchanged",
     moved: "same code, now at other lines",
     changed: "the commented code was edited",
-    outdated: "the commented code is gone",
+    outdated: "the commented code has no reliable location in this version; it may be deleted or no longer recognizable",
   };
   return <Badge tone={stateTone(state)} title={titles[state]}>{label ?? state}</Badge>;
 }

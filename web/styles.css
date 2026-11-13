@@ -190,6 +190,21 @@ body.resizing iframe, body.resizing diffs-container { pointer-events: none; }
 .code-host { max-height: 60vh; overflow: auto; }
 .anno { padding: 2px 8px; }
 .thread-marker { font: 12px var(--sans); color: var(--accent); padding: 2px 0; }
+.thread-code-notice { padding: 10px 12px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--warn) 10%, var(--bg)); }
+.thread-code-notice.deleted { border-left: 4px solid var(--bad); background: color-mix(in srgb, var(--bad) 10%, var(--bg)); }
+.thread-code-notice.replaced, .thread-code-notice.unlocated { border-left: 4px solid var(--warn); }
+.thread-version-headings { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); position: sticky; top: 0; z-index: 3; background: var(--bg-soft); border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 600; }
+.thread-version-headings.single { grid-template-columns: minmax(0, 1fr); }
+.thread-version-headings > span { padding: 8px 10px; }
+.thread-version-headings > [data-side="old"] { border-right: 1px solid var(--border); color: var(--bad); }
+.thread-version-headings > [data-side="new"] { color: var(--ok); }
+.thread-version-headings > [data-side="historical"] { color: var(--fg-soft); }
+.thread-code-absent { padding: 14px; background: var(--bg-soft); border-bottom: 1px solid var(--border); }
+.thread-code-absent p { margin: 6px 0 0; color: var(--fg-soft); }
+.historical-code { margin: 14px; border: 1px dashed var(--fg-soft); border-radius: var(--radius); background: var(--bg-soft); }
+.historical-code.deleted { border-color: var(--bad); }
+.historical-code h4 { margin: 10px 12px 4px; }
+.historical-code > .note { margin: 4px 12px 10px; }
 
 .conversation { margin-bottom: 12px; }
 .comment { border-left: 3px solid var(--border); padding: 7px 10px 8px 12px; margin: 8px 0; border-radius: 0 var(--radius) var(--radius) 0; }

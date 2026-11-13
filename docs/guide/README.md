@@ -15,6 +15,7 @@ Where to click, with arrows. The screenshots are taken on small demo repositorie
 - [Check the agent's claim without leaving the thread](#check-the-agents-claim-without-leaving-the-thread)
 - [Compare commits](#compare-commits)
 - [Long conversations](#long-conversations)
+- [Replaced and deleted code](#replaced-and-deleted-code)
 - [Files are ordered by kind](#files-are-ordered-by-kind)
 
 ## Navigation
@@ -252,6 +253,23 @@ unfolds and highlights the message and scrolls to it. The timestamp is a link to
 ![A thread opens at the first new message](conversation-1.png)
 
 ![The message cursor and a folded message](conversation-2.png)
+
+## Replaced and deleted code
+
+The versions above the code identify the earlier source and the selected version. A thread on replaced
+lines stays marked on the old side, so its replacement does not appear to be the originally commented code.
+
+![A replacement keeps the thread on the earlier side and names both versions](thread-history-replaced.png)
+
+Deleted code remains available in a separate **History** frame with its version and old line numbers.
+The selected version explicitly has no such code. Deleting a file or lines does not resolve its discussion.
+
+![Confirmed deletion has an empty selected version and an explicitly historical fragment](thread-history-deleted.png)
+
+When Stet cannot locate an anchor reliably, it says that deletion is not confirmed. The historical
+source stays available without a deletion claim.
+
+![A lost anchor is distinct from confirmed deletion](thread-history-unlocated.png)
 
 ## Files are ordered by kind
 

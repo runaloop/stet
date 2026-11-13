@@ -4,9 +4,9 @@ import { thread } from "../helpers/threads.ts";
 import { applyFilters, DEFAULT_FILTERS, landingTab, matchesFile } from "../../src/ui/filters.ts";
 import { compareOrder, stepFile, stepThread, stepUnread } from "../../src/ui/nav.ts";
 import { threadMarks } from "../../src/ui/marks.ts";
-import { filePatch, regionDiff, regionPatch } from "../../src/ui/region.ts";
+import { filePatch, rangeWasReplaced, regionDiff, regionPatch } from "../../src/ui/region.ts";
 import { parseHash, routeHash, sameView, takeToken, type Route } from "../../src/ui/route.ts";
-import { diffPair } from "../../src/ui/timeline.ts";
+import { diffPair, missingThreadCode } from "../../src/ui/timeline.ts";
 import { flatten, groupByFile } from "../../src/ui/tree.ts";
 
 const list = [
@@ -95,6 +95,18 @@ describe("timeline", () => {
     expect(diffPair(d, 2, "prev")!.from.label).toBe("v1");
     expect(diffPair(d, 1, "prev")!.to.label).toBe("v2");
   });
+
+  test("confirmed deletion stays distinct from an unknown location across later versions", () => {
+    for (const reason of ["file-deleted", "lines-deleted", "ambiguous", "rewritten", "text-not-found", "binary"] as const) {
+      const detail: Pick<ThreadDetail, "timeline"> = { timeline: [step(0, "v1", { start: 1, end: 2 }), step(1, "v2", { start: 3, end: 4 }),
+        { ...step(2, "v3", null), reason }, { ...step(3, "v4", null), reason: "text-not-found" }] };
+      expect(missingThreadCode(detail, 1)).toBeNull();
+      const missing = missingThreadCode(detail, 3)!;
+      expect(missing.at.label).toBe("v3");
+      expect(missing.previous.label).toBe("v2");
+      expect(missing.kind).toBe(reason === "file-deleted" || reason === "lines-deleted" ? "deleted" : "unlocated");
+    }
+  });
 });
 
 describe("region diff of one thread", () => {
@@ -102,6 +114,15 @@ describe("region diff of one thread", () => {
     Array.from({ length: n }, (_, i) => edits[i + 1] ?? `line ${i + 1}`).join("\n") + "\n";
   const before = file(200);
   const after = file(200, { 20: "line 20 edited", 150: "line 150 edited" });
+
+  test("replacement requires all commented lines to be removed; nearby edits and indentation are not replacement", () => {
+    const before = "start\noldField = oldValue\nstillHere\nend\n";
+    const replaced = "start\nnewField = newValue\nstillHere\nend\n";
+    expect(rangeWasReplaced(before, replaced, { start: 2, end: 2 })).toBe(true);
+    expect(rangeWasReplaced(before, replaced, { start: 2, end: 3 })).toBe(false);
+    expect(rangeWasReplaced(before, replaced, { start: 3, end: 3 })).toBe(false);
+    expect(rangeWasReplaced(before, before.replace("oldField", "  oldField"), { start: 2, end: 2 })).toBe(false);
+  });
 
   test("each thread gets only the hunks around its own lines", () => {
     const near20 = regionDiff({ path: "a.kt", text: before, range: { start: 20, end: 20 } }, { path: "a.kt", text: after, range: { start: 20, end: 20 } });

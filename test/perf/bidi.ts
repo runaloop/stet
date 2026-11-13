@@ -65,6 +65,11 @@ export class Bidi {
     return this.send("browsingContext.traverseHistory", { context: this.context, delta });
   }
   async close() { await this.send("session.end", {}).catch(() => null); this.ws.close(); }
+  /** Quit only the browser launched for this connection; Snap may reject process signals. */
+  async quit() {
+    try { await this.send("browser.close", {}); }
+    finally { this.ws.close(); }
+  }
 }
 function deser(v: any): any {
   if (!v) return v;

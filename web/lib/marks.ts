@@ -32,6 +32,9 @@ export const MARK_CSS = `
 [data-gutter] > [${ATTR}~="linked"] { box-shadow: inset 3px 0 0 light-dark(#8250df, #a78bfa), inset 0 0 0 100vmax light-dark(rgb(130 80 220 / 0.17), rgb(170 130 255 / 0.2)); }
 [data-content] > [${ATTR}~="cursor"] { outline: 1px solid light-dark(#2f6fdd, #6ea2ff); outline-offset: -1px; }
 [data-gutter] > [${ATTR}~="cursor"] { box-shadow: inset 3px 0 0 light-dark(#2f6fdd, #6ea2ff); }
+[data-content] > [${ATTR}~="history-removed"] { box-shadow: inset 0 0 0 100vmax light-dark(rgb(200 45 45 / 0.15), rgb(230 70 70 / 0.15)); }
+[data-gutter] > [${ATTR}~="history-removed"] { box-shadow: inset 4px 0 0 light-dark(#c53030, #f07070); color: light-dark(#c53030, #f07070); }
+[data-gutter] > [${ATTR}~="history-removed"]::before { content: "−"; position: absolute; left: 0; color: light-dark(#c53030, #f07070); font-weight: bold; }
 ::highlight(${HIT}) { background-color: light-dark(rgb(255 214 0 / 0.6), rgb(255 200 0 / 0.4)); }
 ::highlight(${HIT_CURRENT}) { background-color: #ffb000; color: #000; }
 `;

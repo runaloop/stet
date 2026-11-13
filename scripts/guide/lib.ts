@@ -168,18 +168,25 @@ export async function withBrowser(demo: Demo, fn: (p: Page) => Promise<void>) {
   rmSync(prof, { recursive: true, force: true });
   mkdirSync(prof, { recursive: true });
   const firefox = Bun.spawn(["firefox", "--headless", "--no-remote", "--profile", prof, `--remote-debugging-port=${9600 + Math.floor(Math.random() * 90)}`], { stdout: "ignore", stderr: "pipe" });
+  let b: Bidi | undefined;
   try {
     const url = JSON.parse(await firstMatch(server.stdout as ReadableStream<Uint8Array>, /^(\{.*\})$/m, 20_000)).url as string;
     const ws = await firstMatch(firefox.stderr as ReadableStream<Uint8Array>, /WebDriver BiDi listening on (ws:\/\/\S+)/, 30_000);
-    const b = await Bidi.connect(`${ws}/session`);
+    b = await Bidi.connect(`${ws}/session`);
     await b.viewport(1920, 1080);
     await b.navigate(url);
     await fn(new Page(b, url));
-    await b.close();
   } finally {
-    firefox.kill();
-    server.kill();
-    rmSync(prof, { recursive: true, force: true });
+    try {
+      if (b) await b.quit();
+      await Promise.race([firefox.exited, Bun.sleep(3000)]);
+      if (firefox.exitCode === null) firefox.kill();
+      await firefox.exited;
+      rmSync(prof, { recursive: true, force: true });
+    } finally {
+      if (server.exitCode === null) server.kill();
+      await server.exited;
+    }
   }
 }
 

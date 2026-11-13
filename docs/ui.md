@@ -282,6 +282,20 @@ previously showed Files or Search.
 
 ## Thread page
 
+The thread's code labels both sides with their version: the original commented code and the selected
+version. When all originally commented lines were replaced, a notice says so and the thread marker
+stays on the earlier side of the diff. A single-version view of the replacement does not acquire the
+original marker; it offers a comparison with the original source.
+
+When the file or commented lines were deleted, a prominent notice names the deletion version. The
+selected version has an empty state, and earlier code sits in a separate **History** frame with its
+own version and line numbers. Deleted lines have a red mark and minus sign. **At step** uses the last
+known source; **Then** shows the original source while retaining the deletion notice.
+
+A lost, ambiguous or rewritten anchor says **Cannot locate** and **Deletion is not confirmed** instead.
+Its historical source is not marked as a confirmed deletion. None of these code states resolves the
+discussion: an open thread remains open until the reviewer resolves it.
+
 The compare highlights every line of each thread, the thread in focus stronger. Pointing at a thread's card puts that
 thread in the spotlight: its lines (or rendered blocks) take a pink frame and fill with its number, `#12`, over the line
 number of its first line (at the top right of its first block in rendered Markdown), its card turns pink, and the other

@@ -200,6 +200,65 @@ describe("thread detail", () => {
     render(null, host);
   });
 
+  test("replacement identifies the original and selected versions, including the single-version view", async () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    state.route.value = { name: "thread", id: 7 };
+    state.detail.value = detail;
+    state.selectedStep.value = null;
+    state.codeMode.value = "diff";
+    try {
+      render(<ThreadDetailView id={7} />, host);
+      await tick(80);
+      expect(host.querySelector('[data-code-state="replaced"]')!.textContent).toContain("Original commented lines replaced at v2");
+      expect(host.querySelector('[data-side="old"]')!.textContent).toContain("v1 · original commented code");
+      expect(host.querySelector('[data-side="new"]')!.textContent).toContain("v2 · selected version");
+      state.codeMode.value = "now";
+      await tick(80);
+      expect(host.querySelector('[data-code-state="replaced"]')!.textContent).toContain("This is their replacement");
+      host.querySelector<HTMLButtonElement>('[data-code-state="replaced"] button')!.click();
+      expect(state.codeMode.value as string).toBe("diff");
+      expect(state.diffBase.value).toBe("then");
+    } finally { render(null, host); host.remove(); }
+  });
+
+  for (const reason of ["file-deleted", "lines-deleted", "ambiguous", "rewritten"] as const) {
+    test(`${reason}: historical code has its own frame, never a current placement, and the discussion stays open`, async () => {
+      const host = document.createElement("div");
+      document.body.appendChild(host);
+      const deleted = reason === "file-deleted" || reason === "lines-deleted";
+      const loss = { index: 2, kind: "version" as const, label: "v3", sha: "s2", version: 3, state: "outdated" as const,
+        method: null, path: null, range: null, excerpt: null, commentIds: [], reason };
+      const d: ThreadDetail = { ...detail, thread: { ...detail.thread, status: "open", anchor: { ...detail.thread.anchor, state: "outdated", path: null, range: null, reason } },
+        timeline: [...detail.timeline, loss, { ...loss, index: 3, label: "v4", sha: "s3", version: 4, reason: "text-not-found" }], code: { ...detail.code, now: null } };
+      state.route.value = { name: "thread", id: 7 };
+      state.detail.value = d;
+      state.selectedStep.value = null;
+      state.codeMode.value = "diff";
+      calls.length = 0;
+      try {
+        render(<ThreadDetailView id={7} />, host);
+        await tick(80);
+        expect(host.querySelector(".thread-code-notice")!.textContent).toContain(deleted ? "deleted at v3" : "Cannot locate");
+        expect(host.querySelector(".thread-code-notice")!.textContent).toContain("discussion is still open");
+        expect(host.querySelector(".thread-code-absent")!.textContent).toContain("v4 · selected version");
+        expect(host.querySelector(".historical-code")!.classList.contains(deleted ? "deleted" : "unlocated")).toBe(true);
+        expect(host.querySelector('.historical-code [data-side="new"]')).toBeNull();
+        expect(host.querySelector(".detail-head .line")!.textContent).toContain("originally L2 at v1");
+        if (!deleted) expect(host.querySelector(".thread-code-notice")!.textContent).toContain("Deletion is not confirmed");
+        state.codeMode.value = "now";
+        await tick(80);
+        expect(host.querySelector(".historical-code h4")!.textContent).toContain("History · v2");
+        state.codeMode.value = "then";
+        await tick(80);
+        expect(host.querySelector(".historical-code h4")!.textContent).toContain("History · v1");
+        expect(host.querySelector(".detail-head .head-actions")!.textContent).toContain("Resolve");
+        expect(calls.some((c) => /^POST .*\/resolve/.test(c))).toBe(false);
+        expect(state.detail.value!.thread.status).toBe("open");
+      } finally { render(null, host); host.remove(); state.detail.value = detail; state.codeMode.value = "diff"; }
+    });
+  }
+
   test("Copy link copies a message permalink with its review; its timestamp is a real link", async () => {
     const copied: string[] = [];
     const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");

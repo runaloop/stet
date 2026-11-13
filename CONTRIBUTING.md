@@ -65,7 +65,7 @@ repositories, in headless Firefox. After a UI change, retake the sections it tou
 ```bash
 bun run guide              # all of them
 bun run guide images       # one section: check-claim, tests, commits, conversation, order, navigation,
-                           # versions, images, markdown, live, viewed, publication
+                           # versions, images, markdown, live, viewed, publication, thread-history
 ```
 
 ## Releases

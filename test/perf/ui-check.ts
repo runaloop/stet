@@ -48,13 +48,16 @@ let server: Subprocess<"ignore", "pipe", "ignore"> | undefined;
 let firefox: Subprocess<"ignore", "ignore", "pipe"> | undefined;
 // Firefox writes to its profile until it has exited, so the folder goes after that
 const stopChildren = async () => {
-  firefox?.kill();
-  server?.kill();
+  if (firefox?.exitCode === null) {
+    await Promise.race([firefox.exited, Bun.sleep(1000)]);
+    if (firefox.exitCode === null) firefox.kill();
+  }
+  if (server?.exitCode === null) server.kill();
   await Promise.race([Promise.all([firefox?.exited, server?.exited]), Bun.sleep(5000)]);
 };
 process.on("exit", () => {
-  firefox?.kill();
-  server?.kill();
+  if (firefox?.exitCode === null) firefox.kill();
+  if (server?.exitCode === null) server.kill();
   rmSync(repo, { recursive: true, force: true });
   rmSync(runDir, { recursive: true, force: true });
 });
@@ -1897,6 +1900,7 @@ try {
         focus: v ? [...v.querySelectorAll(".md-thread-focus")].map(e => e.closest(".md-cell").dataset.side + ":" + e.textContent.trim().slice(0, 11)) : [],
         marker: !!v?.querySelector(".md-threads .thread-marker"),
         words: v ? [...v.querySelectorAll(".md-thread-focus :is(del, ins)")].map(e => e.tagName.toLowerCase() + ":" + e.textContent) : [],
+        replacementWords: v ? [...v.querySelectorAll('.md-cell[data-side="new"] [data-start="11"] ins')].map(e => e.textContent) : [],
         folds: v ? v.querySelectorAll(".md-fold").length : 0,
       }; })()`);
     const stepButton = (state: string) => `[...document.querySelectorAll(".timeline .step:not(.fold)")].find(s => s.querySelector(".step-state")?.textContent === "${state}")?.querySelector("button")`;
@@ -1924,17 +1928,17 @@ try {
     const changed = await threadMd();
     await b.screenshot(join(OUT, "shots", "ui-check-thread-markdown.png"));
     check(
-      "a thread on a Markdown file shows its code rendered, with the toggle to code and back; its blocks are marked, picking a step keeps the view, and a changed step compares old and new with the changed words marked",
+      "a Markdown thread keeps its marker on replaced original text, shows the replacement's changed words separately, and preserves rendering over a toggle or timeline step",
       threadOpened.rendered && (threadOpened.toggle?.includes("code") ?? false) && threadOpened.marker && threadOpened.focus.some((f: string) => f.endsWith("Paragraph 3")) &&
         !codeThere.rendered && codeThere.code && (codeThere.toggle?.includes("rendered") ?? false) && threadFade.at && !threadFade.later &&
         written.rendered && written.folds > 0 && written.words.length === 0 && JSON.stringify(written.focus) === JSON.stringify(["new:Paragraph 3"]) &&
-        changed.rendered && changed.split === true && JSON.stringify(changed.focus) === JSON.stringify(["old:Paragraph 3", "new:Paragraph 3"]) &&
-        JSON.stringify(changed.words) === JSON.stringify(["del:1", "ins:2"]),
+        changed.rendered && changed.split === true && JSON.stringify(changed.focus) === JSON.stringify(["old:Paragraph 3"]) &&
+        JSON.stringify(changed.words) === JSON.stringify(["del:1"]) && JSON.stringify(changed.replacementWords) === JSON.stringify(["2"]),
       { threadOpened, codeThere, written, changed },
     );
 
     // rendered Markdown on a thread page takes comments like the Changes page
-    const p3 = await rect(`.code-area .md-view .md-cell[data-side="new"] .md-thread-focus`);
+    const p3 = await rect(`.code-area .md-view .md-cell[data-side="new"] [data-start="11"]`);
     if (p3) await pointer([{ type: "pointerMove", x: p3.x + 5, y: p3.y }, { type: "pointerMove", x: p3.x, y: p3.y }, { type: "pointerDown", button: 0 }, { type: "pointerUp", button: 0 }]);
     await sleep(300);
     const mdCursorHere = await b.eval(`[...document.querySelectorAll(".code-area.code-focus .md-view .md-cursor")].map(e => e.closest(".md-cell").dataset.side + ":" + e.textContent.trim().slice(0, 11))`);
@@ -3425,7 +3429,7 @@ try {
     check("script ran to the end", false, (e as Error).message);
     await b.screenshot(join(OUT, "shots", "ui-check-error.png")).catch(() => null);
   } finally {
-    await b.close();
+    await b.quit();
   }
 } finally {
   await stopChildren();

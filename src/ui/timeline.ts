@@ -23,6 +23,21 @@ export function stateTone(state: string): "ok" | "info" | "warn" | "bad" {
   return "ok";
 }
 
+/** Keep the first loss's evidence: later steps cannot locate an anchor that was already lost. */
+export function missingThreadCode(detail: Pick<ThreadDetail, "timeline">, selected: number): {
+  kind: "deleted" | "unlocated";
+  at: TimelineStepDto;
+  previous: TimelineStepDto;
+} | null {
+  const target = detail.timeline[selected];
+  if (!target || (target.range && target.path)) return null;
+  const before = detail.timeline.slice(0, selected + 1);
+  const firstLost = before.findIndex((s) => !s.range || !s.path);
+  const at = before[firstLost]!;
+  const previous = before.slice(0, firstLost).reverse().find((s) => s.range && s.path) ?? detail.timeline[0]!;
+  return { kind: at.reason === "file-deleted" || at.reason === "lines-deleted" ? "deleted" : "unlocated", at, previous };
+}
+
 const OUTDATED: Record<OutdatedReason, string> = {
   "file-deleted": "the file was deleted",
   "lines-deleted": "its lines were deleted",

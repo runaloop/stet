@@ -1,5 +1,11 @@
 # TODO
 
+- [x] Distinguish replaced, deleted and unlocated thread code from its historical source.
+  - Label both compared versions and keep a replaced fragment's marker on the earlier side.
+  - Show confirmed deletion with an empty selected version and a separate historical frame.
+  - Preserve the first confirmed deletion across later versions; do not infer deletion from a lost anchor.
+  - Keep the discussion's open/resolved state independent of code placement.
+
 - [ ] Approval and publication control ([implementation plan](docs/approval-and-publication-plan.md)).
   - [x] P0: pin existing approval behavior, including dirty/cached/pinned worktrees, nits and settled instructions.
   - [x] P1, local single-commit increment: immutable plans, local grants, complete fresh tree evidence and a shared gate.

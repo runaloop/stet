@@ -12,8 +12,9 @@ import { tests } from "./tests.ts";
 import { versionsGuide } from "./versions.ts";
 import { viewedGuide } from "./viewed.ts";
 import { publicationGuide } from "./publication.ts";
+import { threadHistoryGuide } from "./thread-history.ts";
 
-const guides: Record<string, () => Promise<void>> = { "check-claim": checkClaim, tests, commits: commitsGuide, conversation: conversationGuide, order: orderGuide, navigation: navigationGuide, versions: versionsGuide, images: imagesGuide, markdown: markdownGuide, live: liveGuide, viewed: viewedGuide, publication: publicationGuide };
+const guides: Record<string, () => Promise<void>> = { "check-claim": checkClaim, tests, commits: commitsGuide, conversation: conversationGuide, order: orderGuide, navigation: navigationGuide, versions: versionsGuide, images: imagesGuide, markdown: markdownGuide, live: liveGuide, viewed: viewedGuide, publication: publicationGuide, "thread-history": threadHistoryGuide };
 const wanted = process.argv.slice(2);
 for (const name of wanted) if (!guides[name]) throw new Error(`unknown guide ${name}; known: ${Object.keys(guides).join(", ")}`);
 
