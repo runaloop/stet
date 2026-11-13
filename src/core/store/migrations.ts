@@ -277,4 +277,56 @@ export const MIGRATIONS: string[] = [
     INSERT INTO changes(review_id, kind, n) VALUES (0, 'config', 1) ON CONFLICT(review_id, kind) DO UPDATE SET n = n + 1;
   END;
   `,
+  `
+  CREATE TABLE publication_state(
+    review_id INTEGER PRIMARY KEY REFERENCES reviews(id),
+    revision INTEGER NOT NULL DEFAULT 0,
+    paused INTEGER NOT NULL DEFAULT 0 CHECK(paused IN (0,1))
+  );
+  INSERT INTO publication_state(review_id) SELECT id FROM reviews;
+  CREATE TRIGGER publication_review_insert AFTER INSERT ON reviews BEGIN
+    INSERT INTO publication_state(review_id) VALUES (NEW.id);
+  END;
+  CREATE TRIGGER publication_review_update AFTER UPDATE ON reviews
+    WHEN NEW.state IS NOT OLD.state OR NEW.branch IS NOT OLD.branch OR NEW.source IS NOT OLD.source
+      OR NEW.base_ref IS NOT OLD.base_ref OR NEW.worktree_hint IS NOT OLD.worktree_hint BEGIN
+    UPDATE publication_state SET revision = revision + 1 WHERE review_id = NEW.id;
+  END;
+  CREATE TRIGGER publication_review_event AFTER INSERT ON events
+    WHEN NEW.type = 'version.created' OR NEW.type IN ('thread.reopened', 'thread.resolved')
+      OR (NEW.role = 'reviewer' AND NEW.type IN ('comment.published', 'review.submitted')) BEGIN
+    UPDATE publication_state SET revision = revision + 1 WHERE review_id = NEW.review_id;
+  END;
+
+  CREATE TABLE publication_plans(
+    id TEXT PRIMARY KEY,
+    review_id INTEGER NOT NULL REFERENCES reviews(id),
+    version_id INTEGER NOT NULL REFERENCES versions(id),
+    digest TEXT NOT NULL UNIQUE,
+    document TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX publication_plans_review ON publication_plans(review_id, created_at);
+  CREATE TRIGGER publication_plan_insert AFTER INSERT ON publication_plans BEGIN
+    UPDATE publication_state SET revision = revision + 1 WHERE review_id = NEW.review_id;
+  END;
+  CREATE TABLE publication_grants(
+    id TEXT PRIMARY KEY,
+    plan_id TEXT NOT NULL REFERENCES publication_plans(id),
+    document TEXT NOT NULL,
+    revoked_at TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX publication_grants_plan ON publication_grants(plan_id);
+  CREATE TABLE publication_executions(
+    id TEXT PRIMARY KEY,
+    plan_id TEXT NOT NULL UNIQUE REFERENCES publication_plans(id),
+    grant_id TEXT NOT NULL REFERENCES publication_grants(id),
+    state TEXT NOT NULL CHECK(state IN ('reserved','dispatched','confirmed','blocked','failed','outcome_unknown')),
+    result_commit TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    detail TEXT
+  );
+  `,
 ];

@@ -92,6 +92,17 @@ On an approval:
 - threads wait for you, or are settled: they are nits. Fix them, reply `fixed` to each open one (step 4), do what
   each settled one says, create a version (step 5), write the summary and stop. There is no next round to wait for.
 
+If `.publication` is present in `stet status`, inspect `stet publication show <plan-id> --json`.
+Code approval, including `wait: approved`, is not publication permission. Prepare the exact metadata with
+`stet publication prepare --file <plan.json>` (see `docs/publication.md` in the Stet source); the human
+authorizes the named action in Stet. Do not select the reviewer role or drive the human's authorization
+UI yourself. Once authorized, request the implemented operation with
+`stet publish --plan <id> --through commit --operation <stable-id> --json`. Reuse that operation ID on retry
+and inspect its receipt; do not fall back to direct Git when the executor denies. This increment supports
+one local commit only: it grants no push/MR/merge permission. Local checks can be bypassed by the same OS
+user and must not be described as Protected approval. A gate result is diagnostic; the executor rechecks
+before dispatch. New content or nits need a new version and fresh publication consent.
+
 For `changes`, and for nits, read the threads:
 
 ```bash

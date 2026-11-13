@@ -21,6 +21,7 @@ import type {
   Verdict,
 } from "../src/core/types.ts";
 import type { ActionTarget, Launch } from "../src/core/module.ts";
+import type { ConsentExpectation, PublicationGrant, PublicationView } from "../src/core/publication/types.ts";
 
 export interface BlobDto {
   sha: string;
@@ -79,6 +80,10 @@ const blobCache = new Map<string, Promise<BlobDto>>();
 const blobValues = new Map<string, BlobDto>();
 
 export const api = {
+  publication: (review: number) => call<PublicationView | null>("GET", "/api/publication", { query: { review } }),
+  authorizePublication: (id: string, expected: ConsentExpectation, actions: string[]) => call<PublicationGrant>("POST", `/api/publication/${id}/authorize`, { body: { expected, actions } }),
+  revokePublication: (id: string) => call<{ ok: boolean }>("POST", `/api/publication/${id}/revoke`),
+  pausePublication: (review: number, paused: boolean) => call<{ ok: boolean }>("POST", "/api/publication/pause", { query: { review }, body: { paused } }),
   reviews: () => call<{ reviews: ReviewDto[]; default: number | null }>("GET", "/api/reviews"),
   review: (review: number) => call<ReviewStatusDto>("GET", "/api/review", { query: { review } }),
   git: (review: number) => call<GitStateDto>("GET", "/api/git", { query: { review } }),

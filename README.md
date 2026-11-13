@@ -197,5 +197,9 @@ As of October 2026:
 
 ## Contributing, security, license
 
+[Local publication checks](docs/publication.md) let a reviewer authorize one exact commit in the review
+UI, separately from code approval. The [implementation plan](docs/approval-and-publication-plan.md)
+tracks push/MR/merge, runtime adapters and isolated human approval, which are not implemented yet.
+
 [CONTRIBUTING.md](CONTRIBUTING.md) has the setup and the checks; [SECURITY.md](SECURITY.md) describes what the
 local server protects and how to report a problem. stet is released under the [MIT license](LICENSE).

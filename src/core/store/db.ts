@@ -108,6 +108,7 @@ export interface EventRow {
 }
 
 export type EventType =
+  | "publication.changed"
   | "review.submitted"
   | "comment.published"
   | "thread.resolved"

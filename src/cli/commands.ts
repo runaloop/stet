@@ -114,7 +114,14 @@ ${areas ? "              --region <x,y,w,h> in place of --range: an area of an i
   events [--since <seq>]
 
 `,
-    Tools: `  serve [--port <n>] [--open] [--print-url]     local web UI; --open (or --detach) starts it on its own and
+    Tools: `  publication prepare --file <plan.json>      prepare a local publication plan; no consent or execution
+  publication show <id> | publication revoke <id>
+  gate --plan <id> --action commit|push|mr|merge
+                                                fresh eligibility check; exit 3 when denied
+  publish --plan <id> --through commit --operation <stable-id>
+                                                one exact authorized commit; safe receipt lookup on retry
+  doctor --approval                             available publication checks and their limits
+  serve [--port <n>] [--open] [--print-url]     local web UI; --open (or --detach) starts it on its own and
         [--detach] [--foreground] [--stop]      returns, so it outlives the shell; --stop stops it
   tui [--review <id>]                           review in the terminal: threads, replies, drafts, submit
   open <id> [--print]                           jump to the editor at the thread
@@ -197,6 +204,69 @@ const REASONS = ["fixed", "wontfix", "answered"];
 type Command = { options: Options; run: (p: Parsed) => Promise<number | void> };
 
 const commands: Record<string, Command> = {
+  "publication prepare": {
+    options: { file: { type: "string" } },
+    async run(p) {
+      const file = str(p, "file");
+      if (!file) throw usage("missing --file <plan.json>");
+      const { preparePublication } = await import("../core/publication/service.ts");
+      let input: unknown;
+      try { input = JSON.parse(await readGuide(file)); } catch { throw usage("publication plan must be JSON"); }
+      emit(p, await preparePublication(await context(p), input));
+    },
+  },
+  "publication show": {
+    options: {},
+    async run(p) {
+      const id = p.positionals[0];
+      if (!id) throw usage("missing plan ID");
+      const { showPublication } = await import("../core/publication/service.ts");
+      emit(p, await showPublication(await context(p), id));
+    },
+  },
+  "publication revoke": {
+    options: {},
+    async run(p) {
+      const id = p.positionals[0];
+      if (!id) throw usage("missing plan ID");
+      const { revokePublication } = await import("../core/publication/service.ts");
+      revokePublication(await context(p), id);
+      emit(p, { revoked: id });
+    },
+  },
+  gate: {
+    options: { plan: { type: "string" }, action: { type: "string" } },
+    async run(p) {
+      const id = str(p, "plan");
+      const action = str(p, "action");
+      if (!id || !action || !["commit", "push", "mr", "merge"].includes(action)) throw usage("gate requires --plan <id> --action commit|push|mr|merge");
+      const { gatePublication } = await import("../core/publication/service.ts");
+      const decision = await gatePublication(await context(p), id, action as import("../core/publication/types.ts").PublicationAction);
+      emit(p, decision);
+      return decision.allowed ? 0 : 3;
+    },
+  },
+  publish: {
+    options: { plan: { type: "string" }, through: { type: "string" }, operation: { type: "string" } },
+    async run(p) {
+      const id = str(p, "plan");
+      const operation = str(p, "operation");
+      if (!id || !operation || str(p, "through") !== "commit") throw usage("publish requires --plan <id> --through commit --operation <stable-id>; push/MR/merge are unavailable");
+      const { executePublication } = await import("../core/publication/executor.ts");
+      const result = await executePublication(await context(p), id, operation);
+      emit(p, result);
+      return result.state === "confirmed" ? 0 : 3;
+    },
+  },
+  doctor: {
+    options: { approval: { type: "boolean" } },
+    async run(p) {
+      if (!bool(p, "approval")) throw usage("doctor requires --approval");
+      emit(p, { schema: 1, protection: "local", label: "Local checks", supportedActions: ["commit"],
+        protectedApproval: false, runtimeAdapters: [], gitHooksInstalled: false,
+        limitations: ["Local state and reviewer role are writable by the same OS user.", "Direct Git/API calls bypass these checks.", "Only the structured Stet executor checks each dispatch.", "Push, MR, merge and isolated approval are unavailable."] });
+    },
+  },
   init: {
     options: { base: { type: "string" }, worktree: { type: "string" }, staged: { type: "boolean" } },
     async run(p) {
@@ -710,7 +780,7 @@ const commands: Record<string, Command> = {
   },
 };
 
-const GROUPS = new Set(["version", "versions", "threads", "thread", "comment", "review", "drafts", "config", "skill"]);
+const GROUPS = new Set(["version", "versions", "threads", "thread", "comment", "review", "drafts", "config", "skill", "publication"]);
 
 export async function main(argv: string[], modules: readonly ModuleSpec[] = built()): Promise<number> {
   const [first, second, ...rest] = argv;

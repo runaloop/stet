@@ -268,6 +268,8 @@ export interface CompareDto {
 }
 
 export interface StatusDto {
+  /** An explicitly prepared local publication plan; absent for ordinary review-only users. */
+  publication?: { plan: string; protection: "local" };
   review: ReviewDto;
   versions: number;
   latest: VersionDto | null;

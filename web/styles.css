@@ -222,6 +222,15 @@ body.resizing iframe, body.resizing diffs-container { pointer-events: none; }
 .msg { border-radius: var(--radius); margin: -3px -6px; padding: 3px 6px; scroll-margin-top: 40px; }
 .msg.at-cursor, .msg.linked { box-shadow: 0 0 0 2px var(--accent); }
 .msg.linked { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.publication-card { margin: 24px 0; padding: 18px; border: 1px solid var(--border); border-radius: var(--radius); }
+.publication-heading { display: flex; align-items: center; gap: 12px; }
+.publication-heading h3 { margin: 0; }
+.publication-status { font-weight: 600; margin: 12px 0; }
+.publication-message { white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); }
+.publication-scope { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; }
+.publication-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.publication-blockers { padding-left: 20px; }
+.publication-blockers li { margin: 8px 0; }
 .msg.folded .body { max-height: 10.5em; overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent); mask-image: linear-gradient(to bottom, #000 55%, transparent); }
 .unfold { display: block; margin-top: 2px; background: none; border: 0; padding: 0; color: var(--accent); font-size: 12px; }
 .new-line { display: flex; align-items: center; gap: 8px; margin: 12px 0 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--bad); scroll-margin-top: 40px; }

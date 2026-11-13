@@ -17,6 +17,7 @@ import type {
   Verdict,
 } from "../core/types.ts";
 import type { Address } from "./server.ts";
+import type { ConsentExpectation, PreparePublication, PublicationAction, PublicationGrant, PublicationPlan, PublicationReceipt, PublicationView, GateDecision } from "../core/publication/types.ts";
 
 /** A request the server refused, with its HTTP status and error code; status 0 when the server did not answer. */
 export class ApiError extends StetError {
@@ -59,6 +60,12 @@ export function clientApi(server: Address) {
   }
 
   return {
+    publication: (review: number) => call<PublicationView | null>("GET", "/api/publication", { query: { review } }),
+    preparePublication: (plan: PreparePublication) => call<PublicationPlan>("POST", "/api/publication/prepare", { body: plan }),
+    authorizePublication: (id: string, expected: ConsentExpectation, actions: PublicationAction[]) => call<PublicationGrant>("POST", `/api/publication/${id}/authorize`, { body: { expected, actions } }),
+    revokePublication: (id: string) => call<{ ok: boolean }>("POST", `/api/publication/${id}/revoke`),
+    gatePublication: (id: string, action: PublicationAction) => call<GateDecision>("POST", `/api/publication/${id}/gate`, { body: { action } }),
+    executePublication: (id: string, operation: string) => call<PublicationReceipt>("POST", `/api/publication/${id}/execute`, { body: { action: "commit", operation } }),
     ping: () => call<{ ok: boolean; build: string }>("GET", "/api/ping"),
     /** The diff from one commit to another as a unified patch; of `paths` only when given. */
     patch: (from: string, to: string, paths: string[] = []) => text("/api/patch", [["from", from], ["to", to], ...paths.map((p): [string, string] => ["path", p])]),

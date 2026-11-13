@@ -6,6 +6,8 @@ import { listFiles, readBlobAt } from "../core/git.ts";
 import { imageType } from "../core/media.ts";
 import { actionTarget, editorCommand, editorTemplate, launchCommand } from "../core/actions.ts";
 import * as svc from "../core/service.ts";
+import * as publication from "../core/publication/service.ts";
+import type { ConsentExpectation } from "../core/publication/types.ts";
 import { takeNow } from "../core/snapshot.ts";
 import type { Intent, ResolveReason, ReviewRow, Verdict } from "../core/store/db.ts";
 import { gitState } from "../core/gitstate.ts";
@@ -53,6 +55,14 @@ async function body<T>(req: Request): Promise<T> {
   } catch {
     throw usage("request body must be JSON");
   }
+}
+
+async function publicationBody(req: Request): Promise<Record<string, unknown>> {
+  const b = await body<unknown>(req);
+  if (!b || typeof b !== "object" || Array.isArray(b)) throw usage("publication request must be an object");
+  const value = b as Record<string, unknown>;
+  if (value.schema !== undefined && value.schema !== 1) throw usage("unsupported publication schema");
+  return value;
 }
 
 function review(s: ServerState, url: URL): ReviewRow {
@@ -264,6 +274,38 @@ route("POST", "/api/threads/:id/reopen", async (s, _req, url, p) => {
 });
 
 route("GET", "/api/drafts", async (s, _req, url) => svc.listDrafts(s.ctx, review(s, url)));
+
+route("GET", "/api/publication", async (s, _req, url) => {
+  const plans = publication.publicationPlans(s.ctx, review(s, url).id);
+  return plans[0] ? publication.showPublication(s.ctx, plans[0].id) : null;
+});
+route("POST", "/api/publication/prepare", async (s, req) => publication.preparePublication(s.ctx, await body<unknown>(req)));
+route("GET", "/api/publication/:id", async (s, _req, _url, p) => publication.showPublication(s.ctx, p.id!));
+route("POST", "/api/publication/:id/authorize", async (s, req, _url, p) => {
+  const b = await publicationBody(req);
+  return publication.authorizePublication(s.ctx, p.id!, b.expected as ConsentExpectation, b.actions);
+});
+route("POST", "/api/publication/:id/revoke", async (s, _req, _url, p) => {
+  publication.revokePublication(s.ctx, p.id!);
+  return { ok: true };
+});
+route("POST", "/api/publication/:id/gate", async (s, req, _url, p) => {
+  const b = await publicationBody(req);
+  if (typeof b.action !== "string" || !["commit", "push", "mr", "merge"].includes(b.action)) throw usage("unknown publication action");
+  return publication.gatePublication(s.ctx, p.id!, b.action as import("../core/publication/types.ts").PublicationAction);
+});
+route("POST", "/api/publication/:id/execute", async (s, req, _url, p) => {
+  const b = await publicationBody(req);
+  if (b.action !== "commit" || typeof b.operation !== "string") throw usage("only commit with a stable operation ID is implemented");
+  const { executePublication } = await import("../core/publication/executor.ts");
+  return executePublication(s.ctx, p.id!, b.operation);
+});
+route("POST", "/api/publication/pause", async (s, req, url) => {
+  const b = await publicationBody(req);
+  if (typeof b.paused !== "boolean") throw usage("paused must be true or false");
+  publication.pausePublication(s.ctx, review(s, url).id, b.paused);
+  return { ok: true };
+});
 
 route("POST", "/api/review/submit", async (s, req, url) => {
   const b = await body<{ body?: string; verdict?: Verdict; open?: "keep" | "resolve"; guide?: boolean }>(req).catch(() => ({ body: undefined, verdict: undefined, open: undefined, guide: undefined }));

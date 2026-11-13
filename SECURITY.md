@@ -3,6 +3,19 @@
 stet runs a web server on your machine, and that server can read your repository. This page says what
 protects it and what is out of scope.
 
+## Publication permissions
+
+The opt-in [publication workflow](docs/publication.md) provides **Local checks** for one exact unsigned
+commit. Preparation and gate inspection do not update authored branch refs. After explicit reviewer
+consent, the structured executor can update the named branch with its expected old SHA; it never
+stages the user's files or runs repository hooks. No remote publication operation is implemented.
+
+These local grants are not protected against another process running as the same OS user. That process
+can read the server token, select the reviewer role, edit the database or bypass Stet through Git/API
+commands. Neither the ordinary server token nor `--as reviewer` authenticates human presence. Protected
+approval is unavailable until an isolated authority/executor and its enforcement tests are implemented.
+Installing or using this increment does not install hooks, credentials, OS accounts or sandbox policy.
+
 ## What the server does
 
 - It listens on 127.0.0.1 only, on a random port the first time and then on the same port while it is free.

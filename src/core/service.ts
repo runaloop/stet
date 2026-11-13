@@ -1464,7 +1464,9 @@ export async function status(ctx: Ctx, review: ReviewRow, opts: { pinnedNow?: st
       const m = messages.get(t.id)!;
       return { id: t.id, path: t.anchor.path ?? t.path, range: t.anchor.range, title: t.title, message: m.body, by: m.author, at: t.resolvedAt ?? m.created_at };
     });
+  const publication = ctx.store.db.query<{ id: string }, [number]>("SELECT id FROM publication_plans WHERE review_id = ? ORDER BY rowid DESC LIMIT 1").get(review.id);
   return {
+    ...(publication ? { publication: { plan: publication.id, protection: "local" as const } } : {}),
     review: reviewDto(review),
     versions: versions.length,
     latest: latest ? versionDto(latest) : null,

@@ -5,6 +5,7 @@ import { areaText } from "../../src/core/media.ts";
 import { Body, Kbd } from "../components/Bits.tsx";
 import { ask } from "../components/Choice.tsx";
 import { RestoreBlock } from "../components/Restore.tsx";
+import { PublicationCard } from "../components/Publication.tsx";
 import { drafts, guard, lastCompare, link, loadDrafts, loadStatus, navigate, notify, reloadAll, reviewId, setting, threads, versions } from "../state.ts";
 
 /** The summary for the whole review: kept while you move around, so S sends it too. */
@@ -176,6 +177,7 @@ export function DraftsView() {
           </span>
         </span>
       </div>
+      <PublicationCard />
     </div>
   );
 }

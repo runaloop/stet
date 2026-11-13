@@ -264,3 +264,18 @@ stet config set compare.order "docs: **/*.md; code; config: **/*.json, **/*.xml,
 ```
 
 ![The Files tab and the diff in the same order](order-1.png)
+
+## Authorize one exact commit
+
+When the author prepares a [publication plan](../publication.md), Round and Drafts show its exact
+version, branch, message and attribution. Ordinary code approval grants no publication permission.
+Select **Allow one commit**, then **Approve vN and authorize commit**. The agent requests execution
+separately; the executor checks the current content and permission again.
+
+![Review the exact action and explicitly select its permission](publication-1.png)
+
+![One commit is authorized, with pause and revocation available](publication-2.png)
+
+This is **Local checks**, which processes running as the same OS user can bypass. Push/MR/merge and
+Protected approval are not implemented. Pause, revocation, expiry and later review changes stop
+future dispatch; they do not undo an action already sent.

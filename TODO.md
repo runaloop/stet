@@ -1,5 +1,17 @@
 # TODO
 
+- [ ] Approval and publication control ([implementation plan](docs/approval-and-publication-plan.md)).
+  - [x] P0: pin existing approval behavior, including dirty/cached/pinned worktrees, nits and settled instructions.
+  - [x] P1, local single-commit increment: immutable plans, local grants, complete fresh tree evidence and a shared gate.
+  - [x] P2, local single-commit increment: explicit consent, stale-click checks, pause and revocation in Round/Drafts.
+  - [x] P3, local single-commit increment: exact unsigned commit, expected-old ref update, durable receipt and non-redispatching recovery.
+  - [ ] Extend the local contract: validation-evidence policy, informational-thread waivers and metadata comparisons.
+  - [ ] P4: runtime/helper adapters and effective-enforcement diagnostics.
+  - [ ] P5: isolated authority/executor; reference environment and human authentication still need selection.
+  - [ ] P6: provider identity, push/MR support and separate merge authorization.
+  - [x] P7 for the local single-commit increment: migration, compatibility tests, guide screenshots and compiled-binary smoke check.
+  - [ ] P7 for later increments: provider/protected deployment rollout and enforcement checks.
+
 - [x] Keep Threads visible when selecting a thread from the tree.
   - Confirmed in headless Firefox on the current compiled build: open a thread, choose Files, return to Changes (whose panel still shows Threads), then select a thread from that tree. The panel switches to Files.
   - Expected: selecting a thread while in Threads keeps the left panel in Threads.

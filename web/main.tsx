@@ -3,6 +3,7 @@ import { useLayoutEffect, useRef } from "preact/hooks";
 import { setToken } from "./api.ts";
 import { ago, Badge, Kbd, roundTitle } from "./components/Bits.tsx";
 import { ChoiceDialog } from "./components/Choice.tsx";
+import { PublicationCard } from "./components/Publication.tsx";
 import { BlamePop } from "./components/Blame.tsx";
 import { GitChip, GitPanel } from "./components/GitState.tsx";
 import { Help, Pickers, WhichKey } from "./components/KeyUi.tsx";
@@ -209,6 +210,7 @@ function Header() {
         )}
       </span>
       <Approved />
+      {s?.publication ? <a class="verdict" title="Publication permissions · Local checks" {...link({ name: "drafts" })}>Publication</a> : null}
       {online.value ? null : (
         <span class="offline" title="the stet server does not answer. The page keeps trying and catches up when it is back; if it stays away, start it again with stet serve --open">
           ● offline · retrying
@@ -277,6 +279,7 @@ function Round() {
         <div class="card"><b>{k.unread}</b> unread</div>
         <div class="card"><b>{k.drafts}</b> drafts</div>
       </div>
+      <PublicationCard />
       <h3>Versions</h3>
       {versionRounds.value
         .slice()

@@ -104,6 +104,59 @@ describe("thread tree", () => {
   });
 });
 
+describe("publication consent", () => {
+  test("actions start unchecked; consent names the exact plan revision and a changed plan clears the choice", async () => {
+    const { PublicationCard } = await import("../../web/components/Publication.tsx");
+    const before = { status: state.status.peek(), drafts: state.drafts.peek(), review: state.reviewId.peek() };
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const consent: unknown[] = [];
+    let view = {
+      plan: { id: "plan-one", review: 1, version: 2, versionId: 11, digest: "digest-one", source: "index", ref: "refs/heads/feature", head: "abcdef012345",
+        commit: { message: "Fix the queue\n", author: { name: "Author", email: "author@example.com" }, committer: { name: "Publisher", email: "publisher@example.com" } } },
+      grant: null, paused: false, receipts: [], decision: { allowed: false, revision: 7, blockers: [{ code: "no_grant", message: "No permission", remedy: "Review the plan." }] },
+    };
+    respond = (url, init) => {
+      if (url.startsWith("/api/publication?") && !init?.method?.startsWith("POST")) return Response.json(view);
+      if (url.endsWith("/authorize")) { consent.push(JSON.parse(String(init?.body))); return Response.json({ id: "grant-one" }); }
+      return null;
+    };
+    state.reviewId.value = 1;
+    state.status.value = { latest: { number: 2 }, lastSeq: 1 } as never;
+    state.drafts.value = [];
+    try {
+      render(<PublicationCard />, host);
+      await tick(60);
+      const button = () => host.querySelector<HTMLButtonElement>(".btn.approve")!;
+      const box = () => host.querySelector<HTMLInputElement>(".publication-scope input")!;
+      expect(box().checked).toBe(false);
+      expect(button().disabled).toBe(true);
+      expect(host.textContent).toContain("Local checks");
+      expect(host.textContent).toContain("Fix the queue");
+      box().click();
+      await tick();
+      expect(button().disabled).toBe(false);
+      const enter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+      button().dispatchEvent(enter);
+      await tick(60);
+      expect(enter.defaultPrevented).toBe(true);
+      expect(consent).toEqual([{ expected: { digest: "digest-one", versionId: 11, revision: 7 }, actions: ["commit"] }]);
+      expect(box().checked).toBe(false);
+      box().click();
+      await tick();
+      view = { ...view, plan: { ...view.plan, digest: "digest-two", id: "plan-two" } };
+      state.status.value = { latest: { number: 2 }, lastSeq: 2 } as never;
+      await tick(60);
+      expect(box().checked).toBe(false);
+      expect(button().disabled).toBe(true);
+      expect(consent).toHaveLength(1);
+    } finally {
+      render(null, host); host.remove(); respond = null;
+      state.status.value = before.status; state.drafts.value = before.drafts; state.reviewId.value = before.review;
+    }
+  });
+});
+
 describe("thread detail", () => {
   const detail: ThreadDetail = {
     thread: thread({ id: 7, path: "src/a.kt", range: { start: 2, end: 2 }, title: "Why?" }),

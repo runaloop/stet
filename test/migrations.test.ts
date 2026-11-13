@@ -11,6 +11,29 @@ const columns = (db: Database, table: string) =>
 
 const before = (marker: string) => MIGRATIONS.findIndex((sql) => sql.includes(marker));
 
+test("publication records migrate existing approvals without granting publication permission", () => {
+  const dir = mkdtempSync(join(tmpdir(), "stet-mig-"));
+  const path = join(dir, "review.db");
+  try {
+    const old = new Database(path, { create: true, strict: true });
+    const at = before("CREATE TABLE publication_state");
+    for (const sql of MIGRATIONS.slice(0, at)) old.exec(sql);
+    old.exec(`PRAGMA user_version = ${at}`);
+    old.exec(`INSERT INTO reviews(id, branch, created_at) VALUES (1, 'feature', 't');
+      INSERT INTO snapshots(sha, tree, created_at) VALUES ('s', 't', 't');
+      INSERT INTO versions(id, review_id, number, snapshot, role, author, created_at) VALUES (1, 1, 1, 's', 'agent', 'author', 't');
+      INSERT INTO submissions(review_id, role, author, version_id, submitted_at, verdict) VALUES (1, 'reviewer', 'reviewer', 1, 't', 'approved');`);
+    old.close();
+    const store = new Store(path);
+    try {
+      expect(store.db.query("SELECT verdict FROM submissions").all()).toEqual([{ verdict: "approved" }]);
+      expect(store.db.query("SELECT * FROM publication_state").all()).toEqual([{ review_id: 1, revision: 0, paused: 0 }]);
+      expect(store.db.query("SELECT * FROM publication_grants").all()).toEqual([]);
+      expect(store.db.query("PRAGMA foreign_key_check").all()).toEqual([]);
+    } finally { store.close(); }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test("dropping origin columns keeps threads and comments", () => {
   const dir = mkdtempSync(join(tmpdir(), "stet-mig-"));
   const path = join(dir, "review.db");

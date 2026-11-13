@@ -383,6 +383,12 @@ verdict in `stet status`. Approving does not close the review; `stet review clos
 From the terminal: `stet review submit --approve` (with other threads open, `--force` leaves them open and
 `--resolve-all` resolves them).
 
+Code approval does not grant publication permission. When the author prepares a publication plan, a
+separate **Publication · Local checks** card appears on Round and Drafts. Its action starts unchecked;
+the reviewer sees the exact commit message and attribution before **Approve vN and authorize commit**.
+The card also offers pause, resume and revocation. It currently authorizes one local commit; push, MR,
+merge and Protected approval are unavailable. See [Local publication checks](publication.md).
+
 ## Links
 
 Every thread, version, file and search hit is a real link: a middle click or `Ctrl+click` opens it in a
